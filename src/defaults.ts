@@ -1,11 +1,55 @@
 import { StoredProvider } from './types';
 
+// Models retired or shut down by Google
+export const RETIRED_GEMINI_MODELS: readonly string[] = [
+	'gemini-2.0-flash',
+	'gemini-2.0-flash-lite',
+	'gemini-2.0-flash-exp',
+	'gemini-2.0-flash-thinking-exp',
+	'gemini-1.5-pro',
+	'gemini-1.5-pro-latest',
+	'gemini-1.5-flash',
+	'gemini-1.5-flash-latest',
+	'gemini-1.5-flash-8b',
+	'gemini-1.0-pro',
+	'gemini-pro',
+	'gemini-pro-vision'
+];
+
 // List of supported Gemini models
 const DEFAULT_GEMINI_MODELS = [
+	// Current Flagship / Recommended
+	{
+		name: 'gemini-3.8-flash',
+		displayName: 'Gemini 3.8 Flash (Recommended)',
+		pricing: 'Input $0.75 / Output $3.75 per 1M tokens ($1.50 / $7.50 standard)'
+	},
+	{
+		name: 'gemini-3.5-flash',
+		displayName: 'Gemini 3.5 Flash',
+		pricing: 'Input $1.50 / Output $9.00 per 1M tokens'
+	},
+	{
+		name: 'gemini-3.5-flash-lite',
+		displayName: 'Gemini 3.5 Flash-Lite',
+		pricing: 'Input $0.30 / Output $2.50 per 1M tokens'
+	},
+	{
+		name: 'gemini-3.1-pro',
+		displayName: 'Gemini 3.1 Pro',
+		pricing: 'Input $2.00 / Output $12.00 per 1M tokens'
+	},
+	{
+		name: 'gemini-3.1-flash-lite',
+		displayName: 'Gemini 3.1 Flash-Lite',
+		pricing: 'Input $0.25 / Output $1.50 per 1M tokens'
+	},
+
+	// Previews
 	{
 		name: 'gemini-3.1-pro-preview',
 		displayName: 'Gemini 3.1 Pro Preview',
-		pricing: 'Check Google pricing page; preview pricing may change'
+		pricing: 'Input $2.00 / Output $12.00 per 1M tokens; preview'
 	},
 	{
 		name: 'gemini-3-flash-preview',
@@ -13,36 +57,31 @@ const DEFAULT_GEMINI_MODELS = [
 		pricing: 'Check Google pricing page; preview pricing may change'
 	},
 	{
+		name: 'gemini-3-pro-preview',
+		displayName: 'Gemini 3 Pro Preview',
+		pricing: 'Check Google pricing page; preview pricing may change'
+	},
+	{
 		name: 'gemini-3.1-flash-lite-preview',
 		displayName: 'Gemini 3.1 Flash-Lite Preview',
 		pricing: 'Check Google pricing page; preview pricing may change'
 	},
+
+	// Legacy (2.5 series)
 	{
 		name: 'gemini-2.5-pro',
-		displayName: 'Gemini 2.5 Pro',
+		displayName: 'Gemini 2.5 Pro (Legacy)',
 		pricing: 'Input $1.25 / Output $10.00 per 1M tokens <=200k; Input $2.50 / Output $15.00 >200k'
 	},
 	{
 		name: 'gemini-2.5-flash',
-		displayName: 'Gemini 2.5 Flash',
+		displayName: 'Gemini 2.5 Flash (Legacy)',
 		pricing: 'Input $0.30 / Output $2.50 per 1M tokens'
 	},
 	{
 		name: 'gemini-2.5-flash-lite',
-		displayName: 'Gemini 2.5 Flash-Lite',
+		displayName: 'Gemini 2.5 Flash-Lite (Legacy)',
 		pricing: 'Input $0.10 / Output $0.40 per 1M tokens'
-	},
-
-	// Legacy / deprecated
-	{
-		name: 'gemini-2.0-flash',
-		displayName: 'Gemini 2.0 Flash Deprecated',
-		pricing: 'Input $0.10 / Output $0.40 per 1M tokens; deprecated'
-	},
-	{
-		name: 'gemini-2.0-flash-lite',
-		displayName: 'Gemini 2.0 Flash-Lite Deprecated',
-		pricing: 'Input $0.075 / Output $0.30 per 1M tokens; deprecated'
 	}
 ];
 
@@ -185,7 +224,7 @@ const DEFAULT_ANTHROPIC_MODELS = [
 	}
 ];
 
-export const DEFAULT_SELECTED_MODEL = 'Gemini:gemini-2.5-flash';
+export const DEFAULT_SELECTED_MODEL = 'Gemini:gemini-3.8-flash';
 
 export const DEFAULT_PROVIDERS: StoredProvider[] = [
 	{

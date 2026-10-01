@@ -13,6 +13,7 @@ import {
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
     DEFAULT_ADD_INLINE_TAGS,
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+    RETIRED_GEMINI_MODELS,
 } from "src/defaults";
 
 /** Manages plugin settings and provides methods to interact with them */
@@ -498,6 +499,17 @@ export class SettingsManager implements PluginSettings {
                 changed = true;
             }
 
+            // Prune retired models for built-in Gemini provider
+            if (existingProvider.type === 'gemini') {
+                const initialLen = existingProvider.models.length;
+                existingProvider.models = existingProvider.models.filter(
+                    model => !RETIRED_GEMINI_MODELS.includes(model.name)
+                );
+                if (existingProvider.models.length !== initialLen) {
+                    changed = true;
+                }
+            }
+
             defaultProvider.models.forEach(defaultModel => {
                 const existingModel = existingProvider.models.find(model => model.name === defaultModel.name);
                 if (!existingModel) {
@@ -511,7 +523,7 @@ export class SettingsManager implements PluginSettings {
                     changed = true;
                 }
 
-                if (!existingModel.displayName) {
+                if (!existingModel.displayName || existingModel.displayName !== defaultModel.displayName) {
                     existingModel.displayName = defaultModel.displayName;
                     changed = true;
                 }
@@ -531,6 +543,21 @@ export class SettingsManager implements PluginSettings {
             }
         }
         this.settings.providers = uniqueProviders;
+
+        // If selectedModelId points to a retired model or is invalid, migrate to DEFAULT_SELECTED_MODEL
+        if (this.settings.selectedModelId) {
+            const { providerName, modelName } = this.parseModelId(this.settings.selectedModelId);
+            const isRetiredGemini = providerName.toLowerCase() === 'gemini' && RETIRED_GEMINI_MODELS.includes(modelName);
+            const isInvalid = !this.validateModelId(this.settings.selectedModelId);
+
+            if (isRetiredGemini || isInvalid) {
+                this.settings.selectedModelId = DEFAULT_SELECTED_MODEL;
+                changed = true;
+            }
+        } else {
+            this.settings.selectedModelId = DEFAULT_SELECTED_MODEL;
+            changed = true;
+        }
 
         return changed;
     }
