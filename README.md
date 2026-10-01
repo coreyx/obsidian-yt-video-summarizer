@@ -163,7 +163,11 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 If you have notes created with previous versions of the plugin that lack the new frontmatter:
 
 - **Single Note**: Open the note and run `Upgrade current note with YouTube frontmatter` from the Command Palette (`Ctrl/Cmd + P`).
-- **Entire Vault**: Run `Upgrade all YouTube notes in vault` from the Command Palette, or click **Upgrade Notes in Vault** in the plugin settings tab.
+- **Specific Folder**:
+  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade YouTube notes in this folder**.
+  - **Command Palette**: Run `Upgrade YouTube notes in folder...` and search/select the desired folder.
+  - **Settings Tab**: Click **Upgrade in Folder...** in the plugin settings under *Upgrade previous notes*.
+- **Entire Vault**: Run `Upgrade all YouTube notes in vault` from the Command Palette, or click **Upgrade All in Vault** in the plugin settings tab.
 
 This safely populates the new metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, and `thumbnail_text`) without altering your existing summaries, running LLM inference, or overwriting existing tags.
 
