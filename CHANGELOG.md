@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-30
+
+### Added
+- **Frontmatter Metadata**: Automatically generates structured YAML frontmatter containing:
+  - `title`: Video title
+  - `channel_name`: Channel author / display name
+  - `channel_username`: YouTube handle (e.g. `@channel`)
+  - `channel_url`: Channel link
+  - `video_url`: Video link
+  - `thumbnail`: Thumbnail image URL
+  - `thumbnail_text`: Text extracted from the thumbnail image via vision OCR
+  - `tags`: Topic tags (when tags in frontmatter is enabled)
+- **Thumbnail Vision Analysis & Text Recognition**:
+  - Automatically fetches the highest available resolution video thumbnail.
+  - Concurrently analyzes the thumbnail image with the active multimodal model (Gemini, OpenAI, or Anthropic) to transcribe visible text into `thumbnail_text`.
+  - Gracefully falls back to empty string if the model does not support vision capabilities.
+- **YouTube Video Description in Body**:
+  - Optional setting (enabled by default) to preserve and store the full video description and external links under a `## Description` section in the note body.
+  - Preserves paragraph formatting, line breaks, and URLs.
+- **Semantic Topic Tagging**:
+  - Optional setting (enabled by default) to semantically analyze the generated summary and produce relevant topic tags.
+  - Supports adding tags directly to YAML frontmatter (default: enabled).
+  - Supports adding inline tags to the note body as `**Tags:** #tag1 #tag2` (default: disabled).
+  - Normalizes and sanitizes tags for Obsidian tag compatibility.
+- **Automatic Note Renaming**:
+  - Optional setting (enabled by default) to automatically rename the active note to the sanitized title of the YouTube video.
+  - Sanitizes filenames against Windows, macOS, Linux, and Obsidian wikilink restrictions, with automatic collision resolution.
+- **Settings Controls**: Added UI toggles for all new features in the Summary settings section.
+
+---
+
 ## [1.2.2] - 2026-09-30
 
 ### Fixed

@@ -40,6 +40,11 @@ export interface StoredSettings {
 	customPrompt: string;
 	maxTokens: number;
 	temperature: number;
+	includeVideoDescription?: boolean;
+	addTopicsAsTags?: boolean;
+	addTagsToFrontmatter?: boolean;
+	addInlineTags?: boolean;
+	setNoteTitleFromVideo?: boolean;
 }
 
 /** Represents the plugin settings and provides methods to manage them */
@@ -97,6 +102,21 @@ export interface PluginSettings {
 	/** Saves the API key for a provider without validation */
 	saveProviderKey(providerName: string, key: string): Promise<void>;
 
+	getIncludeVideoDescription(): boolean;
+	updateIncludeVideoDescription(value: boolean): void;
+
+	getAddTopicsAsTags(): boolean;
+	updateAddTopicsAsTags(value: boolean): void;
+
+	getAddTagsToFrontmatter(): boolean;
+	updateAddTagsToFrontmatter(value: boolean): void;
+
+	getAddInlineTags(): boolean;
+	updateAddInlineTags(value: boolean): void;
+
+	getSetNoteTitleFromVideo(): boolean;
+	updateSetNoteTitleFromVideo(value: boolean): void;
+
 	/**
 	 * Validates a model ID.
 	 * Correct format is "ProviderName:ModelName". Check that provider and model exist.
@@ -121,6 +141,8 @@ export interface TranscriptResponse {
 	title: string;
 	author: string;
 	channelUrl: string;
+	channelUsername?: string;
+	description?: string;
 	lines: TranscriptLine[];
 }
 
@@ -136,6 +158,8 @@ export interface ThumbnailQuality {
 export interface AIModelProvider {
 	testConnection(): Promise<boolean>;
 	summarizeVideo(videoId: string, prompt: string): Promise<string>;
+	extractThumbnailText?(imageBase64: string, mimeType?: string): Promise<string>;
+	generateTopics?(summaryText: string): Promise<string[]>;
 }
 
 /** Transcript configuration options */

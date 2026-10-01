@@ -170,6 +170,43 @@ export class YouTubeService {
 			const title = playerData.videoDetails?.title || 'Unknown';
 			const author = playerData.videoDetails?.author || 'Unknown';
 			const channelId = playerData.videoDetails?.channelId || '';
+			const description = playerData.videoDetails?.shortDescription || '';
+
+			// Extract channel username and canonical channel URL
+			let channelUsername = '';
+			let channelUrl = channelId ? `https://www.youtube.com/channel/${channelId}` : '';
+
+			const ownerProfileUrl = playerData.microformat?.playerMicroformatRenderer?.ownerProfileUrl;
+			if (ownerProfileUrl) {
+				const handleMatch = ownerProfileUrl.match(/@([^/\s"']+)/);
+				if (handleMatch) {
+					channelUsername = `@${handleMatch[1]}`;
+					channelUrl = `https://www.youtube.com/@${handleMatch[1]}`;
+				}
+			}
+
+			if (!channelUsername) {
+				try {
+					const pageResponse = await requestUrl({
+						url: `https://www.youtube.com/watch?v=${videoId}`,
+						headers: {
+							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+							"Accept-Language": "en-US,en;q=0.9",
+						}
+					});
+					if (pageResponse.status === 200) {
+						const html = pageResponse.text;
+						const match = html.match(/"canonicalBaseUrl":"\/(@[^"\/]+)"/) ||
+						              html.match(/"ownerProfileUrl":"https?:\/\/(?:www\.)?youtube\.com\/(@[^"\/]+)"/);
+						if (match) {
+							channelUsername = match[1];
+							channelUrl = `https://www.youtube.com/${match[1]}`;
+						}
+					}
+				} catch (e) {
+					console.warn('Could not fetch channel handle from watch page:', e);
+				}
+			}
 
 			// Step 2: Get caption tracks
 			const captionsData = playerData.captions?.playerCaptionsTracklistRenderer;
@@ -195,7 +232,9 @@ export class YouTubeService {
 				videoId,
 				title: this.decodeHTML(title),
 				author: this.decodeHTML(author),
-				channelUrl: channelId ? `https://www.youtube.com/channel/${channelId}` : '',
+				channelUrl,
+				channelUsername: channelUsername || undefined,
+				description: this.decodeHTML(description, true),
 				lines,
 			};
 		} catch (error: any) {
@@ -390,20 +429,61 @@ export class YouTubeService {
 	}
 
 	/**
+	 * Fetches the thumbnail image buffer for a YouTube video.
+	 * Tries maxresdefault first, falling back to hqdefault and mqdefault.
+	 *
+	 * @param videoId - YouTube video ID
+	 * @returns ArrayBuffer containing the image data, or null if fetch fails
+	 */
+	static async fetchThumbnailBuffer(videoId: string): Promise<ArrayBuffer | null> {
+		const urls = [
+			YouTubeService.getThumbnailUrl(videoId, 'maxres'),
+			YouTubeService.getThumbnailUrl(videoId, 'high'),
+			YouTubeService.getThumbnailUrl(videoId, 'medium'),
+		];
+
+		for (const url of urls) {
+			try {
+				const response = await requestUrl({
+					url,
+					method: 'GET',
+				});
+				if (response.status === 200 && response.arrayBuffer && response.arrayBuffer.byteLength > 1500) {
+					return response.arrayBuffer;
+				}
+			} catch (e) {
+				// Continue to next resolution fallback
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Decodes HTML entities in a text string
 	 *
 	 * @param text - Text string with HTML entities
+	 * @param preserveNewlines - If true, preserves line breaks instead of collapsing them
 	 * @returns Decoded text string
 	 */
-	private decodeHTML(text: string): string {
-		return text
+	private decodeHTML(text: string, preserveNewlines = false): string {
+		const decoded = text
 			.replace(/&#39;/g, "'")
 			.replace(/&amp;/g, '&')
 			.replace(/&quot;/g, '"')
 			.replace(/&apos;/g, "'")
 			.replace(/&lt;/g, '<')
 			.replace(/&gt;/g, '>')
-			.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+			.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+
+		if (preserveNewlines) {
+			return decoded
+				.replace(/\\n/g, '\n')
+				.replace(/\r\n/g, '\n')
+				.replace(/\r/g, '\n')
+				.trim();
+		}
+
+		return decoded
 			.replace(/\\n/g, ' ')
 			.replace(/\s+/g, ' ')
 			.trim();

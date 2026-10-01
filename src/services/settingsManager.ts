@@ -1,7 +1,18 @@
 import YouTubeSummarizerPlugin from "src/main";
 import { Notice } from "obsidian";
 import { ModelConfig, PluginSettings, ProviderConfig, StoredModel, StoredProvider, StoredSettings } from "src/types";
-import { DEFAULT_PROVIDERS, DEFAULT_SELECTED_MODEL, DEFAULT_PROMPT, DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from "src/defaults";
+import {
+    DEFAULT_PROVIDERS,
+    DEFAULT_SELECTED_MODEL,
+    DEFAULT_PROMPT,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
+    DEFAULT_ADD_TOPICS_AS_TAGS,
+    DEFAULT_ADD_TAGS_TO_FRONTMATTER,
+    DEFAULT_ADD_INLINE_TAGS,
+    DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+} from "src/defaults";
 
 /** Manages plugin settings and provides methods to interact with them */
 export class SettingsManager implements PluginSettings {
@@ -17,7 +28,12 @@ export class SettingsManager implements PluginSettings {
             selectedModelId: DEFAULT_SELECTED_MODEL,
             customPrompt: DEFAULT_PROMPT,
             maxTokens: DEFAULT_MAX_TOKENS,
-            temperature: DEFAULT_TEMPERATURE
+            temperature: DEFAULT_TEMPERATURE,
+            includeVideoDescription: DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
+            addTopicsAsTags: DEFAULT_ADD_TOPICS_AS_TAGS,
+            addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
+            addInlineTags: DEFAULT_ADD_INLINE_TAGS,
+            setNoteTitleFromVideo: DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
         };
     }
 
@@ -40,7 +56,12 @@ export class SettingsManager implements PluginSettings {
                 selectedModelId: rawSettings.selectedModelId ?? this.settings.selectedModelId,
                 customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
-                temperature: rawSettings.temperature ?? this.settings.temperature
+                temperature: rawSettings.temperature ?? this.settings.temperature,
+                includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
+                addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
+                addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
+                setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -65,7 +86,12 @@ export class SettingsManager implements PluginSettings {
                 selectedModelId: rawSettings.selectedModelId ?? rawSettings.selectedModel ?? this.settings.selectedModelId,
                 customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
-                temperature: rawSettings.temperature ?? this.settings.temperature
+                temperature: rawSettings.temperature ?? this.settings.temperature,
+                includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
+                addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
+                addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
+                setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
             };
 
             await this.saveData();
@@ -283,6 +309,51 @@ export class SettingsManager implements PluginSettings {
 
         provider.apiKey = key;
         await this.saveData();
+    }
+
+    getIncludeVideoDescription(): boolean {
+        return this.settings.includeVideoDescription ?? DEFAULT_INCLUDE_VIDEO_DESCRIPTION;
+    }
+
+    updateIncludeVideoDescription(value: boolean): void {
+        this.settings.includeVideoDescription = value;
+        this.saveData();
+    }
+
+    getAddTopicsAsTags(): boolean {
+        return this.settings.addTopicsAsTags ?? DEFAULT_ADD_TOPICS_AS_TAGS;
+    }
+
+    updateAddTopicsAsTags(value: boolean): void {
+        this.settings.addTopicsAsTags = value;
+        this.saveData();
+    }
+
+    getAddTagsToFrontmatter(): boolean {
+        return this.settings.addTagsToFrontmatter ?? DEFAULT_ADD_TAGS_TO_FRONTMATTER;
+    }
+
+    updateAddTagsToFrontmatter(value: boolean): void {
+        this.settings.addTagsToFrontmatter = value;
+        this.saveData();
+    }
+
+    getAddInlineTags(): boolean {
+        return this.settings.addInlineTags ?? DEFAULT_ADD_INLINE_TAGS;
+    }
+
+    updateAddInlineTags(value: boolean): void {
+        this.settings.addInlineTags = value;
+        this.saveData();
+    }
+
+    getSetNoteTitleFromVideo(): boolean {
+        return this.settings.setNoteTitleFromVideo ?? DEFAULT_SET_NOTE_TITLE_FROM_VIDEO;
+    }
+
+    updateSetNoteTitleFromVideo(value: boolean): void {
+        this.settings.setNoteTitleFromVideo = value;
+        this.saveData();
     }
 
     private async saveData(): Promise<void> {
