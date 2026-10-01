@@ -23,45 +23,52 @@ export class SettingsManager implements PluginSettings {
 
     public async loadSettings(): Promise<void> {
         const loaded = await this.plugin.loadData();
+        if (!loaded) {
+            return;
+        }
 
-        // Check if settings are in old format (has geminiApiKey)
-        if (loaded?.settings && 'geminiApiKey' in loaded.settings) {
-            // Convert old format to new format
-            const oldSettings = loaded.settings as {
-                geminiApiKey: string;
-                selectedModel: string;
-                customPrompt: string;
-                maxTokens: number;
-                temperature: number;
+        // Support both wrapped { settings: { ... } } and direct/flat { ... } format
+        const rawSettings = (loaded.settings && typeof loaded.settings === 'object') ? loaded.settings : loaded;
+
+        // Check for any legacy or manually entered top-level API key
+        const legacyKey = rawSettings.geminiApiKey || loaded.geminiApiKey || rawSettings.apiKey || loaded.apiKey;
+
+        if (Array.isArray(rawSettings.providers)) {
+            // Settings are in new format with providers array
+            this.settings = {
+                providers: rawSettings.providers,
+                selectedModelId: rawSettings.selectedModelId ?? this.settings.selectedModelId,
+                customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
+                maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
+                temperature: rawSettings.temperature ?? this.settings.temperature
             };
 
-            // Create new format settings
+            // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
+            if (legacyKey) {
+                const geminiProvider = this.settings.providers.find(p => p.name.toLowerCase() === 'gemini' || p.type === 'gemini');
+                if (geminiProvider && !geminiProvider.apiKey) {
+                    geminiProvider.apiKey = legacyKey;
+                }
+            }
+        } else {
+            // Migrating from old format (e.g. { geminiApiKey: "..." }) or manual config without providers array
             const providers = this.cloneProviders(DEFAULT_PROVIDERS);
-            // Update Gemini provider with the old API key
-            const geminiProvider = providers.find(p => p.name === 'Gemini');
-            if (geminiProvider) {
-                geminiProvider.apiKey = oldSettings.geminiApiKey;
+            if (legacyKey) {
+                const geminiProvider = providers.find(p => p.name === 'Gemini');
+                if (geminiProvider) {
+                    geminiProvider.apiKey = legacyKey;
+                }
             }
 
             this.settings = {
                 providers,
-                selectedModelId: oldSettings.selectedModel,
-                customPrompt: oldSettings.customPrompt,
-                maxTokens: oldSettings.maxTokens,
-                temperature: oldSettings.temperature
+                selectedModelId: rawSettings.selectedModelId ?? rawSettings.selectedModel ?? this.settings.selectedModelId,
+                customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
+                maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
+                temperature: rawSettings.temperature ?? this.settings.temperature
             };
 
-            // Save in new format
             await this.saveData();
-        } else {
-            // Settings are in new format, merge with defaults
-            this.settings = {
-                providers: loaded?.settings.providers ?? this.settings.providers,
-                selectedModelId: loaded?.settings.selectedModelId ?? this.settings.selectedModelId,
-                customPrompt: loaded?.settings.customPrompt ?? this.settings.customPrompt,
-                maxTokens: loaded?.settings.maxTokens ?? this.settings.maxTokens,
-                temperature: loaded?.settings.temperature ?? this.settings.temperature
-            };
         }
 
         const syncedBuiltIns = this.syncBuiltInProviders();
@@ -380,13 +387,32 @@ export class SettingsManager implements PluginSettings {
         const defaultProviders = this.cloneProviders(DEFAULT_PROVIDERS).filter(provider => provider.isBuiltIn);
         defaultProviders.forEach(defaultProvider => {
             const existingProvider = this.settings.providers.find(
-                provider => provider.isBuiltIn && provider.name === defaultProvider.name && provider.type === defaultProvider.type
+                provider => provider.name.toLowerCase() === defaultProvider.name.toLowerCase() ||
+                    (provider.type === defaultProvider.type && (provider.isBuiltIn || provider.name.toLowerCase() === defaultProvider.name.toLowerCase()))
             );
 
             if (!existingProvider) {
                 this.settings.providers.push(defaultProvider);
                 changed = true;
                 return;
+            }
+
+            // Ensure built-in flag, name, and type are standardized
+            if (!existingProvider.isBuiltIn) {
+                existingProvider.isBuiltIn = true;
+                changed = true;
+            }
+            if (existingProvider.name !== defaultProvider.name) {
+                existingProvider.name = defaultProvider.name;
+                changed = true;
+            }
+            if (existingProvider.type !== defaultProvider.type) {
+                existingProvider.type = defaultProvider.type;
+                changed = true;
+            }
+            if (!existingProvider.models) {
+                existingProvider.models = [];
+                changed = true;
             }
 
             defaultProvider.models.forEach(defaultModel => {
@@ -408,6 +434,20 @@ export class SettingsManager implements PluginSettings {
                 }
             });
         });
+
+        // Deduplicate any providers with the same name
+        const seenNames = new Set<string>();
+        const uniqueProviders: StoredProvider[] = [];
+        for (const p of this.settings.providers) {
+            const lower = p.name.toLowerCase();
+            if (!seenNames.has(lower)) {
+                seenNames.add(lower);
+                uniqueProviders.push(p);
+            } else {
+                changed = true;
+            }
+        }
+        this.settings.providers = uniqueProviders;
 
         return changed;
     }
