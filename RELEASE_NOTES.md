@@ -61,13 +61,18 @@ tags:
 * (Optional, ON by default): Automatically renames the current note to match the YouTube video title.
 * Sanitizes invalid file system characters (`/ \ : * ? " < > | # ^ [ ]`) and reserved Windows device names (`CON`, `PRN`, `AUX`, `NUL`, etc.) while ensuring titles are safe for Obsidian internal links.
 
-### ⚙️ Customizable Settings
-New controls in the plugin settings tab under the Summary section:
-1. **Set note title from video** (default: on)
-2. **Include video description** (default: on)
-3. **Generate topic tags** (default: on)
-4. **Detect tags in video title and description** (default: on)
-5. **Add tags to frontmatter** (default: on)
-6. **Add inline tags** (default: off)
-7. **Upgrade previous notes** button for vault-wide metadata upgrades
+### 🤖 Updated Gemini Model Lineup
+* **New Flagship & Production Models**:
+  * `gemini-3.8-flash`: Flagship Flash model optimized for speed, long-horizon software engineering, agentic execution, and vision. Now the plugin's default recommended model.
+  * `gemini-3.5-flash`: Balanced price-performance model for multimodal summarization.
+  * `gemini-3.5-flash-lite`: High-efficiency, cost-effective model for high-throughput summarization.
+  * `gemini-3.1-pro`: Advanced reasoning model for complex or deep technical videos.
+  * `gemini-3.1-flash-lite`: Low-latency, lightweight multimodal model.
+  * `gemini-3-pro-preview`: Frontier preview model for complex reasoning and large context.
+* **Retired Discontinued Models**:
+  * Retired `gemini-2.0-flash` and `gemini-2.0-flash-lite` following Google's official shutdown on June 1, 2026.
+  * Cleaned up legacy `gemini-1.5` and `gemini-1.0` references.
+* **Seamless Auto-Migration**:
+  * When opening plugin settings, retired Gemini models are automatically pruned from the built-in provider list.
+  * If your active model was set to a retired or discontinued model, it is automatically migrated to `Gemini:gemini-3.8-flash` to prevent API call errors.
 

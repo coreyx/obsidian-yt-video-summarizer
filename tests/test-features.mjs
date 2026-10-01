@@ -564,5 +564,68 @@ assert.strictEqual(sorted[2].path, 'Resources');
 assert.strictEqual(sorted[3].path, 'YouTube');
 console.log('✓ folder filtering and sorting passed');
 
+// Test 12: Gemini model retirement and migration
+console.log('Testing Gemini model retirement and migration...');
+const retiredModels = [
+	'gemini-2.0-flash',
+	'gemini-2.0-flash-lite',
+	'gemini-2.0-flash-exp',
+	'gemini-2.0-flash-thinking-exp',
+	'gemini-1.5-pro',
+	'gemini-1.5-pro-latest',
+	'gemini-1.5-flash',
+	'gemini-1.5-flash-latest',
+	'gemini-1.5-flash-8b',
+	'gemini-1.0-pro',
+	'gemini-pro',
+	'gemini-pro-vision'
+];
+
+const mockGeminiProvider = {
+	name: 'Gemini',
+	type: 'gemini',
+	isBuiltIn: true,
+	models: [
+		{ name: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash Deprecated' },
+		{ name: 'gemini-2.0-flash-lite', displayName: 'Gemini 2.0 Flash-Lite Deprecated' },
+		{ name: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash (Recommended)' },
+		{ name: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash' },
+	]
+};
+
+// Simulate pruning
+const prunedModels = mockGeminiProvider.models.filter(
+	(m) => !retiredModels.includes(m.name)
+);
+assert.strictEqual(prunedModels.length, 2);
+assert.deepStrictEqual(prunedModels.map((m) => m.name), ['gemini-3.8-flash', 'gemini-3.5-flash']);
+
+// Simulate migration of selectedModelId
+function migrateSelectedModelId(selectedModelId, providers, defaultModel) {
+	if (!selectedModelId) return defaultModel;
+	const [provider, model] = selectedModelId.split(':');
+	if (provider.toLowerCase() === 'gemini' && retiredModels.includes(model)) {
+		return defaultModel;
+	}
+	const valid = providers.some((p) => p.name === provider && p.models.some((m) => m.name === model));
+	return valid ? selectedModelId : defaultModel;
+}
+
+const defaultModel = 'Gemini:gemini-3.8-flash';
+assert.strictEqual(
+	migrateSelectedModelId('Gemini:gemini-2.0-flash', [{ name: 'Gemini', models: prunedModels }], defaultModel),
+	'Gemini:gemini-3.8-flash'
+);
+assert.strictEqual(
+	migrateSelectedModelId('Gemini:gemini-3.8-flash', [{ name: 'Gemini', models: prunedModels }], defaultModel),
+	'Gemini:gemini-3.8-flash'
+);
+assert.strictEqual(
+	migrateSelectedModelId('Gemini:non-existent', [{ name: 'Gemini', models: prunedModels }], defaultModel),
+	'Gemini:gemini-3.8-flash'
+);
+console.log('✓ Gemini model retirement and migration passed');
+
 console.log('\nAll tests passed successfully!');
+
 

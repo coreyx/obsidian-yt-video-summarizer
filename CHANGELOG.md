@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Automatic Note Renaming**:
   - Optional setting (enabled by default) to automatically rename the active note to the sanitized title of the YouTube video.
   - Sanitizes filenames against Windows, macOS, Linux, and Obsidian wikilink restrictions, with automatic collision resolution.
+- **Updated Gemini Model Lineup**:
+  - Added latest flagship and production models: `gemini-3.8-flash` (new default model), `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`, `gemini-3.1-flash-lite`, and `gemini-3-pro-preview`.
+  - Retired and removed shut down models that are no longer operational: `gemini-2.0-flash` and `gemini-2.0-flash-lite` (discontinued June 1, 2026), as well as older legacy `gemini-1.5` series.
+  - Added automatic retirement migration in settings: prunes shut down models from built-in provider configurations and safely migrates active selections to `Gemini:gemini-3.8-flash` to prevent API failures.
 - **Settings Controls**: Added UI toggles for all new features and upgrade buttons (`Upgrade All in Vault` and `Upgrade in Folder...`) in the Summary settings section.
 
 ---
