@@ -507,4 +507,62 @@ assert(upgraded.includes('channel_username: "@RickAstleyYT"'));
 assert(upgraded.includes('thumbnail_text: "RICK ASTLEY OFFICIAL MUSIC VIDEO"'));
 console.log('✓ mergeFrontmatter with excludeTags passed');
 
+// Test 11: folder filtering and sorting
+console.log('Testing folder filtering and sorting...');
+function filterFilesByFolder(files, folder) {
+	if (folder.isRoot) {
+		return files;
+	}
+	return files.filter((f) => f.path.startsWith(folder.path + '/'));
+}
+
+function sortFolders(folders) {
+	return [...folders].sort((a, b) => {
+		if (a.isRoot) return -1;
+		if (b.isRoot) return 1;
+		return a.path.localeCompare(b.path);
+	});
+}
+
+const mockFiles = [
+	{ path: 'RootNote.md' },
+	{ path: 'YouTube/Video1.md' },
+	{ path: 'YouTube/2026/Video2.md' },
+	{ path: 'Other/Note.md' },
+	{ path: 'YouTube-Archived/Old.md' }, // Note prefix boundary test
+];
+
+const rootFolder = { path: '/', isRoot: true };
+const ytFolder = { path: 'YouTube', isRoot: false };
+const ytSubFolder = { path: 'YouTube/2026', isRoot: false };
+
+assert.strictEqual(filterFilesByFolder(mockFiles, rootFolder).length, 5);
+
+const ytFiltered = filterFilesByFolder(mockFiles, ytFolder);
+assert.strictEqual(ytFiltered.length, 2);
+assert.deepStrictEqual(ytFiltered.map((f) => f.path), [
+	'YouTube/Video1.md',
+	'YouTube/2026/Video2.md'
+]);
+// Ensures 'YouTube-Archived' was NOT incorrectly matched
+assert(!ytFiltered.some((f) => f.path.startsWith('YouTube-Archived')));
+
+const ytSubFiltered = filterFilesByFolder(mockFiles, ytSubFolder);
+assert.strictEqual(ytSubFiltered.length, 1);
+assert.strictEqual(ytSubFiltered[0].path, 'YouTube/2026/Video2.md');
+
+const unsortedFolders = [
+	{ path: 'Resources', isRoot: false },
+	{ path: 'Archive', isRoot: false },
+	{ path: '/', isRoot: true },
+	{ path: 'YouTube', isRoot: false },
+];
+const sorted = sortFolders(unsortedFolders);
+assert.strictEqual(sorted[0].path, '/');
+assert.strictEqual(sorted[1].path, 'Archive');
+assert.strictEqual(sorted[2].path, 'Resources');
+assert.strictEqual(sorted[3].path, 'YouTube');
+console.log('✓ folder filtering and sorting passed');
+
 console.log('\nAll tests passed successfully!');
+

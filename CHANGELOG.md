@@ -34,13 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically merges detected tags with semantic topic tags and adds them to YAML frontmatter.
 - **Previous Notes Upgrade**:
   - Added command `Upgrade current note with YouTube frontmatter` to upgrade the active note.
-  - Added command `Upgrade all YouTube notes in vault` and a settings button `Upgrade Notes in Vault` for vault-wide batch upgrades.
+  - Added command `Upgrade YouTube notes in folder...` and a right-click folder context menu item (`Upgrade YouTube notes in this folder`) to upgrade notes within any specific folder and its subfolders.
+  - Added command `Upgrade all YouTube notes in vault` and settings buttons (`Upgrade All in Vault` / `Upgrade in Folder...`) for batch upgrades.
   - Re-processes notes to populate missing frontmatter metadata (title, channel_name, channel_username, channel_url, video_url, thumbnail, thumbnail_text) without re-running LLM summary inference, changing summary text, or generating new tags.
   - Preserves any preexisting tags and user-defined properties in frontmatter.
 - **Automatic Note Renaming**:
   - Optional setting (enabled by default) to automatically rename the active note to the sanitized title of the YouTube video.
   - Sanitizes filenames against Windows, macOS, Linux, and Obsidian wikilink restrictions, with automatic collision resolution.
-- **Settings Controls**: Added UI toggles for all new features and an upgrade button in the Summary settings section.
+- **Settings Controls**: Added UI toggles for all new features and upgrade buttons (`Upgrade All in Vault` and `Upgrade in Folder...`) in the Summary settings section.
 
 ---
 

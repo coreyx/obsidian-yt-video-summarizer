@@ -50,8 +50,11 @@ tags:
 
 ### 🔄 Upgrade Previous Notes
 * **Re-process Without Changing Summaries**: Easily upgrade notes created with earlier versions of the plugin that lack the new frontmatter attributes.
-* **Command Palette**: Run `Upgrade current note with YouTube frontmatter` for active notes, or `Upgrade all YouTube notes in vault` for batch upgrades.
-* **Settings Tab**: Convenient `Upgrade Notes in Vault` button in the plugin settings.
+* **Target Options**:
+  * **Current Note**: Run `Upgrade current note with YouTube frontmatter` from the Command Palette.
+  * **Specific Folder**: Right-click any folder in the Obsidian File Explorer and choose **Upgrade YouTube notes in this folder**, or run **Upgrade YouTube notes in folder...** from the Command Palette.
+  * **Entire Vault**: Run **Upgrade all YouTube notes in vault** from the Command Palette, or use **Upgrade All in Vault** in settings.
+* **Settings Tab**: Convenient **Upgrade All in Vault** and **Upgrade in Folder...** buttons in the plugin settings.
 * **Non-Destructive**: Fetches and inserts missing metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`) without re-running LLM summary inference, altering summaries, or overwriting existing tags.
 
 ### ✏️ Automatic Note Renaming

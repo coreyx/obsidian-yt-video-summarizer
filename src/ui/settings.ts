@@ -323,10 +323,17 @@ export class SettingsTab extends PluginSettingTab {
             .setDesc('Re-process notes from YouTube videos to add all new frontmatter metadata (title, channel, handle, thumbnail, and vision OCR) without re-generating summaries or topic tags.')
             .addButton(button =>
                 button
-                    .setButtonText('Upgrade Notes in Vault')
+                    .setButtonText('Upgrade All in Vault')
                     .setCta()
                     .onClick(async () => {
-                        await (this.plugin as any).upgradeVaultNotes();
+                        await this.plugin.upgradeVaultNotes();
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade in Folder...')
+                    .onClick(() => {
+                        this.plugin.promptFolderUpgrade();
                     })
             );
     }

@@ -1,10 +1,11 @@
-import { arrayBufferToBase64, Editor, MarkdownView, Notice, Plugin, TFile } from 'obsidian';
+import { arrayBufferToBase64, Editor, MarkdownView, Notice, Plugin, TFile, TFolder } from 'obsidian';
 import { PluginSettings, TranscriptResponse } from './types';
 
 import { SettingsTab } from './ui/settings';
 import { YouTubeService } from './services/youtube';
 import { YouTubeURLModal } from './ui/modals/youtube-url';
 import { CustomPromptModal } from './ui/modals/CustomPromptModal';
+import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
@@ -46,6 +47,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			// Register commands
 			this.registerCommands();
+
+			// Register context menu item for folders in File Explorer
+			this.registerEvent(
+				this.app.workspace.on('file-menu', (menu, file) => {
+					if (file instanceof TFolder) {
+						menu.addItem((item) => {
+							item
+								.setTitle('Upgrade YouTube notes in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.upgradeNotesInFolder(file);
+								});
+						});
+					}
+				})
+			);
 		} catch (error) {
 			new Notice(`Error: ${error.message}`);
 		}
@@ -154,6 +171,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Upgrade current note with YouTube frontmatter',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
 				await this.upgradeCurrentNote(editor, view);
+			},
+		});
+
+		// Command to upgrade YouTube notes in a specific folder
+		this.addCommand({
+			id: 'upgrade-folder-youtube-notes',
+			name: 'Upgrade YouTube notes in folder...',
+			callback: () => {
+				this.promptFolderUpgrade();
 			},
 		});
 
@@ -418,10 +444,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Scans the vault for previous notes containing YouTube videos that are missing
-	 * the new frontmatter, and upgrades them without re-generating summaries or tags.
+	 * Upgrades a collection of markdown files containing YouTube videos by adding
+	 * missing frontmatter metadata without re-generating summaries or tags.
+	 * @param files The markdown files to inspect and upgrade.
+	 * @param scopeDescription A human-readable description of the target scope.
 	 */
-	public async upgradeVaultNotes(): Promise<void> {
+	private async upgradeNotes(files: TFile[], scopeDescription: string): Promise<void> {
 		if (this.isProcessing) {
 			new Notice('Already processing a video or upgrading notes, please wait...');
 			return;
@@ -429,9 +457,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		try {
 			this.isProcessing = true;
-			new Notice('Scanning vault for YouTube notes to upgrade...');
+			new Notice(`Scanning ${scopeDescription} for YouTube notes to upgrade...`);
 
-			const files = this.app.vault.getMarkdownFiles();
 			const candidates: { file: TFile; url: string }[] = [];
 
 			for (const file of files) {
@@ -445,11 +472,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice('All YouTube notes in your vault already have up-to-date frontmatter!');
+				new Notice(`All YouTube notes in ${scopeDescription} already have up-to-date frontmatter!`);
 				return;
 			}
 
-			new Notice(`Found ${candidates.length} note(s) to upgrade. Starting upgrade...`);
+			new Notice(`Found ${candidates.length} note(s) to upgrade in ${scopeDescription}. Starting upgrade...`);
 
 			let successCount = 0;
 			let failCount = 0;
@@ -502,14 +529,45 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			new Notice(
-				`Upgrade complete! Successfully upgraded ${successCount} note(s)${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+				`Upgrade complete! Successfully upgraded ${successCount} note(s) in ${scopeDescription}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
 			);
 		} catch (error) {
 			new Notice(`Upgrade failed: ${error.message}`);
-			console.error('Vault note upgrade failed:', error);
+			console.error(`Upgrade notes in ${scopeDescription} failed:`, error);
 		} finally {
 			this.isProcessing = false;
 		}
+	}
+
+	/**
+	 * Scans all notes in the vault for YouTube videos missing new frontmatter and upgrades them.
+	 */
+	public async upgradeVaultNotes(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		await this.upgradeNotes(files, 'vault');
+	}
+
+	/**
+	 * Scans notes within a specific folder (and its subfolders) for YouTube videos missing
+	 * new frontmatter and upgrades them.
+	 * @param folder The folder to scan.
+	 */
+	public async upgradeNotesInFolder(folder: TFolder): Promise<void> {
+		const isRoot = folder.isRoot();
+		const files = isRoot
+			? this.app.vault.getMarkdownFiles()
+			: this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(folder.path + '/'));
+		const scopeDescription = isRoot ? 'vault root' : `folder "${folder.path}"`;
+		await this.upgradeNotes(files, scopeDescription);
+	}
+
+	/**
+	 * Opens a folder selection modal and triggers an upgrade for the selected folder.
+	 */
+	public promptFolderUpgrade(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.upgradeNotesInFolder(folder);
+		}).open();
 	}
 
 	private buildPrompt(transcriptText: string, customPrompt?: string): string {
