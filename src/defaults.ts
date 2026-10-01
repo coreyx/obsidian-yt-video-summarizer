@@ -372,3 +372,6 @@ export const DEFAULT_ADD_INLINE_TAGS = false;
 export const DEFAULT_SET_NOTE_TITLE_FROM_VIDEO = true;
 export const DEFAULT_INCLUDE_TITLE_IN_BODY = false;
 export const DEFAULT_LINK_TECHNICAL_TERMS = true;
+export const DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false;
+export const DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS = true;
+export const DEFAULT_MEDIA_EXTENDED_TIMESTAMPS = true;

@@ -1,26 +1,32 @@
-# Release Notes - YouTube Video Summarizer v1.6.0
+# Release Notes - YouTube Video Summarizer v1.7.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.6.0 introduces cleaner note formatting options, giving you full control over note body titles and technical term linking:
+YouTube Video Summarizer v1.7.0 brings powerful new transcript retrieval capabilities and native media player integration:
 
-* 📝 **Optional Note Body Title**: Disabled by default! Because the sanitized video title is already placed in the note filename and in the YAML frontmatter (`title:`), the `# Video Title` heading in the note body is now optional to eliminate redundancy.
-* 🔗 **Optional Wikilinks in Technical Terms**: Added a setting to toggle Obsidian `[[wikilinks]]` generation in the "Technical terms" section. Enabled by default. When toggled off, terms are kept in bold text without wikilinks (`- **Term**: explanation`).
-* ⚙️ **Configurable in Settings**: Both new options can be toggled at any time from the plugin settings tab.
+* 📜 **Direct Video Transcript Retrieval**: New dedicated `Get YouTube video transcript` command in the Command Palette extracts full video transcripts with metadata, thumbnail, tags, and frontmatter without using AI or consuming API tokens.
+* 📑 **Transcript Dump in Summary Mode**: Optional setting (`Include transcript in summary note`) to append the full transcript under a `## Transcript` section when generating AI summaries (disabled by default).
+* ⏱️ **Clickable YouTube Timestamp Links**: Timestamps are formatted as clickable links that jump directly to that point in the YouTube video (`[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
+* 🎬 **Media Extended Player Integration**: Seamless compatibility with the [Media Extended](https://github.com/aidenlx/media-extended) plugin using fragment timestamps (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`). Clicking timestamps directly seeks within Obsidian's embedded Media Extended video player. Enabled by default.
 
 ---
 
-## What's Changed in v1.6.0
+## What's Changed in v1.7.0
 
-### 📝 Optional Note Body Title
-* Previously, the note body always began with `# Video Title`. Since notes are automatically renamed to the video title and include `title` in frontmatter, this heading was redundant for most workflows.
-* You can now re-enable the title heading in settings if desired via **Include title in note body**.
+### 📜 Direct Transcript Retrieval (Zero AI Tokens)
+* Retrieve complete transcripts directly via the Command Palette command **Get YouTube video transcript**.
+* Works by prompting for a YouTube URL, using an active note URL, or selecting a URL in text.
+* Inserts complete metadata: note title, thumbnail embed, creator links, tags, and YAML frontmatter.
 
-### 🔗 Optional Technical Term Wikilinks
-* The plugin can now generate technical terms with or without Obsidian `[[wikilinks]]`.
-* When **Generate wikilinks for technical terms** is turned off:
-  * The prompt automatically instructs the AI model not to use wikilinks.
-  * A post-processor cleans any remaining `[[` and `]]` brackets from terms in the Technical terms section while preserving the term name in bold and leaving other sections untouched.
+### 📑 Include Transcript in Summary Notes
+* You can now choose to archive the raw video transcript alongside the AI summary note.
+* Located under **Settings > Include transcript in summary note** (disabled by default).
+
+### 🎬 Media Extended Plugin Playback Links
+* Timestamp links are generated with exact millisecond playback fragments matching Media Extended's format:
+  `[01:05](https://www.youtube.com/watch?v=VIDEO_ID&t=66#t=01:05.61)`
+* Works with videos of any length (both `mm:ss` and `hh:mm:ss`).
+* Fully configurable in plugin settings via **Link transcript timestamps to YouTube** and **Format timestamps for Media Extended**.
 
 ---
 

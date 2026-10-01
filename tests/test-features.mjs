@@ -914,6 +914,119 @@ assert.strictEqual(adaptedDisabled.includes('**Term 1**'), true);
 assert.strictEqual(adaptedDisabled.includes('do NOT use wikilinks'), true);
 console.log('✓ Optional wikilinks in technical terms passed');
 
+// Test 17: Transcript formatting and timestamp links
+console.log('Testing transcript formatting and timestamp links...');
+
+function formatTimestampPartsHelper(offsetMs) {
+	const safeMs = Math.max(0, Math.round(offsetMs));
+	const totalSeconds = Math.floor(safeMs / 1000);
+	const roundedSeconds = Math.round(safeMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	const hundredths = Math.floor((safeMs % 1000) / 10);
+
+	const timeStr = hours > 0
+		? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+		: `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+	const meTimeStr = `${timeStr}.${String(hundredths).padStart(2, '0')}`;
+
+	return { timeStr, roundedSeconds, meTimeStr };
+}
+
+function formatTranscriptHelper(lines, videoId, options = {}) {
+	const linkTimestamps = options.linkTimestamps ?? true;
+	const mediaExtended = options.mediaExtended ?? true;
+
+	return lines
+		.map((line) => {
+			const { timeStr, roundedSeconds, meTimeStr } = formatTimestampPartsHelper(line.offset);
+
+			let timestampPart = timeStr;
+			if (linkTimestamps) {
+				const url = mediaExtended
+					? `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`
+					: `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}`;
+				timestampPart = `[${timeStr}](${url})`;
+			}
+
+			const text = line.text.replace(/\r?\n+/g, ' ').trim();
+			return `- ${timestampPart} ${text}`;
+		})
+		.join('\n');
+}
+
+// Check unit breakdown
+const p1 = formatTimestampPartsHelper(65610);
+assert.strictEqual(p1.timeStr, '01:05');
+assert.strictEqual(p1.roundedSeconds, 66);
+assert.strictEqual(p1.meTimeStr, '01:05.61');
+
+const p2 = formatTimestampPartsHelper(122650);
+assert.strictEqual(p2.timeStr, '02:02');
+assert.strictEqual(p2.roundedSeconds, 123);
+assert.strictEqual(p2.meTimeStr, '02:02.65');
+
+const testLines = [
+	{ text: 'First segment', offset: 65610, duration: 3000 },
+	{ text: 'Second segment with\nnewline', offset: 122650, duration: 4000 },
+	{ text: 'Hour segment', offset: 3665610, duration: 2000 }
+];
+
+// Both enabled (default): Media Extended format matching user's exact specification
+const bothEnabled = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ');
+assert.strictEqual(bothEnabled.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First segment'), true);
+assert.strictEqual(bothEnabled.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second segment with newline'), true);
+assert.strictEqual(bothEnabled.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3666#t=01:01:05.61) Hour segment'), true);
+assert.strictEqual(bothEnabled.includes('[[#t='), false);
+
+// Only YouTube links (Media Extended disabled)
+const ytOnly = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { mediaExtended: false });
+assert.strictEqual(ytOnly.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66) First segment'), true);
+assert.strictEqual(ytOnly.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123) Second segment with newline'), true);
+assert.strictEqual(ytOnly.includes('#t='), false);
+assert.strictEqual(ytOnly.includes('[[#t='), false);
+
+// Links disabled: plain text timestamps
+const noLinks = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { linkTimestamps: false });
+assert.strictEqual(noLinks.includes('- 01:05 First segment'), true);
+assert.strictEqual(noLinks.includes('- 02:02 Second segment with newline'), true);
+assert.strictEqual(noLinks.includes('https://www.youtube.com'), false);
+assert.strictEqual(noLinks.includes('[['), false);
+
+// Both disabled
+const neither = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { linkTimestamps: false, mediaExtended: false });
+assert.strictEqual(neither.includes('- 01:05 First segment'), true);
+assert.strictEqual(neither.includes('[['), false);
+assert.strictEqual(neither.includes('https://'), false);
+
+// Test summary generation with transcript dump
+function generateSummaryDumpHelper(transcript, thumbnailUrl, url, summaryText, dumpTranscript) {
+	const summaryParts = [
+		`![Thumbnail](${thumbnailUrl})`,
+		summaryText
+	];
+	if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
+		const formatted = formatTranscriptHelper(transcript.lines, transcript.videoId);
+		summaryParts.push(`## Transcript\n\n${formatted}`);
+	}
+	return summaryParts.join('\n\n');
+}
+
+const mockTranscriptWithLines = {
+	videoId: 'abc123xyz',
+	lines: testLines
+};
+
+const summaryNoDump = generateSummaryDumpHelper(mockTranscriptWithLines, 'thumb.jpg', 'url', '## Summary\nText', false);
+assert.strictEqual(summaryNoDump.includes('## Transcript'), false);
+
+const summaryWithDump = generateSummaryDumpHelper(mockTranscriptWithLines, 'thumb.jpg', 'url', '## Summary\nText', true);
+assert.strictEqual(summaryWithDump.includes('## Transcript'), true);
+assert.strictEqual(summaryWithDump.includes('- [01:05]('), true);
+console.log('✓ Transcript formatting and timestamp links passed');
+
 console.log('\nAll tests passed successfully!');
 
 

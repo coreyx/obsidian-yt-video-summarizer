@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-01
+
+### Added
+- **Dedicated Video Transcript Retrieval**: Added `Get YouTube video transcript` command to the Obsidian Command Palette. Fetches the complete video transcript directly without running AI inference or consuming API tokens, complete with video metadata, thumbnail, tags, and frontmatter.
+- **Transcript Dump in Summary Notes**: Added an optional setting `Include transcript in summary note` (disabled by default) to append the complete video transcript under a `## Transcript` section when generating an AI summary.
+- **Clickable YouTube Timestamp Links**: Added an option to convert transcript timestamps into clickable YouTube links that jump directly to that point in the video (`[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
+- **Media Extended Timestamp Links**: Formatted timestamp links with Media Extended fragments (`[mm:ss](https://www.youtube.com/watch?v=...&t=SEC#t=mm:ss.SS)`) for seamless integrated playback and seeking with the Media Extended plugin player. Enabled by default via `Format timestamps for Media Extended`.
+
+---
+
 ## [1.6.0] - 2026-09-30
 
 ### Added

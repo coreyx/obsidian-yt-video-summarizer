@@ -19,6 +19,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🏷️ **Semantic Topic & Hashtag Tagging**: Combines AI semantic analysis with hashtags found in the title and description to tag notes in YAML frontmatter or inline.
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
 -   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
+-   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable YouTube timestamps and Media Extended links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`), with zero AI token cost.
 -   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
 -   ⚙️ **Fully Customizable**: Tweak prompts, tokens, temperature, and toggle individual metadata fields to fit your workflow.
 
@@ -126,6 +127,12 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Include Video Description**: Archives the complete YouTube video description, including external links, creator notes, and timestamps, under a `## Description` section in the note body.
 
+**Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note. Disabled by default.
+
+**Link Transcript Timestamps to YouTube**: Formats transcript timestamps as clickable YouTube links that open the video directly at that exact second (e.g. `[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
+
+**Format Timestamps for Media Extended**: Formats transcript timestamp links with Media Extended fragments (`#t=mm:ss.ms`, e.g. `[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`) for seamless playback integration with the Media Extended plugin. Requires timestamp linking to be enabled. Enabled by default.
+
 **Generate Semantic Topic Tags**: Uses AI semantic analysis of the generated summary to produce relevant topic tags.
 
 **Detect Tags in Video Title and Description**: Extracts creator hashtags (`#tag`) directly from the YouTube title and description and adds them to your tags.
@@ -162,7 +169,14 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 5. Enter custom instructions in the prompt modal
 6. The instructions are appended to the default prompt for this summarization only
 
-### Method 4: Upgrade Previous Notes
+### Method 4: Retrieve Video Transcript (No AI)
+
+1. Open command palette (`Ctrl/Cmd + P`)
+2. Run `Get YouTube video transcript`
+3. Paste the YouTube URL (or select a URL in your note, or run from an active note containing a URL)
+4. The full transcript with clickable timestamps and Media Extended links is inserted immediately — **no AI model or API key required**!
+
+### Method 5: Upgrade Previous Notes
 
 If you have notes created with previous versions of the plugin that lack the new frontmatter:
 
