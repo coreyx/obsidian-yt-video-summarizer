@@ -85,7 +85,58 @@ const DEFAULT_GEMINI_MODELS = [
 	}
 ];
 
+// Models retired or shut down by OpenAI
+export const RETIRED_OPENAI_MODELS: readonly string[] = [
+	'gpt-4-vision-preview',
+	'gpt-4-0314',
+	'gpt-4-0613',
+	'gpt-4-32k-0314',
+	'gpt-4-32k-0613',
+	'gpt-3.5-turbo-0301',
+	'gpt-3.5-turbo-0613',
+	'gpt-3.5-turbo-16k-0613',
+	'o1-preview'
+];
+
+// Models retired or shut down by Anthropic
+export const RETIRED_ANTHROPIC_MODELS: readonly string[] = [
+	'claude-sonnet-4-20250514',
+	'claude-opus-4-20250514',
+	'claude-3-5-sonnet-20241022',
+	'claude-3-5-sonnet-20240620',
+	'claude-3-5-haiku-20241022',
+	'claude-3-opus-20240229',
+	'claude-3-sonnet-20240229',
+	'claude-3-haiku-20240307',
+	'claude-2.1',
+	'claude-2.0',
+	'claude-instant-1.2'
+];
+
 const DEFAULT_OPENAI_MODELS = [
+	// GPT-6 & GPT-5.6 Series
+	{
+		name: 'gpt-6',
+		displayName: 'GPT-6 (Astra)',
+		pricing: 'Input $10.00 / Output $50.00 per 1M tokens; cached input $1.00'
+	},
+	{
+		name: 'gpt-5.6',
+		displayName: 'GPT-5.6 (Sol)',
+		pricing: 'Input $4.00 / Output $20.00 per 1M tokens'
+	},
+	{
+		name: 'gpt-5.6-terra',
+		displayName: 'GPT-5.6 Terra',
+		pricing: 'Input $2.00 / Output $12.00 per 1M tokens'
+	},
+	{
+		name: 'gpt-5.6-luna',
+		displayName: 'GPT-5.6 Luna',
+		pricing: 'Input $0.20 / Output $1.20 per 1M tokens'
+	},
+
+	// GPT-5.5 Series
 	{
 		name: 'gpt-5.5',
 		displayName: 'GPT-5.5',
@@ -96,6 +147,8 @@ const DEFAULT_OPENAI_MODELS = [
 		displayName: 'GPT-5.5 Pro',
 		pricing: 'Input $30.00 / Output $180.00 per 1M tokens; long context $60.00/$270.00'
 	},
+
+	// GPT-5.4 Series
 	{
 		name: 'gpt-5.4',
 		displayName: 'GPT-5.4',
@@ -116,6 +169,8 @@ const DEFAULT_OPENAI_MODELS = [
 		displayName: 'GPT-5.4 Pro',
 		pricing: 'Input $30.00 / Output $180.00 per 1M tokens; long context $60.00/$270.00'
 	},
+
+	// GPT-5.3 Series
 	{
 		name: 'gpt-5.3-chat-latest',
 		displayName: 'GPT-5.3 Chat Latest',
@@ -126,6 +181,8 @@ const DEFAULT_OPENAI_MODELS = [
 		displayName: 'GPT-5.3 Codex',
 		pricing: 'Input $1.75 / Cached input $0.175 / Output $14.00 per 1M tokens'
 	},
+
+	// GPT-4.1 Series
 	{
 		name: 'gpt-4.1',
 		displayName: 'GPT-4.1',
@@ -141,6 +198,8 @@ const DEFAULT_OPENAI_MODELS = [
 		displayName: 'GPT-4.1 Nano',
 		pricing: 'Input $0.10 / Output $0.40 per 1M tokens'
 	},
+
+	// Core Multimodal Workhorses
 	{
 		name: 'gpt-4o',
 		displayName: 'GPT-4o',
@@ -151,16 +210,8 @@ const DEFAULT_OPENAI_MODELS = [
 		displayName: 'GPT-4o Mini',
 		pricing: 'Input $0.15 / Output $0.60 per 1M tokens'
 	},
-	{
-		name: 'o1',
-		displayName: 'o1',
-		pricing: 'Input $15.00 / Output $60.00 per 1M tokens'
-	},
-	{
-		name: 'o1-mini',
-		displayName: 'o1-mini',
-		pricing: 'Input $1.10 / Output $4.40 per 1M tokens'
-	},
+
+	// Reasoning Models
 	{
 		name: 'o3-mini',
 		displayName: 'o3-mini',
@@ -170,11 +221,53 @@ const DEFAULT_OPENAI_MODELS = [
 		name: 'o4-mini',
 		displayName: 'o4-mini',
 		pricing: 'Input $1.10 / Output $4.40 per 1M tokens'
+	},
+	{
+		name: 'o1',
+		displayName: 'o1',
+		pricing: 'Input $15.00 / Output $60.00 per 1M tokens'
+	},
+	{
+		name: 'o1-mini',
+		displayName: 'o1-mini',
+		pricing: 'Input $1.10 / Output $4.40 per 1M tokens'
 	}
 ];
 
 const DEFAULT_ANTHROPIC_MODELS = [
-	// Current recommended models
+	// Current Flagships & Recommended Models
+	{
+		name: 'claude-sonnet-5-5',
+		displayName: 'Claude Sonnet 5.5 (Recommended)',
+		pricing: 'Input $2.00 / Output $10.00 per 1M tokens'
+	},
+	{
+		name: 'claude-opus-5-5',
+		displayName: 'Claude Opus 5.5',
+		pricing: 'Input $4.00 / Output $20.00 per 1M tokens'
+	},
+	{
+		name: 'claude-fable-5-1',
+		displayName: 'Claude Fable 5.1',
+		pricing: 'Input $10.00 / Output $50.00 per 1M tokens'
+	},
+	{
+		name: 'claude-sonnet-5',
+		displayName: 'Claude Sonnet 5',
+		pricing: 'Input $3.00 / Output $15.00 per 1M tokens'
+	},
+	{
+		name: 'claude-opus-5',
+		displayName: 'Claude Opus 5',
+		pricing: 'Input $5.00 / Output $25.00 per 1M tokens'
+	},
+	{
+		name: 'claude-haiku-4-5-20251001',
+		displayName: 'Claude Haiku 4.5',
+		pricing: 'Input $1.00 / Output $5.00 per 1M tokens'
+	},
+
+	// Stable 4.x Generation
 	{
 		name: 'claude-opus-4-7',
 		displayName: 'Claude Opus 4.7',
@@ -185,13 +278,6 @@ const DEFAULT_ANTHROPIC_MODELS = [
 		displayName: 'Claude Sonnet 4.6',
 		pricing: 'Input $3.00 / Output $15.00 per 1M tokens'
 	},
-	{
-		name: 'claude-haiku-4-5-20251001',
-		displayName: 'Claude Haiku 4.5',
-		pricing: 'Input $1.00 / Output $5.00 per 1M tokens'
-	},
-
-	// Legacy / still available
 	{
 		name: 'claude-opus-4-6',
 		displayName: 'Claude Opus 4.6 Legacy',
@@ -211,16 +297,6 @@ const DEFAULT_ANTHROPIC_MODELS = [
 		name: 'claude-opus-4-1-20250805',
 		displayName: 'Claude Opus 4.1 Legacy',
 		pricing: 'Input $15.00 / Output $75.00 per 1M tokens'
-	},
-	{
-		name: 'claude-sonnet-4-20250514',
-		displayName: 'Claude Sonnet 4 Deprecated',
-		pricing: 'Input $3.00 / Output $15.00 per 1M tokens; deprecated, retires June 15, 2026'
-	},
-	{
-		name: 'claude-opus-4-20250514',
-		displayName: 'Claude Opus 4 Deprecated',
-		pricing: 'Input $15.00 / Output $75.00 per 1M tokens; deprecated, retires June 15, 2026'
 	}
 ];
 
