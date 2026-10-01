@@ -5,6 +5,7 @@ import {
 	ThumbnailQuality,
 	TranscriptLine,
 	TranscriptResponse,
+	VideoMetadata,
 } from 'src/types';
 import { requestUrl } from 'obsidian';
 
@@ -142,6 +143,80 @@ export class YouTubeService {
 	}
 
 	/**
+	 * Fetches video metadata (title, author, channel URL, handle, description)
+	 * without downloading or parsing transcript captions.
+	 *
+	 * @param url - Full YouTube video URL
+	 * @returns Promise containing video metadata
+	 */
+	async fetchVideoMetadata(url: string): Promise<VideoMetadata> {
+		const videoId = this.extractMatch(url, VIDEO_ID_REGEX);
+		if (!videoId) throw new Error('Invalid YouTube URL');
+
+		const playerData = await this.fetchPlayerData(videoId);
+		return await this.extractMetadataFromPlayerData(playerData, videoId, url);
+	}
+
+	/**
+	 * Extracts and normalizes metadata from YouTube player data.
+	 */
+	private async extractMetadataFromPlayerData(
+		playerData: any,
+		videoId: string,
+		url: string
+	): Promise<VideoMetadata> {
+		const title = playerData.videoDetails?.title || 'Unknown';
+		const author = playerData.videoDetails?.author || 'Unknown';
+		const channelId = playerData.videoDetails?.channelId || '';
+		const description = playerData.videoDetails?.shortDescription || '';
+
+		let channelUsername = '';
+		let channelUrl = channelId ? `https://www.youtube.com/channel/${channelId}` : '';
+
+		const ownerProfileUrl = playerData.microformat?.playerMicroformatRenderer?.ownerProfileUrl;
+		if (ownerProfileUrl) {
+			const handleMatch = ownerProfileUrl.match(/@([^/\s"']+)/);
+			if (handleMatch) {
+				channelUsername = `@${handleMatch[1]}`;
+				channelUrl = `https://www.youtube.com/@${handleMatch[1]}`;
+			}
+		}
+
+		if (!channelUsername) {
+			try {
+				const pageResponse = await requestUrl({
+					url: `https://www.youtube.com/watch?v=${videoId}`,
+					headers: {
+						"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+						"Accept-Language": "en-US,en;q=0.9",
+					}
+				});
+				if (pageResponse.status === 200) {
+					const html = pageResponse.text;
+					const match = html.match(/"canonicalBaseUrl":"\/(@[^"\/]+)"/) ||
+					              html.match(/"ownerProfileUrl":"https?:\/\/(?:www\.)?youtube\.com\/(@[^"\/]+)"/);
+					if (match) {
+						channelUsername = match[1];
+						channelUrl = `https://www.youtube.com/${match[1]}`;
+					}
+				}
+			} catch (e) {
+				console.warn('Could not fetch channel handle from watch page:', e);
+			}
+		}
+
+		return {
+			url: `https://www.youtube.com/watch?v=${videoId}`,
+			videoId,
+			title: this.decodeHTML(title),
+			author: this.decodeHTML(author),
+			channelUrl,
+			channelUsername: channelUsername || undefined,
+			description: this.decodeHTML(description, true),
+		};
+	}
+
+	/**
 	 * Fetches and processes a YouTube video transcript using the player API approach
 	 * This mimics how youtube-transcript-api (Python) works:
 	 * 1. Fetch player data with ANDROID client to get caption tracks
@@ -163,50 +238,9 @@ export class YouTubeService {
 
 			console.log(`Fetching transcript for video: ${videoId}`);
 
-			// Step 1: Fetch player data to get caption tracks
+			// Step 1: Fetch player data and video metadata
 			const playerData = await this.fetchPlayerData(videoId);
-			
-			// Extract video metadata
-			const title = playerData.videoDetails?.title || 'Unknown';
-			const author = playerData.videoDetails?.author || 'Unknown';
-			const channelId = playerData.videoDetails?.channelId || '';
-			const description = playerData.videoDetails?.shortDescription || '';
-
-			// Extract channel username and canonical channel URL
-			let channelUsername = '';
-			let channelUrl = channelId ? `https://www.youtube.com/channel/${channelId}` : '';
-
-			const ownerProfileUrl = playerData.microformat?.playerMicroformatRenderer?.ownerProfileUrl;
-			if (ownerProfileUrl) {
-				const handleMatch = ownerProfileUrl.match(/@([^/\s"']+)/);
-				if (handleMatch) {
-					channelUsername = `@${handleMatch[1]}`;
-					channelUrl = `https://www.youtube.com/@${handleMatch[1]}`;
-				}
-			}
-
-			if (!channelUsername) {
-				try {
-					const pageResponse = await requestUrl({
-						url: `https://www.youtube.com/watch?v=${videoId}`,
-						headers: {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							"Accept-Language": "en-US,en;q=0.9",
-						}
-					});
-					if (pageResponse.status === 200) {
-						const html = pageResponse.text;
-						const match = html.match(/"canonicalBaseUrl":"\/(@[^"\/]+)"/) ||
-						              html.match(/"ownerProfileUrl":"https?:\/\/(?:www\.)?youtube\.com\/(@[^"\/]+)"/);
-						if (match) {
-							channelUsername = match[1];
-							channelUrl = `https://www.youtube.com/${match[1]}`;
-						}
-					}
-				} catch (e) {
-					console.warn('Could not fetch channel handle from watch page:', e);
-				}
-			}
+			const metadata = await this.extractMetadataFromPlayerData(playerData, videoId, url);
 
 			// Step 2: Get caption tracks
 			const captionsData = playerData.captions?.playerCaptionsTracklistRenderer;
@@ -228,13 +262,7 @@ export class YouTubeService {
 			const lines = await this.fetchTranscriptFromUrl(transcriptUrl);
 
 			return {
-				url,
-				videoId,
-				title: this.decodeHTML(title),
-				author: this.decodeHTML(author),
-				channelUrl,
-				channelUsername: channelUsername || undefined,
-				description: this.decodeHTML(description, true),
+				...metadata,
 				lines,
 			};
 		} catch (error: any) {

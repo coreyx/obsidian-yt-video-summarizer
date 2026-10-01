@@ -29,10 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports adding tags directly to YAML frontmatter (default: enabled).
   - Supports adding inline tags to the note body as `**Tags:** #tag1 #tag2` (default: disabled).
   - Normalizes and sanitizes tags for Obsidian tag compatibility.
+- **Title and Description Tag Detection**:
+  - Optional setting (enabled by default) to detect hashtags (`#tag`) in the YouTube video title and description.
+  - Automatically merges detected tags with semantic topic tags and adds them to YAML frontmatter.
+- **Previous Notes Upgrade**:
+  - Added command `Upgrade current note with YouTube frontmatter` to upgrade the active note.
+  - Added command `Upgrade all YouTube notes in vault` and a settings button `Upgrade Notes in Vault` for vault-wide batch upgrades.
+  - Re-processes notes to populate missing frontmatter metadata (title, channel_name, channel_username, channel_url, video_url, thumbnail, thumbnail_text) without re-running LLM summary inference, changing summary text, or generating new tags.
+  - Preserves any preexisting tags and user-defined properties in frontmatter.
 - **Automatic Note Renaming**:
   - Optional setting (enabled by default) to automatically rename the active note to the sanitized title of the YouTube video.
   - Sanitizes filenames against Windows, macOS, Linux, and Obsidian wikilink restrictions, with automatic collision resolution.
-- **Settings Controls**: Added UI toggles for all new features in the Summary settings section.
+- **Settings Controls**: Added UI toggles for all new features and an upgrade button in the Summary settings section.
 
 ---
 

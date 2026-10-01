@@ -41,21 +41,30 @@ tags:
 * (Optional, ON by default): Appends a dedicated `## Description` section preserving full video descriptions, creator notes, timestamps, and external URLs.
 * HTML entities and line breaks are faithfully preserved.
 
-### 🏷️ Semantic Topic Tags
+### 🏷️ Semantic Topic Tags & Hashtag Detection
 * (Optional, ON by default): Analyzes the generated summary using semantic analysis to produce clean, relevant topic tags.
+* **Hashtag Detection in Video Titles & Descriptions**: (Optional, ON by default): Automatically extracts hashtags (`#tag`) from YouTube titles and descriptions and combines them with semantic topic tags into the YAML frontmatter.
 * **Frontmatter Tags**: Enabled by default, adding topics into YAML `tags:`.
 * **Inline Tags**: Optional setting (off by default) to render inline tags formatted as `**Tags:** #tag1 #tag2` in the note body.
 * Obsidian tag normalization: automatically strips disallowed characters, converts spaces to hyphens, and formats tags cleanly.
+
+### 🔄 Upgrade Previous Notes
+* **Re-process Without Changing Summaries**: Easily upgrade notes created with earlier versions of the plugin that lack the new frontmatter attributes.
+* **Command Palette**: Run `Upgrade current note with YouTube frontmatter` for active notes, or `Upgrade all YouTube notes in vault` for batch upgrades.
+* **Settings Tab**: Convenient `Upgrade Notes in Vault` button in the plugin settings.
+* **Non-Destructive**: Fetches and inserts missing metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`) without re-running LLM summary inference, altering summaries, or overwriting existing tags.
 
 ### ✏️ Automatic Note Renaming
 * (Optional, ON by default): Automatically renames the current note to match the YouTube video title.
 * Sanitizes invalid file system characters (`/ \ : * ? " < > | # ^ [ ]`) and reserved Windows device names (`CON`, `PRN`, `AUX`, `NUL`, etc.) while ensuring titles are safe for Obsidian internal links.
 
 ### ⚙️ Customizable Settings
-Five new toggles have been added to the plugin settings tab under the Summary section:
+New controls in the plugin settings tab under the Summary section:
 1. **Set note title from video** (default: on)
 2. **Include video description** (default: on)
 3. **Generate topic tags** (default: on)
-4. **Add tags to frontmatter** (default: on)
-5. **Add inline tags** (default: off)
+4. **Detect tags in video title and description** (default: on)
+5. **Add tags to frontmatter** (default: on)
+6. **Add inline tags** (default: off)
+7. **Upgrade previous notes** button for vault-wide metadata upgrades
 
