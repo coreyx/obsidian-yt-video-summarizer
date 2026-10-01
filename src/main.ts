@@ -15,6 +15,7 @@ import {
 	buildFrontmatter,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
+	formatTranscript,
 	FrontmatterData,
 	isNoteMissingFrontmatter,
 	sanitizeFileName,
@@ -162,6 +163,37 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				} catch (error) {
 					new Notice(`Failed to process video: ${error.message}`);
 					console.error('Failed to process video:', error);
+				}
+			},
+		});
+
+		// Command to retrieve transcript only
+		this.addCommand({
+			id: 'get-youtube-video-transcript',
+			name: 'Get YouTube video transcript',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				try {
+					const selectedText = editor.getSelection().trim();
+					if (
+						selectedText &&
+						YouTubeService.isYouTubeUrl(selectedText)
+					) {
+						await this.retrieveTranscript(selectedText, editor, view);
+					} else if (selectedText) {
+						new Notice('Selected text is not a valid YouTube URL');
+					} else {
+						const noteUrl = extractYouTubeUrlFromNote(editor.getValue());
+						if (noteUrl) {
+							await this.retrieveTranscript(noteUrl, editor, view);
+						} else {
+							new YouTubeURLModal(this.app, async (url) => {
+								await this.retrieveTranscript(url, editor, view);
+							}).open();
+						}
+					}
+				} catch (error) {
+					new Notice(`Failed to retrieve transcript: ${error.message}`);
+					console.error('Failed to retrieve transcript:', error);
 				}
 			},
 		});
@@ -326,7 +358,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				summary,
 				inlineTags,
 				this.settings.getIncludeVideoDescription(),
-				this.settings.getIncludeTitleInBody()
+				this.settings.getIncludeTitleInBody(),
+				this.settings.getDumpTranscriptInSummary()
 			);
 
 			// Step 8: Apply frontmatter and insert body content
@@ -594,8 +627,114 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
+	 * Retrieves the transcript for a YouTube video without generating an AI summary.
+	 * Formats timestamps with optional YouTube links and Media Extended playback links.
+	 */
+	public async retrieveTranscript(
+		url: string,
+		editor: Editor,
+		view?: MarkdownView
+	): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice('Fetching video transcript...');
+
+			let transcript: TranscriptResponse;
+			try {
+				transcript = await this.youtubeService.fetchTranscript(url);
+			} catch (error) {
+				new Notice(`Error: ${error.message}`);
+				return;
+			}
+
+			const thumbnailUrl = YouTubeService.getThumbnailUrl(transcript.videoId);
+
+			// Extract tags from title & description if enabled
+			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+				? Array.from(new Set([
+						...extractTagsFromText(transcript.title),
+						...extractTagsFromText(transcript.description || ''),
+				  ]))
+				: [];
+
+			const allTags = detectedTags.map(sanitizeTag).filter(Boolean);
+
+			// Optionally rename note based on video title
+			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
+				await this.setNoteTitle(view.file, transcript.title);
+			}
+
+			const addInlineTags = this.settings.getAddInlineTags();
+			const addTagsToFrontmatter = this.settings.getAddTagsToFrontmatter();
+			const inlineTags = addInlineTags ? allTags : undefined;
+			const frontmatterTags = addTagsToFrontmatter ? allTags : undefined;
+
+			// Format transcript
+			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
+				linkTimestamps: this.settings.getLinkTranscriptTimestamps(),
+				mediaExtended: this.settings.getMediaExtendedTimestamps(),
+			});
+
+			const metaLines = [
+				`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
+			];
+			if (inlineTags && inlineTags.length > 0) {
+				metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
+			}
+
+			const bodyParts: string[] = [];
+			if (this.settings.getIncludeTitleInBody() && transcript.title) {
+				bodyParts.push(`# ${transcript.title}`);
+			}
+			bodyParts.push(
+				`![Thumbnail](${thumbnailUrl})`,
+				metaLines.join('\n\n'),
+				`## Transcript\n\n${formattedTranscript}`
+			);
+
+			if (this.settings.getIncludeVideoDescription() && transcript.description && transcript.description.trim()) {
+				bodyParts.push(`## Description\n\n${transcript.description.trim()}`);
+			}
+
+			const bodyContent = bodyParts.join('\n\n');
+
+			const fmData: FrontmatterData = {
+				title: transcript.title,
+				channel_name: transcript.author,
+				channel_username: transcript.channelUsername || '',
+				channel_url: transcript.channelUrl,
+				video_url: url,
+				thumbnail: thumbnailUrl,
+				thumbnail_text: '',
+				tags: frontmatterTags,
+			};
+
+			const isEditorEmpty = editor.getValue().trim() === '';
+			if (isEditorEmpty) {
+				const frontmatterString = buildFrontmatter(fmData);
+				editor.setValue(`${frontmatterString}\n\n${bodyContent}`);
+			} else {
+				editor.replaceSelection(bodyContent);
+				applyFrontmatter(editor, fmData);
+			}
+
+			new Notice('Transcript retrieved successfully!');
+		} catch (error) {
+			new Notice(`Failed to retrieve transcript: ${error.message}`);
+			console.error('Failed to retrieve transcript:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
 	 * Generates a summary string based on the provided transcript, thumbnail URL, video URL, summary,
-	 * optional inline tags, optional video description, and optional title heading.
+	 * optional inline tags, optional video description, optional title heading, and optional transcript dump.
 	 */
 	private generateSummary(
 		transcript: TranscriptResponse,
@@ -604,7 +743,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		summaryText: string,
 		inlineTags?: string[],
 		includeDescription = true,
-		includeTitle = false
+		includeTitle = false,
+		dumpTranscript = false
 	): string {
 		const metaLines = [
 			`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
@@ -624,6 +764,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			metaLines.join('\n\n'),
 			summaryText
 		);
+
+		if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
+			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
+				linkTimestamps: this.settings.getLinkTranscriptTimestamps(),
+				mediaExtended: this.settings.getMediaExtendedTimestamps(),
+			});
+			summaryParts.push(`## Transcript\n\n${formattedTranscript}`);
+		}
 
 		if (includeDescription && transcript.description && transcript.description.trim()) {
 			summaryParts.push(`## Description\n\n${transcript.description.trim()}`);

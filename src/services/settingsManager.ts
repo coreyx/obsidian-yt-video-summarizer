@@ -15,6 +15,9 @@ import {
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
     DEFAULT_INCLUDE_TITLE_IN_BODY,
     DEFAULT_LINK_TECHNICAL_TERMS,
+    DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
+    DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
+    DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
@@ -43,6 +46,9 @@ export class SettingsManager implements PluginSettings {
             setNoteTitleFromVideo: DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
             includeTitleInBody: DEFAULT_INCLUDE_TITLE_IN_BODY,
             linkTechnicalTerms: DEFAULT_LINK_TECHNICAL_TERMS,
+            dumpTranscriptInSummary: DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
+            linkTranscriptTimestamps: DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
+            mediaExtendedTimestamps: DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
         };
     }
 
@@ -74,6 +80,9 @@ export class SettingsManager implements PluginSettings {
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
+                dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
+                linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
+                mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -107,6 +116,9 @@ export class SettingsManager implements PluginSettings {
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
+                dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
+                linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
+                mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
             };
 
             await this.saveData();
@@ -395,6 +407,33 @@ export class SettingsManager implements PluginSettings {
 
     updateLinkTechnicalTerms(value: boolean): void {
         this.settings.linkTechnicalTerms = value;
+        this.saveData();
+    }
+
+    getDumpTranscriptInSummary(): boolean {
+        return this.settings.dumpTranscriptInSummary ?? DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY;
+    }
+
+    updateDumpTranscriptInSummary(value: boolean): void {
+        this.settings.dumpTranscriptInSummary = value;
+        this.saveData();
+    }
+
+    getLinkTranscriptTimestamps(): boolean {
+        return this.settings.linkTranscriptTimestamps ?? DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS;
+    }
+
+    updateLinkTranscriptTimestamps(value: boolean): void {
+        this.settings.linkTranscriptTimestamps = value;
+        this.saveData();
+    }
+
+    getMediaExtendedTimestamps(): boolean {
+        return this.settings.mediaExtendedTimestamps ?? DEFAULT_MEDIA_EXTENDED_TIMESTAMPS;
+    }
+
+    updateMediaExtendedTimestamps(value: boolean): void {
+        this.settings.mediaExtendedTimestamps = value;
         this.saveData();
     }
 

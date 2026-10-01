@@ -48,6 +48,9 @@ export interface StoredSettings {
 	setNoteTitleFromVideo?: boolean;
 	includeTitleInBody?: boolean;
 	linkTechnicalTerms?: boolean;
+	dumpTranscriptInSummary?: boolean;
+	linkTranscriptTimestamps?: boolean;
+	mediaExtendedTimestamps?: boolean;
 }
 
 /** Represents the plugin settings and provides methods to manage them */
@@ -128,6 +131,15 @@ export interface PluginSettings {
 
 	getLinkTechnicalTerms(): boolean;
 	updateLinkTechnicalTerms(value: boolean): void;
+
+	getDumpTranscriptInSummary(): boolean;
+	updateDumpTranscriptInSummary(value: boolean): void;
+
+	getLinkTranscriptTimestamps(): boolean;
+	updateLinkTranscriptTimestamps(value: boolean): void;
+
+	getMediaExtendedTimestamps(): boolean;
+	updateMediaExtendedTimestamps(value: boolean): void;
 
 	/**
 	 * Validates a model ID.

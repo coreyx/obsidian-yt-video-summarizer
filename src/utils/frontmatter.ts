@@ -1,4 +1,5 @@
 import { Editor } from 'obsidian';
+import { TranscriptLine } from '../types';
 
 export interface FrontmatterData {
 	title: string;
@@ -328,3 +329,80 @@ export function stripWikilinksFromTechnicalTerms(content: string): string {
 		return `${prefix}${heading}${strippedBody}`;
 	});
 }
+
+/**
+ * Formats a duration in seconds into a mm:ss or hh:mm:ss timestamp string.
+ */
+export function formatTimestamp(seconds: number): string {
+	const totalSeconds = Math.max(0, Math.floor(seconds));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const secs = totalSeconds % 60;
+
+	if (hours > 0) {
+		return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+	}
+	return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Formats duration / offset information into display timestamp, rounded seconds,
+ * and Media Extended millisecond timestamp string.
+ */
+export function formatTimestampParts(offsetMs: number): {
+	timeStr: string;
+	roundedSeconds: number;
+	meTimeStr: string;
+} {
+	const safeMs = Math.max(0, Math.round(offsetMs));
+	const totalSeconds = Math.floor(safeMs / 1000);
+	const roundedSeconds = Math.round(safeMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	const hundredths = Math.floor((safeMs % 1000) / 10);
+
+	const timeStr = hours > 0
+		? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+		: `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+	const meTimeStr = `${timeStr}.${String(hundredths).padStart(2, '0')}`;
+
+	return { timeStr, roundedSeconds, meTimeStr };
+}
+
+export interface FormatTranscriptOptions {
+	linkTimestamps?: boolean;
+	mediaExtended?: boolean;
+}
+
+/**
+ * Formats an array of TranscriptLine objects into markdown transcript text
+ * with optional YouTube timestamp links and Media Extended playback links.
+ */
+export function formatTranscript(
+	lines: TranscriptLine[],
+	videoId: string,
+	options: FormatTranscriptOptions = {}
+): string {
+	const linkTimestamps = options.linkTimestamps ?? true;
+	const mediaExtended = options.mediaExtended ?? true;
+
+	return lines
+		.map((line) => {
+			const { timeStr, roundedSeconds, meTimeStr } = formatTimestampParts(line.offset);
+
+			let timestampPart = timeStr;
+			if (linkTimestamps) {
+				const url = mediaExtended
+					? `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`
+					: `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}`;
+				timestampPart = `[${timeStr}](${url})`;
+			}
+
+			const text = line.text.replace(/\r?\n+/g, ' ').trim();
+			return `- ${timestampPart} ${text}`;
+		})
+		.join('\n');
+}
+

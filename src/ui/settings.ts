@@ -293,6 +293,42 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Include transcript in summary
+        new Setting(containerEl)
+            .setName('Include transcript in summary note')
+            .setDesc('Append the full video transcript under a "## Transcript" section when generating a summary (disabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getDumpTranscriptInSummary())
+                    .onChange(async (value) => {
+                        await this.settings.updateDumpTranscriptInSummary(value);
+                    })
+            );
+
+        // Link transcript timestamps to YouTube
+        new Setting(containerEl)
+            .setName('Link transcript timestamps to YouTube')
+            .setDesc('Format transcript timestamps as clickable links jumping directly to that time (e.g. [01:05](https://youtube.com/watch?v=...&t=66))')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getLinkTranscriptTimestamps())
+                    .onChange(async (value) => {
+                        await this.settings.updateLinkTranscriptTimestamps(value);
+                    })
+            );
+
+        // Media Extended timestamp links
+        new Setting(containerEl)
+            .setName('Format timestamps for Media Extended')
+            .setDesc('Format transcript timestamp links for the Media Extended plugin (e.g. [01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)) instead of standard YouTube links. Requires timestamp linking to be enabled.')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedTimestamps())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedTimestamps(value);
+                    })
+            );
+
         // Semantic Topic tags
         new Setting(containerEl)
             .setName('Generate semantic topic tags')
