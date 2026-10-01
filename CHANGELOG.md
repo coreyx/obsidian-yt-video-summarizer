@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added latest flagship and production models: `gemini-3.8-flash` (new default recommended model), `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`, `gemini-3.1-flash-lite`, and `gemini-3-pro-preview`.
   - Retired and removed shut down models that are no longer operational: `gemini-2.0-flash` and `gemini-2.0-flash-lite` (discontinued June 1, 2026), as well as older legacy `gemini-1.5` series.
   - Added automatic retirement migration in settings: prunes shut down models from built-in provider configurations and safely migrates active selections to `Gemini:gemini-3.8-flash` to prevent API failures.
+- **Updated Anthropic Claude Model Lineup**:
+  - Added new generation flagships: `claude-sonnet-5-5` (Claude Sonnet 5.5, Recommended), `claude-opus-5-5`, `claude-fable-5-1`, `claude-sonnet-5`, and `claude-opus-5`.
+  - Retired discontinued models: `claude-sonnet-4-20250514` and `claude-opus-4-20250514` (retired June 15, 2026), and pruned deprecated Claude 3/3.5 models.
+  - Automatically prunes retired Anthropic models and migrates active selections to avoid API errors.
+- **Updated OpenAI Model Lineup**:
+  - Added newest frontier models: `gpt-6` (Astra), `gpt-5.6` (Sol), `gpt-5.6-terra`, and `gpt-5.6-luna`.
+  - Added automated pruning of legacy, retired OpenAI endpoints (`gpt-4-vision-preview`, `gpt-4-0314`, `gpt-4-0613`, `gpt-3.5-turbo-0301`, etc.) with safe fallback.
 
 ---
 

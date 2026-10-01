@@ -14,6 +14,8 @@ import {
     DEFAULT_ADD_INLINE_TAGS,
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
     RETIRED_GEMINI_MODELS,
+    RETIRED_ANTHROPIC_MODELS,
+    RETIRED_OPENAI_MODELS,
 } from "src/defaults";
 
 /** Manages plugin settings and provides methods to interact with them */
@@ -499,11 +501,27 @@ export class SettingsManager implements PluginSettings {
                 changed = true;
             }
 
-            // Prune retired models for built-in Gemini provider
+            // Prune retired models for built-in providers
             if (existingProvider.type === 'gemini') {
                 const initialLen = existingProvider.models.length;
                 existingProvider.models = existingProvider.models.filter(
                     model => !RETIRED_GEMINI_MODELS.includes(model.name)
+                );
+                if (existingProvider.models.length !== initialLen) {
+                    changed = true;
+                }
+            } else if (existingProvider.type === 'anthropic') {
+                const initialLen = existingProvider.models.length;
+                existingProvider.models = existingProvider.models.filter(
+                    model => !RETIRED_ANTHROPIC_MODELS.includes(model.name)
+                );
+                if (existingProvider.models.length !== initialLen) {
+                    changed = true;
+                }
+            } else if (existingProvider.type === 'openai') {
+                const initialLen = existingProvider.models.length;
+                existingProvider.models = existingProvider.models.filter(
+                    model => !RETIRED_OPENAI_MODELS.includes(model.name)
                 );
                 if (existingProvider.models.length !== initialLen) {
                     changed = true;
@@ -547,10 +565,13 @@ export class SettingsManager implements PluginSettings {
         // If selectedModelId points to a retired model or is invalid, migrate to DEFAULT_SELECTED_MODEL
         if (this.settings.selectedModelId) {
             const { providerName, modelName } = this.parseModelId(this.settings.selectedModelId);
-            const isRetiredGemini = providerName.toLowerCase() === 'gemini' && RETIRED_GEMINI_MODELS.includes(modelName);
+            const lowerProvider = providerName.toLowerCase();
+            const isRetiredGemini = lowerProvider === 'gemini' && RETIRED_GEMINI_MODELS.includes(modelName);
+            const isRetiredAnthropic = lowerProvider === 'anthropic' && RETIRED_ANTHROPIC_MODELS.includes(modelName);
+            const isRetiredOpenAI = lowerProvider === 'openai' && RETIRED_OPENAI_MODELS.includes(modelName);
             const isInvalid = !this.validateModelId(this.settings.selectedModelId);
 
-            if (isRetiredGemini || isInvalid) {
+            if (isRetiredGemini || isRetiredAnthropic || isRetiredOpenAI || isInvalid) {
                 this.settings.selectedModelId = DEFAULT_SELECTED_MODEL;
                 changed = true;
             }

@@ -33,6 +33,23 @@ Easily re-process and upgrade existing notes within any specific directory in yo
   * Removed `gemini-2.0-flash` and `gemini-2.0-flash-lite` following Google's official service shutdown on June 1, 2026.
   * Settings manager automatically prunes retired models and migrates any previously selected retired model to `Gemini:gemini-3.8-flash`.
 
+### 🧠 Anthropic Claude 5.5 & 5.1 Generation
+* **New Flagships**:
+  * `claude-sonnet-5-5` (Claude Sonnet 5.5, Recommended): Best combination of speed, reasoning intelligence, and multimodal vision.
+  * `claude-opus-5-5`: Flagship model for complex knowledge work and long-running agentic tasks.
+  * `claude-fable-5-1`: Specialized high-reasoning model for demanding analysis.
+  * `claude-sonnet-5` & `claude-opus-5`: 5.0 generation flagships.
+* **Retirement & Cleanup**:
+  * Retired `claude-sonnet-4-20250514` and `claude-opus-4-20250514` (retired June 15, 2026) and deprecated Claude 3/3.5 endpoints.
+  * Automatic pruning and migration in settings to prevent API failures.
+
+### ⚡ OpenAI GPT-6 & GPT-5.6 Series
+* **New Frontier Models**:
+  * `gpt-6` (Astra): OpenAI's newest flagship reasoning model.
+  * `gpt-5.6` (Sol), `gpt-5.6-terra`, and `gpt-5.6-luna`: Next-generation tier models balancing high reasoning and low cost.
+* **Retirement & Cleanup**:
+  * Automated pruning of retired, obsolete legacy models (`gpt-4-vision-preview`, `gpt-4-0314`, `gpt-4-0613`, etc.) with safe migration.
+
 ---
 
 ## Installation via BRAT

@@ -626,6 +626,103 @@ assert.strictEqual(
 );
 console.log('✓ Gemini model retirement and migration passed');
 
+// Test 13: Anthropic and OpenAI model retirement and migration
+console.log('Testing Anthropic and OpenAI model retirement and migration...');
+const retiredAnthropic = [
+	'claude-sonnet-4-20250514',
+	'claude-opus-4-20250514',
+	'claude-3-5-sonnet-20241022',
+	'claude-3-5-sonnet-20240620',
+	'claude-3-5-haiku-20241022',
+	'claude-3-opus-20240229',
+	'claude-3-sonnet-20240229',
+	'claude-3-haiku-20240307',
+	'claude-2.1',
+	'claude-2.0',
+	'claude-instant-1.2'
+];
+
+const retiredOpenAI = [
+	'gpt-4-vision-preview',
+	'gpt-4-0314',
+	'gpt-4-0613',
+	'gpt-4-32k-0314',
+	'gpt-4-32k-0613',
+	'gpt-3.5-turbo-0301',
+	'gpt-3.5-turbo-0613',
+	'gpt-3.5-turbo-16k-0613',
+	'o1-preview'
+];
+
+const mockAnthropicProvider = {
+	name: 'Anthropic',
+	type: 'anthropic',
+	models: [
+		{ name: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4 Deprecated' },
+		{ name: 'claude-sonnet-5-5', displayName: 'Claude Sonnet 5.5 (Recommended)' },
+		{ name: 'claude-opus-5-5', displayName: 'Claude Opus 5.5' },
+	]
+};
+
+const prunedAnthropic = mockAnthropicProvider.models.filter(
+	(m) => !retiredAnthropic.includes(m.name)
+);
+assert.strictEqual(prunedAnthropic.length, 2);
+assert.deepStrictEqual(prunedAnthropic.map((m) => m.name), ['claude-sonnet-5-5', 'claude-opus-5-5']);
+
+const mockOpenAIProvider = {
+	name: 'OpenAI',
+	type: 'openai',
+	models: [
+		{ name: 'gpt-4-0613', displayName: 'GPT-4 0613' },
+		{ name: 'gpt-6', displayName: 'GPT-6 (Astra)' },
+		{ name: 'gpt-4o', displayName: 'GPT-4o' },
+	]
+};
+
+const prunedOpenAI = mockOpenAIProvider.models.filter(
+	(m) => !retiredOpenAI.includes(m.name)
+);
+assert.strictEqual(prunedOpenAI.length, 2);
+assert.deepStrictEqual(prunedOpenAI.map((m) => m.name), ['gpt-6', 'gpt-4o']);
+
+// Test migration of retired models
+function multiProviderMigrate(selectedModelId, providers, defaultModel) {
+	if (!selectedModelId) return defaultModel;
+	const [provider, model] = selectedModelId.split(':');
+	const lower = provider.toLowerCase();
+	if (lower === 'anthropic' && retiredAnthropic.includes(model)) return defaultModel;
+	if (lower === 'openai' && retiredOpenAI.includes(model)) return defaultModel;
+	if (lower === 'gemini' && retiredModels.includes(model)) return defaultModel;
+	const valid = providers.some((p) => p.name === provider && p.models.some((m) => m.name === model));
+	return valid ? selectedModelId : defaultModel;
+}
+
+const allProviders = [
+	{ name: 'Gemini', models: prunedModels },
+	{ name: 'Anthropic', models: prunedAnthropic },
+	{ name: 'OpenAI', models: prunedOpenAI }
+];
+
+assert.strictEqual(
+	multiProviderMigrate('Anthropic:claude-sonnet-4-20250514', allProviders, defaultModel),
+	'Gemini:gemini-3.8-flash'
+);
+assert.strictEqual(
+	multiProviderMigrate('Anthropic:claude-sonnet-5-5', allProviders, defaultModel),
+	'Anthropic:claude-sonnet-5-5'
+);
+assert.strictEqual(
+	multiProviderMigrate('OpenAI:gpt-4-0613', allProviders, defaultModel),
+	'Gemini:gemini-3.8-flash'
+);
+assert.strictEqual(
+	multiProviderMigrate('OpenAI:gpt-6', allProviders, defaultModel),
+	'OpenAI:gpt-6'
+);
+console.log('✓ Anthropic and OpenAI model retirement and migration passed');
+
 console.log('\nAll tests passed successfully!');
+
 
 
