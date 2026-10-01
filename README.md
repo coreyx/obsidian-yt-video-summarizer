@@ -2,28 +2,38 @@
 
 Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemini, OpenAI, Anthropic, and other compatible LLMs.
 
+> [!IMPORTANT]
+> **Newest Features in v1.3.0+**: Rich YAML frontmatter metadata, multimodal thumbnail text recognition (vision OCR), YouTube video description archival, smart topic & hashtag tagging, automatic note renaming, and previous note upgrading are currently in pre-release. **You must install via [BRAT](#method-2-beta-installation-via-brat-recommended-for-latest-features) to get these features (for now)** until they are approved in the official Obsidian Community Plugins store.
+
 ## Demo
 
 ![Demo](assets/demo.gif)
 
 ## Features
 
--   🎥 Extract transcripts from YouTube videos
--   🤖 Generate summaries using various LLMs: Gemini, OpenAI, Anthropic (Claude), and other compatible models
--   📝 Create structured notes with key points
--   🔍 Identify and explain technical terms
--   📊 Format summaries with metadata and tags
+-   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
+-   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, etc.).
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, and `tags`.
+-   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
+-   📝 **Video Description Preservation**: Optionally archives the creator's complete video description, timestamps, and external links directly in the note body.
+-   🏷️ **Semantic Topic & Hashtag Tagging**: Combines AI semantic analysis with hashtags found in the title and description to tag notes in YAML frontmatter or inline.
+-   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
+-   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
+-   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
+-   ⚙️ **Fully Customizable**: Tweak prompts, tokens, temperature, and toggle individual metadata fields to fit your workflow.
 
 ## Installation
 
 ### Method 1: Community Plugins Directory
+> *Note: Community Plugins installs the current stable store release. To get the newest features (v1.3.0+), install via BRAT below.*
+
 1. Open Obsidian **Settings**.
 2. Go to **Community Plugins** and ensure **Restricted mode** is disabled.
 3. Click **Browse** and search for **YouTube Video Summarizer**.
 4. Click **Install**, then **Enable**.
 
-### Method 2: Beta Installation (via BRAT)
-To install the latest features or pre-release versions using [Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat):
+### Method 2: Beta Installation via BRAT (Recommended for Latest Features)
+> **Required for New Features (for now)**: To get rich frontmatter, thumbnail OCR vision, video description archival, topic tags, note renaming, and note upgrading, install via [Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat):
 
 1. Install and enable the **Obsidian42 - BRAT** community plugin from Obsidian's Community Plugins tab.
 2. In Obsidian **Settings**, select **BRAT** under Community plugins.
@@ -33,7 +43,7 @@ To install the latest features or pre-release versions using [Obsidian42 - BRAT]
    https://github.com/coreyx/obsidian-yt-video-summarizer
    ```
    *(or enter `coreyx/obsidian-yt-video-summarizer`)*
-5. Click **Add Plugin**. BRAT will download and install the latest release.
+5. Click **Add Plugin**. BRAT will download and install the latest release (`1.3.0`).
 6. Open **Settings** → **Community Plugins**, locate **YouTube Video Summarizer**, and toggle it **on**.
 
 ## Requirements
@@ -108,6 +118,20 @@ If the summary is truncated (i.e., it hit the token limit), the plugin appends a
 **Temperature**: Adjust this value to control how deterministic or creative your summaries will be.
 Lower values (closer to 0) produce more consistent and focused summaries, while higher values introduce more creativity and variation.
 
+**Set Note Title from Video**: Automatically renames the active note to the sanitized title of the YouTube video, ensuring safe filenames across Windows, macOS, Linux, and Obsidian wikilinks.
+
+**Include Video Description**: Archives the complete YouTube video description, including external links, creator notes, and timestamps, under a `## Description` section in the note body.
+
+**Generate Semantic Topic Tags**: Uses AI semantic analysis of the generated summary to produce relevant topic tags.
+
+**Detect Tags in Video Title and Description**: Extracts creator hashtags (`#tag`) directly from the YouTube title and description and adds them to your tags.
+
+**Add Tags to Frontmatter**: Inserts tags into the YAML frontmatter `tags:` property.
+
+**Add Inline Tags**: Inserts tags inline in the note body formatted as `**Tags:** #tag1 #tag2`.
+
+**Upgrade Previous Notes**: Scans your vault and automatically adds missing frontmatter metadata to existing YouTube notes without altering summaries, generating tags, or running AI inference.
+
 Model pricing is displayed in the settings UI — next to each model in the provider accordions and in the active model dropdown.
 
 ## Usage
@@ -133,6 +157,15 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 4. Paste the URL
 5. Enter custom instructions in the prompt modal
 6. The instructions are appended to the default prompt for this summarization only
+
+### Method 4: Upgrade Previous Notes
+
+If you have notes created with previous versions of the plugin that lack the new frontmatter:
+
+- **Single Note**: Open the note and run `Upgrade current note with YouTube frontmatter` from the Command Palette (`Ctrl/Cmd + P`).
+- **Entire Vault**: Run `Upgrade all YouTube notes in vault` from the Command Palette, or click **Upgrade Notes in Vault** in the plugin settings tab.
+
+This safely populates the new metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, and `thumbnail_text`) without altering your existing summaries, running LLM inference, or overwriting existing tags.
 
 ## Output Format
 
@@ -190,4 +223,3 @@ Your support helps maintain the plugin, fix bugs, improve documentation, and add
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
