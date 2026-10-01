@@ -19,6 +19,7 @@ import {
 	isNoteMissingFrontmatter,
 	sanitizeFileName,
 	sanitizeTag,
+	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
 } from './utils/frontmatter';
 
@@ -281,6 +282,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				return;
 			}
 
+			if (!this.settings.getLinkTechnicalTerms()) {
+				summary = stripWikilinksFromTechnicalTerms(summary);
+			}
+
 			// Step 4: Extract tags from title & description and/or generate topic tags
 			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
 				? Array.from(new Set([
@@ -320,7 +325,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				url,
 				summary,
 				inlineTags,
-				this.settings.getIncludeVideoDescription()
+				this.settings.getIncludeVideoDescription(),
+				this.settings.getIncludeTitleInBody()
 			);
 
 			// Step 8: Apply frontmatter and insert body content
@@ -571,19 +577,25 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	private buildPrompt(transcriptText: string, customPrompt?: string): string {
-		if (!customPrompt || !customPrompt.trim()) {
-			return this.promptService.buildPrompt(transcriptText);
+		let basePrompt = customPrompt && customPrompt.trim()
+			? `${this.settings.getCustomPrompt()}\n\nAdditional instructions:\n${customPrompt.trim()}`
+			: this.settings.getCustomPrompt();
+
+		if (!this.settings.getLinkTechnicalTerms()) {
+			basePrompt = basePrompt
+				.replace(/\*\*\[\[Term 1\]\]\*\*/g, '**Term 1**')
+				.replace(/\*\*\[\[Term 2\]\]\*\*/g, '**Term 2**')
+				.replace(/\[\[Term (\d+)\]\]/g, 'Term $1');
+			basePrompt += '\n\nImportant formatting rule: In the "Technical terms" section, do NOT use wikilinks (do NOT enclose terms in [[ ]]). Format terms as bold text only (e.g. - **Term**: explanation).';
 		}
 
-		const promptService = new PromptService(
-			`${this.settings.getCustomPrompt()}\n\nAdditional instructions:\n${customPrompt.trim()}`
-		);
+		const promptService = new PromptService(basePrompt);
 		return promptService.buildPrompt(transcriptText);
 	}
 
 	/**
 	 * Generates a summary string based on the provided transcript, thumbnail URL, video URL, summary,
-	 * optional inline tags, and optional video description.
+	 * optional inline tags, optional video description, and optional title heading.
 	 */
 	private generateSummary(
 		transcript: TranscriptResponse,
@@ -591,7 +603,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		url: string,
 		summaryText: string,
 		inlineTags?: string[],
-		includeDescription = true
+		includeDescription = true,
+		includeTitle = false
 	): string {
 		const metaLines = [
 			`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
@@ -601,12 +614,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
 		}
 
-		const summaryParts = [
-			`# ${transcript.title}`,
+		const summaryParts: string[] = [];
+		if (includeTitle && transcript.title) {
+			summaryParts.push(`# ${transcript.title}`);
+		}
+
+		summaryParts.push(
 			`![Thumbnail](${thumbnailUrl})`,
 			metaLines.join('\n\n'),
-			summaryText,
-		];
+			summaryText
+		);
 
 		if (includeDescription && transcript.description && transcript.description.trim()) {
 			summaryParts.push(`## Description\n\n${transcript.description.trim()}`);

@@ -370,3 +370,5 @@ export const DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE = true;
 export const DEFAULT_ADD_TAGS_TO_FRONTMATTER = true;
 export const DEFAULT_ADD_INLINE_TAGS = false;
 export const DEFAULT_SET_NOTE_TITLE_FROM_VIDEO = true;
+export const DEFAULT_INCLUDE_TITLE_IN_BODY = false;
+export const DEFAULT_LINK_TECHNICAL_TERMS = true;

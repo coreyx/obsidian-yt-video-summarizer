@@ -313,3 +313,18 @@ export function sanitizeTag(tag: string): string {
 		.replace(/[-\/]+/g, (m) => (m.includes('/') ? '/' : '-'))
 		.replace(/^[\-\/]+|[\-\/]+$/g, '');
 }
+
+/**
+ * Strips Obsidian [[wikilinks]] from terms in the "Technical terms" section,
+ * keeping the terms themselves (e.g. - **[[Term]]**: ... becomes - **Term**: ...).
+ */
+export function stripWikilinksFromTechnicalTerms(content: string): string {
+	const sectionRegex = /(^|\r?\n)(#{1,4}\s+[^\r\n]*technical\s+term[^\r\n]*\r?\n)([\s\S]*?)(?=(?:\r?\n#{1,4}\s+|\r?\n---\s*|$))/gi;
+	return content.replace(sectionRegex, (match, prefix, heading, body) => {
+		const strippedBody = body.replace(
+			/\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g,
+			(_: string, target: string, display?: string) => display || target
+		);
+		return `${prefix}${heading}${strippedBody}`;
+	});
+}

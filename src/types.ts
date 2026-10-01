@@ -46,6 +46,8 @@ export interface StoredSettings {
 	addTagsToFrontmatter?: boolean;
 	addInlineTags?: boolean;
 	setNoteTitleFromVideo?: boolean;
+	includeTitleInBody?: boolean;
+	linkTechnicalTerms?: boolean;
 }
 
 /** Represents the plugin settings and provides methods to manage them */
@@ -120,6 +122,12 @@ export interface PluginSettings {
 
 	getSetNoteTitleFromVideo(): boolean;
 	updateSetNoteTitleFromVideo(value: boolean): void;
+
+	getIncludeTitleInBody(): boolean;
+	updateIncludeTitleInBody(value: boolean): void;
+
+	getLinkTechnicalTerms(): boolean;
+	updateLinkTechnicalTerms(value: boolean): void;
 
 	/**
 	 * Validates a model ID.

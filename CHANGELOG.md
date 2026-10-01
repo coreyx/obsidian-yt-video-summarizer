@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-30
+
+### Added
+- **Optional Note Body Title**: Made the `# Video Title` heading in the note body optional and turned it off by default, eliminating redundant titles since the video title is already placed in the note name and YAML frontmatter.
+- **Optional Wikilinks in Technical Terms**: Added a setting to turn Obsidian `[[wikilinks]]` generation on or off in the "Technical terms" section. Enabled by default. When disabled, technical terms are retained in bold text without wikilinks (`- **Term**: explanation`).
+
+---
+
 ## [1.5.1] - 2026-09-30
 
 ### Fixed

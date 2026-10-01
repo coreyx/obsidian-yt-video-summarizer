@@ -1,22 +1,26 @@
-# Release Notes - YouTube Video Summarizer v1.5.1
+# Release Notes - YouTube Video Summarizer v1.6.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.5.1 resolves an issue with OpenAI models where API calls failed with the error `"max_tokens is not supported with this model, use 'max_completion_tokens' instead"`.
+YouTube Video Summarizer v1.6.0 introduces cleaner note formatting options, giving you full control over note body titles and technical term linking:
 
-* 🛠️ **OpenAI `max_completion_tokens` Migration**: Updated all OpenAI chat completion requests (`summarizeVideo`, `extractThumbnailText`, `generateTopics`) to use `max_completion_tokens` as required by OpenAI reasoning models and modern completions.
-* 🧠 **Reasoning Model Parameter Safety**: Reasoning models (`o1`, `o3-mini`, `o4-mini`, etc.) strictly reject `temperature`; this parameter is now automatically omitted for reasoning models to prevent API errors.
-* 🔄 **Custom Server / Proxy Fallback**: Built-in automatic fallback retries with `max_tokens` if a custom or older OpenAI-compatible proxy rejects `max_completion_tokens`.
-* 🔒 **Provider Isolation**: Ensured Anthropic Claude and Google Gemini providers remain untouched, using their appropriate native parameters.
+* 📝 **Optional Note Body Title**: Disabled by default! Because the sanitized video title is already placed in the note filename and in the YAML frontmatter (`title:`), the `# Video Title` heading in the note body is now optional to eliminate redundancy.
+* 🔗 **Optional Wikilinks in Technical Terms**: Added a setting to toggle Obsidian `[[wikilinks]]` generation in the "Technical terms" section. Enabled by default. When toggled off, terms are kept in bold text without wikilinks (`- **Term**: explanation`).
+* ⚙️ **Configurable in Settings**: Both new options can be toggled at any time from the plugin settings tab.
 
 ---
 
-## What's Changed in v1.5.1
+## What's Changed in v1.6.0
 
-### 🛠️ OpenAI Model Parameter Fixes
-* **Resolved `max_tokens` Deprecation**: Modern OpenAI models (including `o1`, `o3-mini`, `o4-mini`, and recent GPT completions) require `max_completion_tokens` instead of `max_tokens`. All OpenAI completion endpoints have been updated.
-* **Reasoning Temperature Handling**: OpenAI reasoning models throw an error when passed a `temperature` parameter. The provider now inspects the active model and omits `temperature` for reasoning models while preserving user-configured temperature for standard models.
-* **Backward-Compatible Proxy Fallback**: Added helper logic to intercept proxy/server rejection of `max_completion_tokens` and seamlessly fall back to `max_tokens`.
+### 📝 Optional Note Body Title
+* Previously, the note body always began with `# Video Title`. Since notes are automatically renamed to the video title and include `title` in frontmatter, this heading was redundant for most workflows.
+* You can now re-enable the title heading in settings if desired via **Include title in note body**.
+
+### 🔗 Optional Technical Term Wikilinks
+* The plugin can now generate technical terms with or without Obsidian `[[wikilinks]]`.
+* When **Generate wikilinks for technical terms** is turned off:
+  * The prompt automatically instructs the AI model not to use wikilinks.
+  * A post-processor cleans any remaining `[[` and `]]` brackets from terms in the Technical terms section while preserving the term name in bold and leaving other sections untouched.
 
 ---
 

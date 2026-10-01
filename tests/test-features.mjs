@@ -772,6 +772,148 @@ assert.strictEqual(fallbackResult.max_tokens, 1000);
 assert.strictEqual(fallbackResult.max_completion_tokens, undefined);
 console.log('✓ OpenAI parameter construction passed');
 
+// Test 15: Optional note body title
+console.log('Testing optional note body title...');
+function generateSummaryHelper(transcript, thumbnailUrl, url, summaryText, inlineTags, includeDescription, includeTitle) {
+	const metaLines = [
+		`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
+	];
+
+	if (inlineTags && inlineTags.length > 0) {
+		metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
+	}
+
+	const summaryParts = [];
+	if (includeTitle && transcript.title) {
+		summaryParts.push(`# ${transcript.title}`);
+	}
+
+	summaryParts.push(
+		`![Thumbnail](${thumbnailUrl})`,
+		metaLines.join('\n\n'),
+		summaryText
+	);
+
+	if (includeDescription && transcript.description && transcript.description.trim()) {
+		summaryParts.push(`## Description\n\n${transcript.description.trim()}`);
+	}
+
+	return summaryParts.join('\n\n');
+}
+
+const mockTranscript = {
+	title: 'Sample Video Title',
+	author: 'Sample Author',
+	channelUrl: 'https://youtube.com/@sample',
+	description: 'Sample description text',
+};
+
+// Default behavior: includeTitle = false
+const bodyWithoutTitle = generateSummaryHelper(
+	mockTranscript,
+	'https://img.youtube.com/vi/123/default.jpg',
+	'https://youtube.com/watch?v=123',
+	'Summary content goes here',
+	undefined,
+	true,
+	false
+);
+assert.strictEqual(bodyWithoutTitle.startsWith('# Sample Video Title'), false);
+assert.strictEqual(bodyWithoutTitle.includes('# Sample Video Title'), false);
+assert.strictEqual(bodyWithoutTitle.startsWith('![Thumbnail](https://img.youtube.com/vi/123/default.jpg)'), true);
+
+// Enabled behavior: includeTitle = true
+const bodyWithTitle = generateSummaryHelper(
+	mockTranscript,
+	'https://img.youtube.com/vi/123/default.jpg',
+	'https://youtube.com/watch?v=123',
+	'Summary content goes here',
+	undefined,
+	true,
+	true
+);
+assert.strictEqual(bodyWithTitle.startsWith('# Sample Video Title'), true);
+console.log('✓ Optional note body title passed');
+
+// Test 16: Optional wikilinks in technical terms
+console.log('Testing optional wikilinks in technical terms...');
+function stripWikilinksFromTechnicalTerms(content) {
+	const sectionRegex = /(^|\r?\n)(#{1,4}\s+[^\r\n]*technical\s+term[^\r\n]*\r?\n)([\s\S]*?)(?=(?:\r?\n#{1,4}\s+|\r?\n---\s*|$))/gi;
+	return content.replace(sectionRegex, (match, prefix, heading, body) => {
+		const strippedBody = body.replace(
+			/\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g,
+			(_, target, display) => display || target
+		);
+		return `${prefix}${heading}${strippedBody}`;
+	});
+}
+
+// Case 1: Standard wikilinks in technical terms with wikilinks in summary
+const sampleSummary = [
+	'## Summary',
+	'This discusses [[AI]] and [[Neural Networks]].',
+	'',
+	'## Key points',
+	'- Key point 1',
+	'',
+	'## Technical terms',
+	'- **[[Machine Learning]]**: A subset of AI.',
+	'- **[[Transformer|Transformer Architecture]]**: Attention-based model.',
+	'- [[Backpropagation]]: Optimization algorithm.',
+	'',
+	'## Conclusion',
+	'In conclusion, [[AI]] continues to evolve.'
+].join('\n');
+
+const stripped = stripWikilinksFromTechnicalTerms(sampleSummary);
+
+// Terms should be preserved without [[ ]]
+assert.strictEqual(stripped.includes('- **Machine Learning**: A subset of AI.'), true);
+assert.strictEqual(stripped.includes('- **Transformer Architecture**: Attention-based model.'), true);
+assert.strictEqual(stripped.includes('- Backpropagation: Optimization algorithm.'), true);
+
+// Outside sections should maintain their wikilinks
+assert.strictEqual(stripped.includes('This discusses [[AI]] and [[Neural Networks]].'), true);
+assert.strictEqual(stripped.includes('In conclusion, [[AI]] continues to evolve.'), true);
+
+// Case 2: Technical terms at the end of the text (no trailing section)
+const sampleEndingTerms = [
+	'## Summary',
+	'Summary text.',
+	'',
+	'## Technical terms',
+	'- **[[Kubernetes]]**: Container platform.',
+	'- **[[Docker]]**: Container engine.'
+].join('\n');
+
+const strippedEnding = stripWikilinksFromTechnicalTerms(sampleEndingTerms);
+assert.strictEqual(strippedEnding.includes('- **Kubernetes**: Container platform.'), true);
+assert.strictEqual(strippedEnding.includes('- **Docker**: Container engine.'), true);
+assert.strictEqual(strippedEnding.includes('[['), false);
+
+// Case 3: Prompt adaptation logic
+function adaptPromptForWikilinks(basePrompt, linkTerms) {
+	if (!linkTerms) {
+		let prompt = basePrompt
+			.replace(/\*\*\[\[Term 1\]\]\*\*/g, '**Term 1**')
+			.replace(/\*\*\[\[Term 2\]\]\*\*/g, '**Term 2**')
+			.replace(/\[\[Term (\d+)\]\]/g, 'Term $1');
+		prompt += '\n\nImportant formatting rule: In the "Technical terms" section, do NOT use wikilinks (do NOT enclose terms in [[ ]]). Format terms as bold text only (e.g. - **Term**: explanation).';
+		return prompt;
+	}
+	return basePrompt;
+}
+
+const mockDefaultPrompt = '## Technical terms\n- **[[Term 1]]**: [Explanation 1]\n- **[[Term 2]]**: [Explanation 2]';
+const adaptedEnabled = adaptPromptForWikilinks(mockDefaultPrompt, true);
+assert.strictEqual(adaptedEnabled.includes('**[[Term 1]]**'), true);
+
+const adaptedDisabled = adaptPromptForWikilinks(mockDefaultPrompt, false);
+assert.strictEqual(adaptedDisabled.includes('**[[Term 1]]**'), false);
+assert.strictEqual(adaptedDisabled.includes('**Term 1**'), true);
+assert.strictEqual(adaptedDisabled.includes('do NOT use wikilinks'), true);
+console.log('✓ Optional wikilinks in technical terms passed');
+
 console.log('\nAll tests passed successfully!');
 
 

@@ -13,6 +13,8 @@ import {
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
     DEFAULT_ADD_INLINE_TAGS,
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+    DEFAULT_INCLUDE_TITLE_IN_BODY,
+    DEFAULT_LINK_TECHNICAL_TERMS,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
@@ -39,6 +41,8 @@ export class SettingsManager implements PluginSettings {
             addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
             addInlineTags: DEFAULT_ADD_INLINE_TAGS,
             setNoteTitleFromVideo: DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+            includeTitleInBody: DEFAULT_INCLUDE_TITLE_IN_BODY,
+            linkTechnicalTerms: DEFAULT_LINK_TECHNICAL_TERMS,
         };
     }
 
@@ -68,6 +72,8 @@ export class SettingsManager implements PluginSettings {
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
+                includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
+                linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -95,9 +101,12 @@ export class SettingsManager implements PluginSettings {
                 temperature: rawSettings.temperature ?? this.settings.temperature,
                 includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
+                includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
+                linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
             };
 
             await this.saveData();
@@ -368,6 +377,24 @@ export class SettingsManager implements PluginSettings {
 
     updateSetNoteTitleFromVideo(value: boolean): void {
         this.settings.setNoteTitleFromVideo = value;
+        this.saveData();
+    }
+
+    getIncludeTitleInBody(): boolean {
+        return this.settings.includeTitleInBody ?? DEFAULT_INCLUDE_TITLE_IN_BODY;
+    }
+
+    updateIncludeTitleInBody(value: boolean): void {
+        this.settings.includeTitleInBody = value;
+        this.saveData();
+    }
+
+    getLinkTechnicalTerms(): boolean {
+        return this.settings.linkTechnicalTerms ?? DEFAULT_LINK_TECHNICAL_TERMS;
+    }
+
+    updateLinkTechnicalTerms(value: boolean): void {
+        this.settings.linkTechnicalTerms = value;
         this.saveData();
     }
 
