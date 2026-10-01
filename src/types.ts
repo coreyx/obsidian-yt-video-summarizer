@@ -42,6 +42,7 @@ export interface StoredSettings {
 	temperature: number;
 	includeVideoDescription?: boolean;
 	addTopicsAsTags?: boolean;
+	detectTagsInDescriptionAndTitle?: boolean;
 	addTagsToFrontmatter?: boolean;
 	addInlineTags?: boolean;
 	setNoteTitleFromVideo?: boolean;
@@ -108,6 +109,9 @@ export interface PluginSettings {
 	getAddTopicsAsTags(): boolean;
 	updateAddTopicsAsTags(value: boolean): void;
 
+	getDetectTagsInDescriptionAndTitle(): boolean;
+	updateDetectTagsInDescriptionAndTitle(value: boolean): void;
+
 	getAddTagsToFrontmatter(): boolean;
 	updateAddTagsToFrontmatter(value: boolean): void;
 
@@ -125,6 +129,17 @@ export interface PluginSettings {
 	 * @returns True if the model ID is valid, false otherwise.
 	 */
 	validateModelId(modelId: string): boolean;
+}
+
+/** Video metadata without captions or transcripts */
+export interface VideoMetadata {
+	url: string;
+	videoId: string;
+	title: string;
+	author: string;
+	channelUrl: string;
+	channelUsername?: string;
+	description?: string;
 }
 
 /** Represents a single line of video transcript with timing information */

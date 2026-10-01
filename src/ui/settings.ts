@@ -281,6 +281,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Detect tags in title and description
+        new Setting(containerEl)
+            .setName('Detect tags in video title and description')
+            .setDesc('Extract hashtags from the YouTube video title and description and add them to frontmatter tags')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getDetectTagsInDescriptionAndTitle())
+                    .onChange(async (value) => {
+                        await this.settings.updateDetectTagsInDescriptionAndTitle(value);
+                    })
+            );
+
         // Tags in frontmatter
         new Setting(containerEl)
             .setName('Add tags to frontmatter')
@@ -302,6 +314,19 @@ export class SettingsTab extends PluginSettingTab {
                     .setValue(this.settings.getAddInlineTags())
                     .onChange(async (value) => {
                         await this.settings.updateAddInlineTags(value);
+                    })
+            );
+
+        // Upgrade previous notes
+        new Setting(containerEl)
+            .setName('Upgrade previous notes')
+            .setDesc('Re-process notes from YouTube videos to add all new frontmatter metadata (title, channel, handle, thumbnail, and vision OCR) without re-generating summaries or topic tags.')
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade Notes in Vault')
+                    .setCta()
+                    .onClick(async () => {
+                        await (this.plugin as any).upgradeVaultNotes();
                     })
             );
     }

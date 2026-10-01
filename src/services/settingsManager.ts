@@ -9,6 +9,7 @@ import {
     DEFAULT_TEMPERATURE,
     DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
     DEFAULT_ADD_TOPICS_AS_TAGS,
+    DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
     DEFAULT_ADD_INLINE_TAGS,
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
@@ -31,6 +32,7 @@ export class SettingsManager implements PluginSettings {
             temperature: DEFAULT_TEMPERATURE,
             includeVideoDescription: DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
             addTopicsAsTags: DEFAULT_ADD_TOPICS_AS_TAGS,
+            detectTagsInDescriptionAndTitle: DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
             addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
             addInlineTags: DEFAULT_ADD_INLINE_TAGS,
             setNoteTitleFromVideo: DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
@@ -59,6 +61,7 @@ export class SettingsManager implements PluginSettings {
                 temperature: rawSettings.temperature ?? this.settings.temperature,
                 includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
@@ -326,6 +329,15 @@ export class SettingsManager implements PluginSettings {
 
     updateAddTopicsAsTags(value: boolean): void {
         this.settings.addTopicsAsTags = value;
+        this.saveData();
+    }
+
+    getDetectTagsInDescriptionAndTitle(): boolean {
+        return this.settings.detectTagsInDescriptionAndTitle ?? DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE;
+    }
+
+    updateDetectTagsInDescriptionAndTitle(value: boolean): void {
+        this.settings.detectTagsInDescriptionAndTitle = value;
         this.saveData();
     }
 

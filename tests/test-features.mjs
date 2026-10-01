@@ -267,4 +267,244 @@ assert.deepStrictEqual(parsedTopics, [
 ]);
 console.log('✓ parseTopics passed');
 
+// Test 7: extractTagsFromText
+function extractTagsFromText(text) {
+	if (!text) return [];
+	const tagRegex = /(?:^|\s)#([\p{L}\p{N}_\-]+)/gu;
+	const tags = [];
+	let match;
+	while ((match = tagRegex.exec(text)) !== null) {
+		const rawTag = match[1];
+		if (/[a-zA-Z\p{L}]/.test(rawTag)) {
+			const sanitized = sanitizeTag(rawTag);
+			if (sanitized && sanitized.length > 1) {
+				tags.push(sanitized);
+			}
+		}
+	}
+	return Array.from(new Set(tags));
+}
+
+console.log('Testing extractTagsFromText...');
+const titleWithTags = 'Next.js 15 Full Course #NextJS #React #web_dev #123';
+const titleTags = extractTagsFromText(titleWithTags);
+assert.deepStrictEqual(titleTags, ['nextjs', 'react', 'web-dev']);
+
+const descWithTags = `In this video we cover:
+- React Server Components #ServerComponents
+- AI SDKs #ArtificialIntelligence #AI
+Don't forget to like and subscribe! ## NotATag #123`;
+const descTags = extractTagsFromText(descWithTags);
+assert.deepStrictEqual(descTags, ['servercomponents', 'artificialintelligence', 'ai']);
+console.log('✓ extractTagsFromText passed');
+
+// Test 8: extractYouTubeUrlFromNote
+function extractYouTubeUrlFromNote(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (fmMatch) {
+		const videoUrlMatch = fmMatch[1].match(/^video_url:\s*["']?([^"'\r\n]+)["']?/m);
+		if (videoUrlMatch && videoUrlMatch[1].trim()) {
+			return videoUrlMatch[1].trim();
+		}
+	}
+
+	const mdLinkMatch = content.match(
+		/\[[^\]]*\]\((https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?[^\s\)]*v=|embed\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}[^\s\)]*)\)/i
+	);
+	if (mdLinkMatch) {
+		return mdLinkMatch[1];
+	}
+
+	const urlMatch = content.match(
+		/https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?[^\s"'\)<>]*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}[^\s"'\)<>]*)/i
+	);
+	if (urlMatch) {
+		return urlMatch[0];
+	}
+
+	return null;
+}
+
+console.log('Testing extractYouTubeUrlFromNote...');
+const noteWithFm = `---
+title: "Old Video"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+---
+# Content`;
+assert.strictEqual(
+	extractYouTubeUrlFromNote(noteWithFm),
+	'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+);
+
+const noteWithMdLink = `# My Video
+👤 [Author](https://youtube.com/@channel)  🔗 [Watch video](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+Summary text...`;
+assert.strictEqual(
+	extractYouTubeUrlFromNote(noteWithMdLink),
+	'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+);
+
+const noteWithShorts = `Check this out: https://youtu.be/dQw4w9WgXcQ nice!`;
+assert.strictEqual(
+	extractYouTubeUrlFromNote(noteWithShorts),
+	'https://youtu.be/dQw4w9WgXcQ'
+);
+
+const noteWithNoUrl = `# Just a regular note with no links`;
+assert.strictEqual(extractYouTubeUrlFromNote(noteWithNoUrl), null);
+console.log('✓ extractYouTubeUrlFromNote passed');
+
+// Test 9: isNoteMissingFrontmatter
+function isNoteMissingFrontmatter(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return true;
+
+	const yaml = fmMatch[1];
+	const requiredFields = [
+		'title:',
+		'channel_name:',
+		'channel_username:',
+		'channel_url:',
+		'video_url:',
+		'thumbnail:',
+		'thumbnail_text:',
+	];
+
+	return requiredFields.some(field => !yaml.includes(field));
+}
+
+console.log('Testing isNoteMissingFrontmatter...');
+const legacyNote = `# Video Note
+👤 [Author](...)  🔗 [Watch video](...)`;
+assert.strictEqual(isNoteMissingFrontmatter(legacyNote), true);
+
+const partialFmNote = `---
+title: "Some Title"
+video_url: "https://..."
+---
+# Video Note`;
+assert.strictEqual(isNoteMissingFrontmatter(partialFmNote), true);
+
+const completeFmNote = `---
+title: "Full"
+channel_name: "Author"
+channel_username: "@author"
+channel_url: "https://..."
+video_url: "https://..."
+thumbnail: "https://..."
+thumbnail_text: "TEXT"
+---
+# Video Note`;
+assert.strictEqual(isNoteMissingFrontmatter(completeFmNote), false);
+console.log('✓ isNoteMissingFrontmatter passed');
+
+// Test 10: mergeFrontmatter with excludeTags (for upgrades)
+function mergeFrontmatterWithExclude(rawYaml, data, options) {
+	const lines = rawYaml.split(/\r?\n/);
+	const updatedKeys = new Set();
+	const newLines = [];
+
+	const targetKeys = {
+		title: `title: ${JSON.stringify(data.title)}`,
+		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
+		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
+		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
+		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
+		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
+		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
+	};
+
+	let inTagsBlock = false;
+	const existingTags = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
+
+		if (keyMatch) {
+			const key = keyMatch[1];
+
+			if (key === 'tags') {
+				inTagsBlock = true;
+				updatedKeys.add('tags');
+				const inlineVal = keyMatch[2].trim();
+				if (inlineVal.startsWith('[') && inlineVal.endsWith(']')) {
+					const parsed = inlineVal
+						.slice(1, -1)
+						.split(',')
+						.map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+						.filter(Boolean);
+					existingTags.push(...parsed);
+				} else if (inlineVal) {
+					existingTags.push(inlineVal.replace(/^['"]|['"]$/g, '').trim());
+				}
+				continue;
+			} else {
+				inTagsBlock = false;
+			}
+
+			if (key in targetKeys) {
+				newLines.push(targetKeys[key]);
+				updatedKeys.add(key);
+				continue;
+			}
+		}
+
+		if (inTagsBlock) {
+			const itemMatch = line.match(/^\s*-\s+(.*)$/);
+			if (itemMatch) {
+				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
+				continue;
+			} else if (line.trim().length > 0) {
+				inTagsBlock = false;
+			}
+		}
+
+		newLines.push(line);
+	}
+
+	for (const [key, line] of Object.entries(targetKeys)) {
+		if (!updatedKeys.has(key)) {
+			newLines.push(line);
+		}
+	}
+
+	if (options?.excludeTags) {
+		if (existingTags.length > 0) {
+			newLines.push('tags:');
+			for (const tag of existingTags.map(sanitizeTag).filter(Boolean)) {
+				newLines.push(`  - ${tag}`);
+			}
+		}
+	} else {
+		const combinedTags = Array.from(
+			new Set([...existingTags, ...(data.tags || [])])
+		).map(sanitizeTag).filter(Boolean);
+
+		if (combinedTags.length > 0) {
+			newLines.push('tags:');
+			for (const tag of combinedTags) {
+				newLines.push(`  - ${tag}`);
+			}
+		}
+	}
+
+	return newLines.join('\n').trim();
+}
+
+console.log('Testing mergeFrontmatter with excludeTags...');
+const oldYamlWithTags = `tags:
+  - my-custom-tag
+title: "Old Title"`;
+
+const upgraded = mergeFrontmatterWithExclude(oldYamlWithTags, testData, { excludeTags: true });
+// Should preserve existing tag
+assert(upgraded.includes('tags:\n  - my-custom-tag'));
+// Should NOT include new testData tags (pop-culture, 80s-music)
+assert(!upgraded.includes('80s-music'));
+// Should add new fields
+assert(upgraded.includes('channel_username: "@RickAstleyYT"'));
+assert(upgraded.includes('thumbnail_text: "RICK ASTLEY OFFICIAL MUSIC VIDEO"'));
+console.log('✓ mergeFrontmatter with excludeTags passed');
+
 console.log('\nAll tests passed successfully!');

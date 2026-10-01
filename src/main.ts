@@ -12,8 +12,13 @@ import { AIModelProvider } from './types';
 import {
 	applyFrontmatter,
 	buildFrontmatter,
+	extractTagsFromText,
+	extractYouTubeUrlFromNote,
 	FrontmatterData,
+	isNoteMissingFrontmatter,
 	sanitizeFileName,
+	sanitizeTag,
+	updateNoteContentWithFrontmatter,
 } from './utils/frontmatter';
 
 /**
@@ -142,6 +147,24 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			},
 		});
+
+		// Command to upgrade the current note's frontmatter
+		this.addCommand({
+			id: 'upgrade-youtube-note',
+			name: 'Upgrade current note with YouTube frontmatter',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.upgradeCurrentNote(editor, view);
+			},
+		});
+
+		// Command to upgrade all YouTube notes in the vault
+		this.addCommand({
+			id: 'upgrade-all-youtube-notes',
+			name: 'Upgrade all YouTube notes in vault',
+			callback: async () => {
+				await this.upgradeVaultNotes();
+			},
+		});
 	}
 
 	/**
@@ -232,15 +255,26 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				return;
 			}
 
-			// Step 4: Generate topic tags using semantic analysis if enabled
-			let topics: string[] = [];
+			// Step 4: Extract tags from title & description and/or generate topic tags
+			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+				? Array.from(new Set([
+						...extractTagsFromText(transcript.title),
+						...extractTagsFromText(transcript.description || ''),
+				  ]))
+				: [];
+
+			let topicTags: string[] = [];
 			if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
 				try {
-					topics = await this.provider.generateTopics(summary);
+					topicTags = await this.provider.generateTopics(summary);
 				} catch (e) {
 					console.warn('Failed to generate topic tags:', e);
 				}
 			}
+
+			const allTags = Array.from(new Set([...detectedTags, ...topicTags]))
+				.map(sanitizeTag)
+				.filter(Boolean);
 
 			// Step 5: Optionally rename the note based on the sanitized video title
 			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
@@ -250,8 +284,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// Step 6: Prepare tags for body and frontmatter
 			const addInlineTags = this.settings.getAddInlineTags();
 			const addTagsToFrontmatter = this.settings.getAddTagsToFrontmatter();
-			const inlineTags = addInlineTags ? topics : undefined;
-			const frontmatterTags = addTagsToFrontmatter ? topics : undefined;
+			const inlineTags = addInlineTags ? allTags : undefined;
+			const frontmatterTags = addTagsToFrontmatter ? allTags : undefined;
 
 			// Step 7: Create the summary content for the body
 			const bodyContent = this.generateSummary(
@@ -320,6 +354,161 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			} catch (error) {
 				console.error('Failed to rename note:', error);
 			}
+		}
+	}
+
+	/**
+	 * Upgrades the currently active note by fetching missing YouTube metadata
+	 * and updating frontmatter without re-running summary inference or generating tags.
+	 */
+	public async upgradeCurrentNote(editor: Editor, view: MarkdownView): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		const content = editor.getValue();
+		const url = extractYouTubeUrlFromNote(content);
+
+		if (!url) {
+			new Notice('No YouTube video URL found in this note.');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice('Upgrading note with YouTube metadata...');
+
+			const metadata = await this.youtubeService.fetchVideoMetadata(url);
+			const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+
+			let thumbnailText = '';
+			if (this.provider?.extractThumbnailText) {
+				try {
+					const buffer = await YouTubeService.fetchThumbnailBuffer(metadata.videoId);
+					if (buffer) {
+						thumbnailText = await this.provider.extractThumbnailText(
+							arrayBufferToBase64(buffer),
+							'image/jpeg'
+						);
+					}
+				} catch (e) {
+					console.warn('Thumbnail text extraction skipped during upgrade:', e);
+				}
+			}
+
+			const fmData: FrontmatterData = {
+				title: metadata.title,
+				channel_name: metadata.author,
+				channel_username: metadata.channelUsername || '',
+				channel_url: metadata.channelUrl,
+				video_url: metadata.url,
+				thumbnail: thumbnailUrl,
+				thumbnail_text: thumbnailText,
+			};
+
+			applyFrontmatter(editor, fmData, { excludeTags: true });
+			new Notice('Note frontmatter upgraded successfully!');
+		} catch (error) {
+			new Notice(`Failed to upgrade note: ${error.message}`);
+			console.error('Failed to upgrade note:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Scans the vault for previous notes containing YouTube videos that are missing
+	 * the new frontmatter, and upgrades them without re-generating summaries or tags.
+	 */
+	public async upgradeVaultNotes(): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice('Scanning vault for YouTube notes to upgrade...');
+
+			const files = this.app.vault.getMarkdownFiles();
+			const candidates: { file: TFile; url: string }[] = [];
+
+			for (const file of files) {
+				const content = await this.app.vault.read(file);
+				if (isNoteMissingFrontmatter(content)) {
+					const url = extractYouTubeUrlFromNote(content);
+					if (url) {
+						candidates.push({ file, url });
+					}
+				}
+			}
+
+			if (candidates.length === 0) {
+				new Notice('All YouTube notes in your vault already have up-to-date frontmatter!');
+				return;
+			}
+
+			new Notice(`Found ${candidates.length} note(s) to upgrade. Starting upgrade...`);
+
+			let successCount = 0;
+			let failCount = 0;
+
+			for (let i = 0; i < candidates.length; i++) {
+				const { file, url } = candidates[i];
+				try {
+					const metadata = await this.youtubeService.fetchVideoMetadata(url);
+					const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+
+					let thumbnailText = '';
+					if (this.provider?.extractThumbnailText) {
+						try {
+							const buffer = await YouTubeService.fetchThumbnailBuffer(metadata.videoId);
+							if (buffer) {
+								thumbnailText = await this.provider.extractThumbnailText(
+									arrayBufferToBase64(buffer),
+									'image/jpeg'
+								);
+							}
+						} catch (e) {
+							console.warn(`Thumbnail OCR skipped for ${file.path}:`, e);
+						}
+					}
+
+					const fmData: FrontmatterData = {
+						title: metadata.title,
+						channel_name: metadata.author,
+						channel_username: metadata.channelUsername || '',
+						channel_url: metadata.channelUrl,
+						video_url: metadata.url,
+						thumbnail: thumbnailUrl,
+						thumbnail_text: thumbnailText,
+					};
+
+					const currentContent = await this.app.vault.read(file);
+					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, {
+						excludeTags: true,
+					});
+					await this.app.vault.modify(file, updatedContent);
+					successCount++;
+				} catch (error) {
+					console.error(`Failed to upgrade note ${file.path}:`, error);
+					failCount++;
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			new Notice(
+				`Upgrade complete! Successfully upgraded ${successCount} note(s)${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+			);
+		} catch (error) {
+			new Notice(`Upgrade failed: ${error.message}`);
+			console.error('Vault note upgrade failed:', error);
+		} finally {
+			this.isProcessing = false;
 		}
 	}
 
