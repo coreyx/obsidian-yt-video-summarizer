@@ -269,10 +269,10 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // Topic tags
+        // Semantic Topic tags
         new Setting(containerEl)
-            .setName('Generate topic tags')
-            .setDesc('Use semantic analysis of the summary to generate relevant topic tags')
+            .setName('Generate semantic topic tags')
+            .setDesc('Use AI semantic analysis of the summary to generate relevant topic tags')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getAddTopicsAsTags())
