@@ -58,4 +58,71 @@ export class AnthropicProvider implements AIModelProvider {
             throw error;
         }
     }
+
+    async extractThumbnailText(imageBase64: string, mimeType = 'image/jpeg'): Promise<string> {
+        try {
+            const mediaType = (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeType)
+                ? mimeType
+                : 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+            const response = await this.client.messages.create({
+                model: this.model,
+                max_tokens: 200,
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'image',
+                                source: {
+                                    type: 'base64',
+                                    media_type: mediaType,
+                                    data: imageBase64
+                                }
+                            },
+                            {
+                                type: 'text',
+                                text: "Extract and transcribe all text visible in this YouTube video thumbnail image. Return ONLY the transcribed text without quotes, markdown headers, or introductory text. If no text is visible, reply with nothing."
+                            }
+                        ]
+                    }
+                ]
+            });
+            if (response.content[0]?.type === 'text') {
+                return response.content[0].text.trim();
+            }
+            return '';
+        } catch (error) {
+            console.warn('Anthropic thumbnail vision extraction failed or not supported by current model:', error);
+            return '';
+        }
+    }
+
+    async generateTopics(summaryText: string): Promise<string[]> {
+        try {
+            const prompt = `Based on the following video summary, generate 3 to 7 concise topic tags representing the key subjects. Return ONLY a comma-separated list of tags in lowercase (e.g. artificial-intelligence, physics, productivity). Do not include hashtags (#) or explanation.\n\nSummary:\n${summaryText.slice(0, 4000)}`;
+            const response = await this.client.messages.create({
+                model: this.model,
+                max_tokens: 100,
+                temperature: 0.2,
+                messages: [{ role: 'user', content: prompt }]
+            });
+            if (response.content[0]?.type === 'text') {
+                return this.parseTopics(response.content[0].text);
+            }
+            return [];
+        } catch (error) {
+            console.warn('Anthropic topic tag generation failed:', error);
+            return [];
+        }
+    }
+
+    private parseTopics(text: string): string[] {
+        return Array.from(new Set(
+            text
+                .split(/[,\n]/)
+                .map(t => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-\/]/gi, ''))
+                .filter(t => t.length > 0 && !/^\d+$/.test(t))
+        ));
+    }
 }

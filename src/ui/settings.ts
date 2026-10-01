@@ -244,6 +244,66 @@ export class SettingsTab extends PluginSettingTab {
                         await this.settings.updateTemperature(Number(value));
                     })
             );
+
+        // Set note title from video title
+        new Setting(containerEl)
+            .setName('Set note title from video')
+            .setDesc('Automatically rename the active note to the sanitized YouTube video title')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getSetNoteTitleFromVideo())
+                    .onChange(async (value) => {
+                        await this.settings.updateSetNoteTitleFromVideo(value);
+                    })
+            );
+
+        // Include video description
+        new Setting(containerEl)
+            .setName('Include video description')
+            .setDesc('Include the YouTube video description and links in the note body')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getIncludeVideoDescription())
+                    .onChange(async (value) => {
+                        await this.settings.updateIncludeVideoDescription(value);
+                    })
+            );
+
+        // Topic tags
+        new Setting(containerEl)
+            .setName('Generate topic tags')
+            .setDesc('Use semantic analysis of the summary to generate relevant topic tags')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getAddTopicsAsTags())
+                    .onChange(async (value) => {
+                        await this.settings.updateAddTopicsAsTags(value);
+                    })
+            );
+
+        // Tags in frontmatter
+        new Setting(containerEl)
+            .setName('Add tags to frontmatter')
+            .setDesc('Add generated tags to the YAML frontmatter')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getAddTagsToFrontmatter())
+                    .onChange(async (value) => {
+                        await this.settings.updateAddTagsToFrontmatter(value);
+                    })
+            );
+
+        // Inline tags
+        new Setting(containerEl)
+            .setName('Add inline tags')
+            .setDesc('Add generated tags inline in the note body (**Tags:** #tag1 #tag2)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getAddInlineTags())
+                    .onChange(async (value) => {
+                        await this.settings.updateAddInlineTags(value);
+                    })
+            );
     }
 
     private displaySponsorSection(containerEl: HTMLElement): void {
