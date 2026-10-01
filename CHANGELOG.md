@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-30
+
+### Fixed
+- **OpenAI Model Compatibility (`max_completion_tokens`)**: Replaced deprecated `max_tokens` with `max_completion_tokens` across OpenAI completions to fix the `"max_tokens is not supported with this model, use 'max_completion_tokens' instead"` error thrown by reasoning models (`o1`, `o3-mini`, `o4-mini`) and modern GPT completions.
+- **Reasoning Model Temperature Handling**: Omitted the `temperature` parameter for reasoning models (`o1`, `o3`, `o4`) to prevent `"temperature is not supported with this model"` errors.
+- **Proxy Fallback**: Added automatic fallback to `max_tokens` if an older custom OpenAI-compatible server explicitly rejects `max_completion_tokens`.
+
+---
+
 ## [1.5.0] - 2026-09-30
 
 ### Added

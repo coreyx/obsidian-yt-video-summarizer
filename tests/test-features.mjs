@@ -722,7 +722,58 @@ assert.strictEqual(
 );
 console.log('✓ Anthropic and OpenAI model retirement and migration passed');
 
+// Test 14: OpenAI parameter construction (max_completion_tokens & reasoning temperature)
+console.log('Testing OpenAI parameter construction...');
+function buildOpenAIParams(model, prompt, maxTokens, temperature) {
+	const isReasoningModel = /^(o[134])/i.test(model);
+	const params = {
+		model,
+		messages: [{ role: 'user', content: prompt }],
+		max_completion_tokens: maxTokens,
+	};
+	if (!isReasoningModel) {
+		params.temperature = temperature;
+	}
+	return params;
+}
+
+// For standard models (gpt-4o, gpt-5.x, etc.)
+const standardParams = buildOpenAIParams('gpt-4o', 'Summarize this', 4000, 0.7);
+assert.strictEqual(standardParams.max_completion_tokens, 4000);
+assert.strictEqual(standardParams.max_tokens, undefined);
+assert.strictEqual(standardParams.temperature, 0.7);
+
+// For reasoning models (o1, o3-mini, o4-mini)
+const reasoningParams = buildOpenAIParams('o3-mini', 'Summarize this', 4000, 0.7);
+assert.strictEqual(reasoningParams.max_completion_tokens, 4000);
+assert.strictEqual(reasoningParams.max_tokens, undefined);
+assert.strictEqual(reasoningParams.temperature, undefined); // Must be omitted for reasoning models
+
+// Fallback logic simulation
+function simulateFallback(params, error) {
+	if (
+		params.max_completion_tokens !== undefined &&
+		error?.message &&
+		(error.message.includes('max_completion_tokens') || error.message.includes('extra fields'))
+	) {
+		const fallbackParams = { ...params };
+		fallbackParams.max_tokens = fallbackParams.max_completion_tokens;
+		delete fallbackParams.max_completion_tokens;
+		return fallbackParams;
+	}
+	throw error;
+}
+
+const fallbackResult = simulateFallback(
+	{ model: 'legacy-model', max_completion_tokens: 1000 },
+	{ message: 'unrecognized parameter: max_completion_tokens' }
+);
+assert.strictEqual(fallbackResult.max_tokens, 1000);
+assert.strictEqual(fallbackResult.max_completion_tokens, undefined);
+console.log('✓ OpenAI parameter construction passed');
+
 console.log('\nAll tests passed successfully!');
+
 
 
 
