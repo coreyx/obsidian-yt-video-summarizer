@@ -1,54 +1,40 @@
-# Release Notes - YouTube Video Summarizer v1.4.0
+# Release Notes - YouTube Video Summarizer v1.5.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.4.0 brings folder-targeted note upgrades, the latest Google Gemini 3.x model generation, and graceful model retirement with automatic migration:
+YouTube Video Summarizer v1.5.0 brings a comprehensive model upgrade for **Anthropic Claude** and **OpenAI**, alongside a universal retirement cleanup and auto-migration system across all built-in providers:
 
-* 📁 **Folder-Targeted Note Upgrades**: Upgrade all YouTube notes within any selected folder and its subfolders via right-click File Explorer context menu or interactive Command Palette search.
-* 🤖 **Updated Gemini 3.x Lineup**: Added Google's latest flagship models, including **Gemini 3.8 Flash** (new recommended default), **Gemini 3.5 Flash**, **Gemini 3.5 Flash-Lite**, **Gemini 3.1 Pro**, and **Gemini 3.1 Flash-Lite**.
-* 🛡️ **Model Retirement & Auto-Migration**: Cleanly retired shut down models (`gemini-2.0-flash` and `gemini-2.0-flash-lite`), automatically pruning them from settings and migrating active configurations to `gemini-3.8-flash` to prevent API errors.
-* 📄 **Rich YAML Frontmatter**: Automatically populates note frontmatter with video title, channel name, channel username/handle, channel URL, video URL, thumbnail URL, vision OCR text, and topic tags.
-* 👁️ **Multimodal Thumbnail Text Recognition**: Concurrently transcribes text overlays and headlines directly from video thumbnails into `thumbnail_text`.
-* 📝 **Video Description Preservation**: Preserves the complete YouTube video description and external links directly in the note body under `## Description`.
+* 🧠 **Anthropic Claude 5.5 & 5.1 Generation**: Support for **Claude Sonnet 5.5** (new Anthropic recommended default), **Claude Opus 5.5**, **Claude Fable 5.1**, **Claude Sonnet 5**, and **Claude Opus 5**.
+* ⚡ **OpenAI GPT-6 & GPT-5.6 Series**: Added **GPT-6 (Astra)** and the **GPT-5.6 series** (**Sol**, **Terra**, **Luna**) alongside existing multimodal and reasoning models.
+* 🛡️ **Universal Model Retirement & Auto-Migration**: Cleanly retired obsolete endpoints across Anthropic, OpenAI, and Gemini. If a user previously selected a shut-down model, it automatically migrates to a working model on startup to prevent API call failures.
+* 📁 **Folder-Targeted Note Upgrades**: Upgrade previous YouTube notes within any selected folder and its subfolders via right-click File Explorer context menu or interactive Command Palette search.
+* 🤖 **Gemini 3.8 Series**: Full support for Google's latest **Gemini 3.8 Flash** (plugin default), **Gemini 3.5**, and **Gemini 3.1** series.
 
 ---
 
-## What's New in v1.4.0
-
-### 📁 Folder-Targeted Note Upgrades
-Easily re-process and upgrade existing notes within any specific directory in your vault:
-* **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade YouTube notes in this folder**.
-* **Command Palette**: Run **`Upgrade YouTube notes in folder...`** (`Ctrl/Cmd + P`) and use fuzzy search to pick any folder in your vault.
-* **Settings Tab**: Convenient **`Upgrade in Folder...`** button next to **`Upgrade All in Vault`**.
-* **Non-Destructive & Safe**: Only inspects notes missing frontmatter properties, strictly avoiding re-generating summaries, running LLM text inference, or touching existing tags.
-
-### 🤖 Gemini 3.x Series & Model Retirement
-* **`gemini-3.8-flash` (New Default)**: Flagship production model optimized for speed, long-horizon software engineering, agentic workflows, and vision text recognition.
-* **`gemini-3.5-flash`**: Balanced price-performance model for multimodal summarization.
-* **`gemini-3.5-flash-lite`**: High-efficiency, cost-effective model designed for high-throughput tasks.
-* **`gemini-3.1-pro`**: Advanced reasoning model for complex or deep technical video content.
-* **`gemini-3.1-flash-lite`**: Lightweight, low-latency multimodal model.
-* **`gemini-3-pro-preview`**: Frontier preview model for complex reasoning and large context windows.
-* **Automatic Retirement & Migration**:
-  * Removed `gemini-2.0-flash` and `gemini-2.0-flash-lite` following Google's official service shutdown on June 1, 2026.
-  * Settings manager automatically prunes retired models and migrates any previously selected retired model to `Gemini:gemini-3.8-flash`.
+## What's New in v1.5.0
 
 ### 🧠 Anthropic Claude 5.5 & 5.1 Generation
-* **New Flagships**:
-  * `claude-sonnet-5-5` (Claude Sonnet 5.5, Recommended): Best combination of speed, reasoning intelligence, and multimodal vision.
-  * `claude-opus-5-5`: Flagship model for complex knowledge work and long-running agentic tasks.
-  * `claude-fable-5-1`: Specialized high-reasoning model for demanding analysis.
-  * `claude-sonnet-5` & `claude-opus-5`: 5.0 generation flagships.
-* **Retirement & Cleanup**:
-  * Retired `claude-sonnet-4-20250514` and `claude-opus-4-20250514` (retired June 15, 2026) and deprecated Claude 3/3.5 endpoints.
-  * Automatic pruning and migration in settings to prevent API failures.
+* **`claude-sonnet-5-5` (Claude Sonnet 5.5, Recommended)**: Flagship model offering the best combination of reasoning intelligence, speed, and vision text recognition (`Input $2.00 / Output $10.00 per 1M tokens`).
+* **`claude-opus-5-5`**: Heavyweight reasoning model for complex knowledge extraction and long-running agentic tasks (`Input $4.00 / Output $20.00 per 1M tokens`).
+* **`claude-fable-5-1`**: Demanding reasoning and long-horizon analysis (`Input $10.00 / Output $50.00 per 1M tokens`).
+* **`claude-sonnet-5` & `claude-opus-5`**: Core 5.0 generation models.
+* **`claude-haiku-4-5`**: Fast and economical (`Input $1.00 / Output $5.00 per 1M tokens`).
+* **Retirement Cleanup**:
+  * Removed `claude-sonnet-4-20250514` and `claude-opus-4-20250514` following their official retirement on June 15, 2026.
+  * Cleaned up deprecated legacy Claude 3/3.5 endpoints.
 
 ### ⚡ OpenAI GPT-6 & GPT-5.6 Series
-* **New Frontier Models**:
-  * `gpt-6` (Astra): OpenAI's newest flagship reasoning model.
-  * `gpt-5.6` (Sol), `gpt-5.6-terra`, and `gpt-5.6-luna`: Next-generation tier models balancing high reasoning and low cost.
-* **Retirement & Cleanup**:
-  * Automated pruning of retired, obsolete legacy models (`gpt-4-vision-preview`, `gpt-4-0314`, `gpt-4-0613`, etc.) with safe migration.
+* **`gpt-6` (Astra)**: OpenAI's newest flagship reasoning model (`Input $10.00 / Output $50.00 per 1M tokens`).
+* **`gpt-5.6` (Sol)**: Fast, high-intelligence model (`Input $4.00 / Output $20.00 per 1M tokens`).
+* **`gpt-5.6-terra`**: Balanced performance and cost tier (`Input $2.00 / Output $12.00 per 1M tokens`).
+* **`gpt-5.6-luna`**: High-throughput, cost-efficient model (`Input $0.20 / Output $1.20 per 1M tokens`).
+* **Retirement Cleanup**:
+  * Automatically prunes retired legacy endpoints (`gpt-4-vision-preview`, `gpt-4-0314`, `gpt-4-0613`, etc.).
+
+### 🛡️ Cross-Provider Auto-Migration
+* Settings manager checks the built-in provider model lists upon loading.
+* If a previously saved configuration had an active model that was retired, it is automatically migrated to `Gemini:gemini-3.8-flash` to prevent API failures while keeping custom/user-added models completely untouched.
 
 ---
 
