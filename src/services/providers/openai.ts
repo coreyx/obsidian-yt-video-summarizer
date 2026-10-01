@@ -34,14 +34,38 @@ export class OpenAIProvider implements AIModelProvider {
         }
     }
 
+    private async createChatCompletion(params: any): Promise<any> {
+        try {
+            return await this.client.chat.completions.create(params);
+        } catch (error: any) {
+            // If a legacy or custom OpenAI-compatible server rejects max_completion_tokens, fall back to max_tokens
+            if (
+                params.max_completion_tokens !== undefined &&
+                error?.message &&
+                (error.message.includes('max_completion_tokens') || error.message.includes('extra fields'))
+            ) {
+                const fallbackParams = { ...params };
+                fallbackParams.max_tokens = fallbackParams.max_completion_tokens;
+                delete fallbackParams.max_completion_tokens;
+                return await this.client.chat.completions.create(fallbackParams);
+            }
+            throw error;
+        }
+    }
+
     async summarizeVideo(videoId: string, prompt: string): Promise<string> {
         try {
-            const completion = await this.client.chat.completions.create({
+            const isReasoningModel = /^(o[134])/i.test(this.model);
+            const params: any = {
                 model: this.model,
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: this.maxTokens,
-                temperature: this.temperature
-            });
+                max_completion_tokens: this.maxTokens,
+            };
+            if (!isReasoningModel) {
+                params.temperature = this.temperature;
+            }
+
+            const completion = await this.createChatCompletion(params);
 
             let text = completion.choices[0]?.message?.content || '';
             
@@ -58,7 +82,7 @@ export class OpenAIProvider implements AIModelProvider {
 
     async extractThumbnailText(imageBase64: string, mimeType = 'image/jpeg'): Promise<string> {
         try {
-            const completion = await this.client.chat.completions.create({
+            const completion = await this.createChatCompletion({
                 model: this.model,
                 messages: [
                     {
@@ -77,7 +101,7 @@ export class OpenAIProvider implements AIModelProvider {
                         ]
                     }
                 ],
-                max_tokens: 200,
+                max_completion_tokens: 200,
             });
             return completion.choices[0]?.message?.content?.trim() || '';
         } catch (error) {
@@ -88,13 +112,18 @@ export class OpenAIProvider implements AIModelProvider {
 
     async generateTopics(summaryText: string): Promise<string[]> {
         try {
+            const isReasoningModel = /^(o[134])/i.test(this.model);
             const prompt = `Based on the following video summary, generate 3 to 7 concise topic tags representing the key subjects. Return ONLY a comma-separated list of tags in lowercase (e.g. artificial-intelligence, physics, productivity). Do not include hashtags (#) or explanation.\n\nSummary:\n${summaryText.slice(0, 4000)}`;
-            const completion = await this.client.chat.completions.create({
+            const params: any = {
                 model: this.model,
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 100,
-                temperature: 0.2
-            });
+                max_completion_tokens: 100,
+            };
+            if (!isReasoningModel) {
+                params.temperature = 0.2;
+            }
+
+            const completion = await this.createChatCompletion(params);
             return this.parseTopics(completion.choices[0]?.message?.content || '');
         } catch (error) {
             console.warn('OpenAI topic tag generation failed:', error);
