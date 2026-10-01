@@ -13,14 +13,17 @@ import { YouTubeSummarizerPlugin } from '../main';
  */
 export class SettingsTab extends PluginSettingTab {
     private currentTab = 'ai-providers';
-    private settings: PluginSettings;
+    private openedProviderName: string | null = null;
     private uiComponents: SettingsUIComponents;
     private eventHandlers: SettingsEventHandlers;
     private modals: SettingsModalsFactory;
 
+    private get settings(): PluginSettings {
+        return this.plugin.settings;
+    }
+
     constructor(app: App, private plugin: YouTubeSummarizerPlugin) {
         super(app, plugin);
-        this.settings = plugin.settings;
         this.uiComponents = new SettingsUIComponents(app);
 
         // Create callbacks for UI update
@@ -35,25 +38,35 @@ export class SettingsTab extends PluginSettingTab {
                 this.reload();
             },
             onProviderAdded: (provider) => {
+                this.openedProviderName = provider.name;
                 this.reload();
             },
             onProviderDeleted: () => {
                 this.reload();
             },
             onProviderUpdated: (provider, originalName) => {
-                // Change the provider name in the accordion in order to keep the accordion open in the reload() function
-                const oldAccordion = document.querySelector(`[data-provider-name="${originalName}"]`);
+                if (this.openedProviderName === originalName) {
+                    this.openedProviderName = provider.name;
+                }
+                const oldAccordion = this.containerEl.querySelector(`[data-provider-name="${originalName}"]`);
                 if (oldAccordion) {
                     oldAccordion.setAttribute('data-provider-name', provider.name);
+                    if (oldAccordion.hasClass('is-expanded')) {
+                        this.openedProviderName = provider.name;
+                    }
                 }
                 this.reload();
             },
             onActiveModelChanged: () => {
                 const selectedModel = this.settings.getSelectedModel();
                 this.uiComponents.updateModelDropdown(
+                    this.containerEl,
                     this.getAvailableModels(),
                     selectedModel ? this.buildModelId(selectedModel) : null
                 );
+                if (selectedModel?.provider?.name) {
+                    this.expandProviderAccordion(selectedModel.provider.name);
+                }
             }
         };
 
@@ -138,11 +151,16 @@ export class SettingsTab extends PluginSettingTab {
             });
 
         // Provider Accordions Container
-        containerEl.createDiv({ cls: 'yt-summarizer-settings__provider-accordions' });
+        const accordionsContainer = containerEl.createDiv({ cls: 'yt-summarizer-settings__provider-accordions' });
+
+        // Expand the active model's provider by default (or previously opened provider, or first provider)
+        const activeProviderName = selectedModel?.provider?.name || availableModels[0]?.provider?.name;
+        const providerToExpand = this.openedProviderName || activeProviderName;
 
         // Create accordions for each provider
         this.settings.getProviders().forEach(provider => {
-            this.uiComponents.addProviderAccordion(provider, this.eventHandlers);
+            const isExpanded = provider.name === providerToExpand;
+            this.uiComponents.addProviderAccordion(accordionsContainer, provider, this.eventHandlers, isExpanded);
         });
 
         // Add Provider button at the bottom
@@ -159,6 +177,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
         addProviderButton.settingEl.addClass('yt-summarizer-settings__add-provider-button');
+    }
+
+    public expandProviderAccordion(providerName: string): void {
+        const accordions = this.containerEl.querySelectorAll('.yt-summarizer-settings__provider-accordion');
+        accordions.forEach(accordion => {
+            if (accordion.getAttribute('data-provider-name') === providerName) {
+                accordion.addClass('is-expanded');
+            } else {
+                accordion.removeClass('is-expanded');
+            }
+        });
+        this.openedProviderName = providerName;
     }
 
     private displaySummarySettingsSection(containerEl: HTMLElement): void {
@@ -236,25 +266,13 @@ export class SettingsTab extends PluginSettingTab {
     }
 
     private reload(): void {
-        // Find currently opened accordion
-        const openedAccordion = document.querySelector('.yt-summarizer-settings__provider-accordion.is-expanded');
-        let openedProviderName: string | null = null;
-
+        // Find currently opened accordion within this container
+        const openedAccordion = this.containerEl.querySelector('.yt-summarizer-settings__provider-accordion.is-expanded');
         if (openedAccordion) {
-            openedProviderName = openedAccordion.getAttribute('data-provider-name');
+            this.openedProviderName = openedAccordion.getAttribute('data-provider-name');
         }
 
-        console.log('openedProviderName:', openedProviderName);
         // Refresh the display
         this.display();
-
-        // If there was an opened accordion, find and open it in the new display
-        if (openedProviderName) {
-            const newAccordion = document.querySelector(`[data-provider-name="${openedProviderName}"]`);
-            console.log('newAccordion:', newAccordion);
-            if (newAccordion) {
-                newAccordion.addClass('is-expanded');
-            }
-        }
     }
 }

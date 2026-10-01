@@ -44,13 +44,16 @@ export class SettingsEventHandlers {
         const isExpanded = accordion.hasClass('is-expanded');
         accordion.toggleClass('is-expanded', !isExpanded);
 
-        // Update all other accordions
-        const allAccordions = document.querySelectorAll('.yt-summarizer-settings__provider-accordion');
-        allAccordions.forEach(otherAccordion => {
-            if (otherAccordion !== accordion) {
-            otherAccordion.removeClass('is-expanded')
-            }
-        });
+        // Update all other accordions within the same container
+        const parent = accordion.closest('.yt-summarizer-settings__provider-accordions') || accordion.parentElement;
+        if (parent) {
+            const allAccordions = parent.querySelectorAll('.yt-summarizer-settings__provider-accordion');
+            allAccordions.forEach(otherAccordion => {
+                if (otherAccordion !== accordion) {
+                    otherAccordion.removeClass('is-expanded');
+                }
+            });
+        }
     }
 
     async handleProviderAdd(provider: ProviderConfig): Promise<void> {

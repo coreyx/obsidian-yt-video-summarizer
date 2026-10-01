@@ -105,7 +105,7 @@ export class SettingsUIComponents {
             .addText(text => {
                 text
                     .setPlaceholder('Enter API key')
-                    .setValue(provider.apiKey)
+                    .setValue(provider.apiKey || '')
                     .onChange(async (value) => {
                         await handlers.handleApiKeyChange(provider.name, value);
                     });
@@ -115,8 +115,8 @@ export class SettingsUIComponents {
     }
 
     // New methods for dynamic UI updates
-    addModelToAccordion(model: ModelConfig, handlers: SettingsEventHandlers): void {
-        const accordion = document.querySelector(`[data-provider-name="${model.provider.name}"]`);
+    addModelToAccordion(model: ModelConfig, handlers: SettingsEventHandlers, container: HTMLElement = document.body): void {
+        const accordion = container.querySelector(`[data-provider-name="${model.provider.name}"]`);
         if (!accordion) return;
 
         const modelsList = accordion.querySelector('.yt-summarizer-settings__models-list');
@@ -139,13 +139,13 @@ export class SettingsUIComponents {
         modelsList.appendChild(modelItem);
     }
 
-    removeModelFromAccordion(model: ModelConfig): void {
-        const modelItem = document.querySelector(`[data-model-name="${model.name}"]`);
+    removeModelFromAccordion(model: ModelConfig, container: HTMLElement = document.body): void {
+        const modelItem = container.querySelector(`[data-model-name="${model.name}"]`);
         modelItem?.remove();
     }
 
-    updateModelInAccordion(model: ModelConfig): void {
-        const modelItem = document.querySelector(`[data-model-name="${model.name}"]`);
+    updateModelInAccordion(model: ModelConfig, container: HTMLElement = document.body): void {
+        const modelItem = container.querySelector(`[data-model-name="${model.name}"]`);
         if (!modelItem) return;
 
         const titleSpan = modelItem.querySelector('.setting-item-name span');
@@ -165,8 +165,8 @@ export class SettingsUIComponents {
         }
     }
 
-    updateModelDropdown(models: ModelConfig[], selectedModel: string | null): void {
-        const dropdown = document.querySelector('.setting-item select') as HTMLSelectElement;
+    updateModelDropdown(container: HTMLElement, models: ModelConfig[], selectedModel: string | null): void {
+        const dropdown = container.querySelector('.setting-item select') as HTMLSelectElement;
         if (!dropdown) return;
 
         // Save current scroll position
@@ -194,11 +194,16 @@ export class SettingsUIComponents {
         dropdown.scrollTop = scrollPos;
     }
 
-    addProviderAccordion(provider: ProviderConfig, handlers: SettingsEventHandlers): void {
-        const accordionsContainer = document.querySelector('.yt-summarizer-settings__provider-accordions');
-        if (!accordionsContainer) return;
-
+    addProviderAccordion(
+        container: HTMLElement,
+        provider: ProviderConfig,
+        handlers: SettingsEventHandlers,
+        isExpanded: boolean = false
+    ): HTMLElement {
         const accordion = this.createProviderAccordion(provider);
+        if (isExpanded) {
+            accordion.addClass('is-expanded');
+        }
         const content = accordion.querySelector('.yt-summarizer-settings__provider-content') as HTMLElement;
 
         // Add click handler for accordion toggle
@@ -284,7 +289,8 @@ export class SettingsUIComponents {
             );
         addModelButton.settingEl.addClass('yt-summarizer-settings__add-button');
 
-        accordionsContainer.appendChild(accordion);
+        container.appendChild(accordion);
+        return accordion;
     }
 
     private formatPricing(pricing?: string): string {

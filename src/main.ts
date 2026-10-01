@@ -52,11 +52,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * @throws {Error} Throws an error if the services cannot be initialized.
 	 */
 	public async initializeServices(): Promise<void> {
-		// Initialize settings manager
-		this.settings = new SettingsManager(this);
-		await this.settings.loadSettings();
+		// Initialize settings manager if not already created
+		if (!this.settings) {
+			this.settings = new SettingsManager(this);
+			await this.settings.loadSettings();
+		}
 		// Initialize youtube service
-		this.youtubeService = new YouTubeService();
+		if (!this.youtubeService) {
+			this.youtubeService = new YouTubeService();
+		}
 
 		// Initialize prompt service
 		this.promptService = new PromptService(this.settings.getCustomPrompt());
@@ -65,6 +69,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const selectedModel = this.settings.getSelectedModel();
 		if (selectedModel) {
 			this.provider = ProvidersFactory.createProvider(selectedModel, this.settings.getMaxTokens(), this.settings.getTemperature());
+		} else {
+			this.provider = null;
 		}
 	}
 
