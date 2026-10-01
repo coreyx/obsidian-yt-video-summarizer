@@ -257,6 +257,30 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Include title in note body
+        new Setting(containerEl)
+            .setName('Include title in note body')
+            .setDesc('Include the video title as a heading (# Title) in the note body (disabled by default since the title is already in the note filename and frontmatter)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getIncludeTitleInBody())
+                    .onChange(async (value) => {
+                        await this.settings.updateIncludeTitleInBody(value);
+                    })
+            );
+
+        // Wikilinks in technical terms
+        new Setting(containerEl)
+            .setName('Generate wikilinks for technical terms')
+            .setDesc('Format extracted technical terms with Obsidian [[wikilinks]] (e.g. **[[Term]]**). When disabled, terms are kept in bold text without wikilinks (**Term**).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getLinkTechnicalTerms())
+                    .onChange(async (value) => {
+                        await this.settings.updateLinkTechnicalTerms(value);
+                    })
+            );
+
         // Include video description
         new Setting(containerEl)
             .setName('Include video description')

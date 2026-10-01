@@ -120,6 +120,10 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Set Note Title from Video**: Automatically renames the active note to the sanitized title of the YouTube video, ensuring safe filenames across Windows, macOS, Linux, and Obsidian wikilinks.
 
+**Include Title in Note Body**: Includes the video title as a heading (`# Title`) in the note body. Disabled by default since the title is already preserved in the note filename and YAML frontmatter.
+
+**Generate Wikilinks for Technical Terms**: Formats extracted technical terms with Obsidian `[[wikilinks]]` (e.g. `- **[[Term]]**: explanation`). Enabled by default. When disabled, terms are retained as bold text without wikilinks (`- **Term**: explanation`).
+
 **Include Video Description**: Archives the complete YouTube video description, including external links, creator notes, and timestamps, under a `## Description` section in the note body.
 
 **Generate Semantic Topic Tags**: Uses AI semantic analysis of the generated summary to produce relevant topic tags.
@@ -189,8 +193,6 @@ tags:
   - topic-two
 ---
 
-# Video Title
-
 ![Video thumbnail](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)
 
 👤 [Channel Name](channel-url)  🔗 [Watch video](video-url)
@@ -212,7 +214,7 @@ tags:
 [Original YouTube video description and external links...]
 ```
 
-The summary sections are customizable via the summary prompt setting. Frontmatter properties, topic tags, and the video description section can each be toggled on or off in the plugin settings.
+The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, and the video description section can each be toggled on or off in the plugin settings.
 
 ## Support
 
