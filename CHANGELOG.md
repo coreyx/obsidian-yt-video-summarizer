@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-30
+
+### Added
+- **Folder-Targeted Note Upgrades**:
+  - Right-click folder context menu item (`Upgrade YouTube notes in this folder`) in the Obsidian File Explorer.
+  - Command Palette command `Upgrade YouTube notes in folder...` with an interactive fuzzy folder suggest modal.
+  - Convenient `Upgrade in Folder...` button in the plugin settings tab alongside `Upgrade All in Vault`.
+  - Recursively upgrades all YouTube notes within any selected folder and its subfolders to populate missing frontmatter metadata without re-generating summaries, running AI inference, or touching tags.
+- **Updated Gemini Model Lineup**:
+  - Added latest flagship and production models: `gemini-3.8-flash` (new default recommended model), `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`, `gemini-3.1-flash-lite`, and `gemini-3-pro-preview`.
+  - Retired and removed shut down models that are no longer operational: `gemini-2.0-flash` and `gemini-2.0-flash-lite` (discontinued June 1, 2026), as well as older legacy `gemini-1.5` series.
+  - Added automatic retirement migration in settings: prunes shut down models from built-in provider configurations and safely migrates active selections to `Gemini:gemini-3.8-flash` to prevent API failures.
+
+---
+
 ## [1.3.0] - 2026-09-30
 
 ### Added
@@ -34,18 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically merges detected tags with semantic topic tags and adds them to YAML frontmatter.
 - **Previous Notes Upgrade**:
   - Added command `Upgrade current note with YouTube frontmatter` to upgrade the active note.
-  - Added command `Upgrade YouTube notes in folder...` and a right-click folder context menu item (`Upgrade YouTube notes in this folder`) to upgrade notes within any specific folder and its subfolders.
-  - Added command `Upgrade all YouTube notes in vault` and settings buttons (`Upgrade All in Vault` / `Upgrade in Folder...`) for batch upgrades.
+  - Added command `Upgrade all YouTube notes in vault` and settings button `Upgrade Notes in Vault` for vault-wide batch upgrades.
   - Re-processes notes to populate missing frontmatter metadata (title, channel_name, channel_username, channel_url, video_url, thumbnail, thumbnail_text) without re-running LLM summary inference, changing summary text, or generating new tags.
   - Preserves any preexisting tags and user-defined properties in frontmatter.
 - **Automatic Note Renaming**:
   - Optional setting (enabled by default) to automatically rename the active note to the sanitized title of the YouTube video.
   - Sanitizes filenames against Windows, macOS, Linux, and Obsidian wikilink restrictions, with automatic collision resolution.
-- **Updated Gemini Model Lineup**:
-  - Added latest flagship and production models: `gemini-3.8-flash` (new default model), `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro`, `gemini-3.1-flash-lite`, and `gemini-3-pro-preview`.
-  - Retired and removed shut down models that are no longer operational: `gemini-2.0-flash` and `gemini-2.0-flash-lite` (discontinued June 1, 2026), as well as older legacy `gemini-1.5` series.
-  - Added automatic retirement migration in settings: prunes shut down models from built-in provider configurations and safely migrates active selections to `Gemini:gemini-3.8-flash` to prevent API failures.
-- **Settings Controls**: Added UI toggles for all new features and upgrade buttons (`Upgrade All in Vault` and `Upgrade in Folder...`) in the Summary settings section.
+- **Settings Controls**: Added UI toggles for all new features and an upgrade button in the Summary settings section.
 
 ---
 
