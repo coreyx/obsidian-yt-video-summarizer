@@ -20,6 +20,9 @@ import {
 	extractYouTubeUrlFromNote,
 	formatTranscript,
 	FrontmatterData,
+	hasRelatedMediaExtendedLink,
+	isMediaExtendedCompanionNote,
+	isNoteMissingDescriptionFrontmatter,
 	isNoteMissingFrontmatter,
 	MediaExtendedMetadata,
 	sanitizeFileName,
@@ -226,6 +229,24 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Upgrade all YouTube notes in vault',
 			callback: async () => {
 				await this.upgradeVaultNotes();
+			},
+		});
+
+		// Command to create Media Extended notes for video summaries without matching companion note
+		this.addCommand({
+			id: 'create-missing-media-extended-notes',
+			name: 'Create Media Extended notes for video summaries without companion note',
+			callback: async () => {
+				await this.createMediaExtendedForMissingNotes();
+			},
+		});
+
+		// Command to upgrade video summary notes with tags and description frontmatter
+		this.addCommand({
+			id: 'upgrade-notes-with-tags-and-description',
+			name: 'Upgrade video summary notes with tags and description frontmatter',
+			callback: async () => {
+				await this.upgradeNotesWithTagsAndDescription();
 			},
 		});
 	}
@@ -783,6 +804,227 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		new FolderSuggestModal(this.app, async (folder) => {
 			await this.upgradeNotesInFolder(folder);
 		}).open();
+	}
+
+	/**
+	 * Scans the vault for video summary notes that do not have a matching Media Extended companion note
+	 * (detected by the presence of # Related and a wikilink to the note), creates the companion note,
+	 * and adds the bidirectional link.
+	 */
+	public async createMediaExtendedForMissingNotes(): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+			new Notice('Scanning vault for video summary notes without Media Extended companion notes...');
+
+			const files = this.app.vault.getMarkdownFiles();
+			const candidates: { file: TFile; url: string; title: string }[] = [];
+
+			for (const file of files) {
+				const content = await this.app.vault.read(file);
+
+				// Skip companion notes themselves
+				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
+					continue;
+				}
+
+				const url = extractYouTubeUrlFromNote(content);
+				if (!url) {
+					continue;
+				}
+
+				// Determine title from frontmatter or filename
+				const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+				let title = file.basename;
+				if (fmMatch) {
+					const titleMatch = fmMatch[1].match(/^title:\s*["']?([^"'\r\n]+)["']?/m);
+					if (titleMatch && titleMatch[1].trim()) {
+						title = titleMatch[1].trim();
+					}
+				}
+
+				const expectedBasename = sanitizeFileName(title);
+				if (hasRelatedMediaExtendedLink(content, mediaFolder, expectedBasename)) {
+					continue;
+				}
+
+				candidates.push({ file, url, title });
+			}
+
+			if (candidates.length === 0) {
+				new Notice('All video summary notes already have matching Media Extended companion notes!');
+				return;
+			}
+
+			new Notice(`Found ${candidates.length} video summary note(s) without companion notes. Creating Media Extended notes...`);
+
+			let successCount = 0;
+			let failCount = 0;
+
+			for (let i = 0; i < candidates.length; i++) {
+				const { file, url } = candidates[i];
+				try {
+					const transcript = await this.youtubeService.fetchTranscript(
+						url,
+						'en',
+						this.settings.getYoutubeApiKey()
+					);
+
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, file);
+					if (mediaNote) {
+						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
+						const currentContent = await this.app.vault.read(file);
+						const updatedContent = addRelatedLink(currentContent, mediaLink);
+						await this.app.vault.modify(file, updatedContent);
+						successCount++;
+					} else {
+						failCount++;
+					}
+				} catch (error) {
+					console.error(`Failed to create Media Extended note for ${file.path}:`, error);
+					failCount++;
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			new Notice(
+				`Complete! Created ${successCount} Media Extended companion note(s)${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+			);
+		} catch (error) {
+			new Notice(`Failed to process Media Extended notes: ${error.message}`);
+			console.error('Failed to create missing Media Extended notes:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Scans the vault for video summary notes that do not have the description frontmatter property,
+	 * fetches metadata and tags from the YouTube Data API / metadata, and updates their frontmatter.
+	 */
+	public async upgradeNotesWithTagsAndDescription(): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+			new Notice('Scanning vault for video summary notes missing description frontmatter...');
+
+			const files = this.app.vault.getMarkdownFiles();
+			const candidates: { file: TFile; url: string }[] = [];
+
+			for (const file of files) {
+				const content = await this.app.vault.read(file);
+
+				// Skip companion notes
+				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
+					continue;
+				}
+
+				const url = extractYouTubeUrlFromNote(content);
+				if (!url) {
+					continue;
+				}
+
+				if (isNoteMissingDescriptionFrontmatter(content)) {
+					candidates.push({ file, url });
+				}
+			}
+
+			if (candidates.length === 0) {
+				new Notice('All video summary notes already have description frontmatter!');
+				return;
+			}
+
+			new Notice(
+				`Found ${candidates.length} video summary note(s) missing description frontmatter. Upgrading with tags & description...`
+			);
+
+			let successCount = 0;
+			let failCount = 0;
+
+			for (let i = 0; i < candidates.length; i++) {
+				const { file, url } = candidates[i];
+				try {
+					const metadata = await this.youtubeService.fetchVideoMetadata(
+						url,
+						this.settings.getYoutubeApiKey()
+					);
+					const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+
+					const currentContent = await this.app.vault.read(file);
+					const fmMatch = currentContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+					let thumbnailText = '';
+					if (fmMatch) {
+						const tMatch = fmMatch[1].match(/^thumbnail_text:\s*["']?([^"'\r\n]*)["']?/m);
+						if (tMatch) thumbnailText = tMatch[1].trim();
+					}
+
+					// Extract tags from title & description and/or YouTube Data API
+					const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+						? [
+								...extractTagsFromText(metadata.title),
+								...extractTagsFromText(metadata.description || ''),
+						  ]
+						: [];
+
+					const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
+						? metadata.tags
+						: [];
+
+					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
+					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
+
+					const fmData: FrontmatterData = {
+						title: metadata.title,
+						channel_name: metadata.author,
+						channel_username: metadata.channelUsername || '',
+						channel_url: metadata.channelUrl,
+						video_url: metadata.url,
+						thumbnail: thumbnailUrl,
+						thumbnail_text: thumbnailText,
+						description: metadata.description,
+						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
+						playlist_title: playlist?.title,
+						playlist_url: playlist?.url,
+						playlist_id: playlist?.id,
+						playlist_index: playlist?.index,
+						playlist_count: playlist?.count,
+					};
+
+					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
+					await this.app.vault.modify(file, updatedContent);
+					successCount++;
+				} catch (error) {
+					console.error(`Failed to upgrade note ${file.path}:`, error);
+					failCount++;
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			new Notice(
+				`Upgrade complete! Successfully upgraded ${successCount} note(s) with tags & description${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+			);
+		} catch (error) {
+			new Notice(`Failed to upgrade notes: ${error.message}`);
+			console.error('Failed to upgrade notes with tags and description:', error);
+		} finally {
+			this.isProcessing = false;
+		}
 	}
 
 	private buildPrompt(transcriptText: string, customPrompt?: string): string {

@@ -1859,6 +1859,177 @@ assert.strictEqual(
 
 console.log('✓ Creator playlist discovery, frontmatter, and body formatting passed');
 
+// Test 22: Detection of missing companion notes and missing description frontmatter upgrade
+console.log('Testing missing companion note detection and description frontmatter upgrade...');
+
+function isMediaExtendedCompanionNoteHelper(content, filePath, mediaFolder = 'Media Library') {
+	if (filePath) {
+		const normalizedFolder = mediaFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+		const normalizedPath = filePath.replace(/\\/g, '/');
+		if (normalizedFolder && (normalizedPath.startsWith(normalizedFolder + '/') || normalizedPath === normalizedFolder)) {
+			return true;
+		}
+	}
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (fmMatch && /^mx-uid:\s*[a-zA-Z0-9_-]+/m.test(fmMatch[1])) {
+		return true;
+	}
+	return false;
+}
+
+function hasRelatedMediaExtendedLinkHelper(content, mediaFolder = 'Media Library', expectedBasename) {
+	const relatedMatch = content.match(/(?:^|\r?\n)#{1,6}\s+Related[^\r\n]*([\s\S]*?)(?=(?:\r?\n#{1,6}\s+|$))/i);
+	if (!relatedMatch) {
+		return false;
+	}
+	const relatedBody = relatedMatch[1];
+
+	if (expectedBasename) {
+		const cleanBase = expectedBasename.trim();
+		const escapedBase = cleanBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const specificRegex = new RegExp(`\\[\\[(?:.*\\/)?${escapedBase}(?:\\|[^\\]]+)?\\]\\]`, 'i');
+		if (specificRegex.test(relatedBody)) {
+			return true;
+		}
+	}
+
+	const cleanFolder = mediaFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	if (cleanFolder) {
+		const escapedFolder = cleanFolder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const folderRegex = new RegExp(`\\[\\[${escapedFolder}\\/[^\\]]+\\]\\]`, 'i');
+		if (folderRegex.test(relatedBody)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function isNoteMissingDescriptionFrontmatterHelper(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) {
+		return true;
+	}
+	const yaml = fmMatch[1];
+	return !/^description:\s*/m.test(yaml);
+}
+
+// Case 1: isMediaExtendedCompanionNote identification
+const companionNoteContent = `---
+mx-uid: vcxchy79gecb4s69v25oxq9s
+video: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+title: Rick Astley - Never Gonna Give You Up
+---
+
+- [01:05](https://youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) Intro`;
+
+const regularSummaryContent = `---
+title: "Rick Astley - Never Gonna Give You Up"
+channel_name: "Rick Astley"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+---
+
+## Summary
+Great music video.`;
+
+assert.strictEqual(isMediaExtendedCompanionNoteHelper(companionNoteContent, 'Media Library/Rick Astley.md'), true);
+assert.strictEqual(isMediaExtendedCompanionNoteHelper(companionNoteContent, 'Custom Folder/Rick Astley.md'), true); // Has mx-uid
+assert.strictEqual(isMediaExtendedCompanionNoteHelper(regularSummaryContent, 'Media Library/Rick Astley.md'), true); // In media folder
+assert.strictEqual(isMediaExtendedCompanionNoteHelper(regularSummaryContent, 'YouTube/Rick Astley.md'), false); // Regular summary
+
+// Case 2: hasRelatedMediaExtendedLink detection
+const summaryWithCompanionLink = `---
+title: "Rick Astley"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+---
+
+## Summary
+Some text.
+
+# Related
+- [[Media Library/Rick Astley - Never Gonna Give You Up]]`;
+
+const summaryWithDifferentRelatedLink = `---
+title: "Rick Astley"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+---
+
+## Summary
+Some text.
+
+# Related
+- [[80s Music History]]`;
+
+const summaryWithNoRelated = `---
+title: "Rick Astley"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+---
+
+## Summary
+Some text.`;
+
+assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithCompanionLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), true);
+assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithDifferentRelatedLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
+assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithNoRelated, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
+
+// Case 3: isNoteMissingDescriptionFrontmatter detection
+const noteWithoutDesc = `---
+title: "Old Video Summary"
+channel_name: "Channel"
+video_url: "https://www.youtube.com/watch?v=123"
+tags:
+  - ai
+---
+
+## Summary`;
+
+const noteWithDescBlock = `---
+title: "Video Summary"
+channel_name: "Channel"
+description: |-
+  Line 1 of description
+  Line 2 of description
+video_url: "https://www.youtube.com/watch?v=123"
+---
+
+## Summary`;
+
+const noteWithEmptyDesc = `---
+title: "Video Summary"
+description: ""
+video_url: "https://www.youtube.com/watch?v=123"
+---
+
+## Summary`;
+
+const noteWithoutAnyFrontmatter = `## Summary
+No frontmatter at all.`;
+
+assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithoutDesc), true);
+assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithDescBlock), false);
+assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithEmptyDesc), false);
+assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithoutAnyFrontmatter), true);
+
+// Case 4: Upgrading a note missing description with YouTube Data API tags & description frontmatter
+const upgradeMetadata = {
+	title: 'Old Video Summary',
+	channel_name: 'Channel',
+	channel_username: '@channel',
+	channel_url: 'https://youtube.com/@channel',
+	video_url: 'https://www.youtube.com/watch?v=123',
+	thumbnail: 'https://img.youtube.com/vi/123/maxresdefault.jpg',
+	thumbnail_text: 'EXISTING OCR',
+	description: 'This is the newly fetched description from YouTube Data API!\nContains multiple lines.',
+	tags: ['ai', 'machine-learning', 'youtube-api']
+};
+
+const mergedUpgradedNote = mergeFrontmatterWithDesc(noteWithoutDesc, upgradeMetadata);
+assert(mergedUpgradedNote.includes('description: |-\n  This is the newly fetched description from YouTube Data API!\n  Contains multiple lines.'));
+assert(mergedUpgradedNote.includes('tags:\n  - ai\n  - machine-learning\n  - youtube-api'));
+assert(mergedUpgradedNote.includes('channel_name: "Channel"'));
+
+console.log('✓ Missing companion note detection and description frontmatter upgrade passed');
+
 console.log('\nAll tests passed successfully!');
 
 

@@ -342,6 +342,75 @@ export function isNoteMissingFrontmatter(content: string): boolean {
 }
 
 /**
+ * Checks if a note is a Media Extended companion note (has mx-uid in frontmatter or is in mediaFolder).
+ */
+export function isMediaExtendedCompanionNote(
+	content: string,
+	filePath?: string,
+	mediaFolder = 'Media Library'
+): boolean {
+	if (filePath) {
+		const normalizedFolder = mediaFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+		const normalizedPath = filePath.replace(/\\/g, '/');
+		if (normalizedFolder && (normalizedPath.startsWith(normalizedFolder + '/') || normalizedPath === normalizedFolder)) {
+			return true;
+		}
+	}
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (fmMatch && /^mx-uid:\s*[a-zA-Z0-9_-]+/m.test(fmMatch[1])) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Detects whether a note contains a # Related section with a wikilink to a Media Extended companion note.
+ */
+export function hasRelatedMediaExtendedLink(
+	content: string,
+	mediaFolder = 'Media Library',
+	expectedBasename?: string
+): boolean {
+	const relatedMatch = content.match(/(?:^|\r?\n)#{1,6}\s+Related[^\r\n]*([\s\S]*?)(?=(?:\r?\n#{1,6}\s+|$))/i);
+	if (!relatedMatch) {
+		return false;
+	}
+	const relatedBody = relatedMatch[1];
+
+	if (expectedBasename) {
+		const cleanBase = expectedBasename.trim();
+		const escapedBase = cleanBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const specificRegex = new RegExp(`\\[\\[(?:.*\\/)?${escapedBase}(?:\\|[^\\]]+)?\\]\\]`, 'i');
+		if (specificRegex.test(relatedBody)) {
+			return true;
+		}
+	}
+
+	const cleanFolder = mediaFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	if (cleanFolder) {
+		const escapedFolder = cleanFolder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const folderRegex = new RegExp(`\\[\\[${escapedFolder}\\/[^\\]]+\\]\\]`, 'i');
+		if (folderRegex.test(relatedBody)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Checks if a note is missing the description property in its frontmatter.
+ */
+export function isNoteMissingDescriptionFrontmatter(content: string): boolean {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) {
+		return true;
+	}
+	const yaml = fmMatch[1];
+	return !/^description:\s*/m.test(yaml);
+}
+
+/**
  * Extracts hashtags from text (such as YouTube video titles and descriptions).
  * Matches patterns like #ai, #web-development, #coding_tutorial, #React
  * Ignores pure numbers like #123, markdown headings like ## Title, and empty hashes.
