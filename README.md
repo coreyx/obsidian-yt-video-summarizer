@@ -46,7 +46,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
    https://github.com/coreyx/obsidian-yt-video-summarizer
    ```
    *(or enter `coreyx/obsidian-yt-video-summarizer`)*
-5. Click **Add Plugin**. BRAT will download and install the latest release (`1.3.0`).
+5. Click **Add Plugin**. BRAT will download and install the latest release (`1.10.0`).
 6. Open **Settings** → **Community Plugins**, locate **YouTube Video Summarizer**, and toggle it **on**.
 
 ## Requirements

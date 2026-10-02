@@ -1,32 +1,44 @@
-# Release Notes - YouTube Video Summarizer v1.9.0
+# Release Notes - YouTube Video Summarizer v1.10.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.9.0 introduces two new dedicated vault commands for companion note creation and metadata upgrading, along with comprehensive developer documentation:
+YouTube Video Summarizer v1.10.0 brings major enhancements to semantic tagging, local model integration, creator playlist discovery, and folder-scoped workflow execution:
 
-* 🎬 **Create Missing Media Extended Notes Command**: New command scans your vault for any video summary notes that do not currently have a companion note linked under `# Related`, generates the Media Extended companion notes in your configured folder, and links them bidirectionally.
-* 🏷️ **Upgrade Notes with Tags & Description Frontmatter Command**: New command scans your vault for video summary notes that lack the `description` frontmatter property, fetches complete creator tags from YouTube Data API v3 and the full video description, and safely merges them into frontmatter without running AI inference.
-* 📚 **Complete Developer Documentation**: New [`DEVELOPMENT.md`](DEVELOPMENT.md) provides full architecture overviews, subsystem deep dives, testing strategy, and an active Developer Q&A log preserving technical design rationale.
+* 🧠 **Context-Aware AI Semantic Topic Tagging**: Automatically indexes your entire vault's tag taxonomy into a compressed cache prior to inference, allowing the AI model to reuse existing tags, identify missing topics, and organize tags hierarchically (e.g. `ai/machine-learning` instead of flat `ai-machine-learning`). See [`AI_TAGGING.md`](AI_TAGGING.md) for full architectural documentation.
+* 💻 **LM Studio One-Click Auto-Detection & OpenAI-Compatible Servers**: Connect local offline models running in LM Studio (`http://localhost:1234/v1`) with a single click. Plus full support for running any custom OpenAI-compatible server (LM Studio, Ollama, LocalAI, vLLM, OpenRouter) as the Active Model with zero API costs.
+* 📋 **Upgrade Notes with Creator Playlists Command**: Automatically scan notes missing playlist frontmatter, discover playlist membership via YouTube Data API and metadata fallbacks, and merge playlist metadata safely without altering summaries or overwriting tags.
+* 📁 **Folder-Scoped Batch Operations**: Restrict batch upgrades to specific folders, comma-separated configured scan folders, whole vault, or directly via Obsidian File Explorer right-click folder context menus.
+* 🎬 **Media Extended Enhancements**: Organized companion notes under clean section headings (`# Description`, `# Transcript`, `# Related`), added an option to include creator descriptions with automatically converted Media Extended playback timestamps (`#t=mm:ss.ms`), and added an interactive per-run companion note checkbox in summary modals.
 
 ---
 
-## What's Changed in v1.9.0
+## What's Changed in v1.10.0
 
-### 🎬 Create Missing Media Extended Notes
-* **Command Palette**: Run `Create Media Extended notes for video summaries without companion note` (`Ctrl/Cmd + P`).
-* **Settings Tab**: Click **Create Missing Notes** under the *Create Media Extended notes* section.
-* Detection rule: Inspects markdown notes containing YouTube URLs outside of `Media Library/` and verifies whether `# Related` contains a wikilink to the companion note (`[[Media Library/Title]]` or `[[Title]]`).
-* Creates the companion note with full Media Extended frontmatter (`mx-uid`, duration, cover embed, etc.) and timestamped transcript, and appends the bidirectional link to `# Related`.
+### 🧠 Improved AI Topic Tagging & Compressed Vault Tag Cache
+* **Whole-Vault Tag Indexing**: Automatically builds a compressed cache of all existing tags across your vault immediately prior to inference, passing established group prefixes and existing tags into the prompt.
+* **Strict Taxonomy Rules**: Prompts the AI model to answer what topic(s) the video belongs to and what obvious tag is missing, strictly prioritizing the reuse of existing vault tags, kebab-case formatting, and hierarchical grouping under established prefixes (e.g. `ai/machine-learning` instead of `ai-machine-learning`).
+* **Hierarchical Deduplication**: Normalization logic in `deduplicateTags()` explicitly favors nested tags with `/` over flat hyphenated variants.
+* **Zero Overhead**: Inactive and completely bypassed when `Generate semantic topic tags` is toggled off.
 
-### 🏷️ Upgrade Notes with Tags & Description Frontmatter
-* **Command Palette**: Run `Upgrade video summary notes with tags and description frontmatter` (`Ctrl/Cmd + P`).
-* **Settings Tab**: Click **Upgrade Tags & Description** under the *Upgrade previous notes* section.
-* Detection rule: Automatically finds all video summary notes whose frontmatter lacks the `description:` property.
-* Ingests full creator tags/keywords from YouTube Data API v3 and the complete video description into YAML frontmatter (`description: |-`) with tag deduplication, preserving existing summaries and notes.
+### 💻 Local LLMs: LM Studio Auto-Detection & OpenAI-Compatible Server Support
+* **Auto-Discovery**: Click **Detect & Connect** in settings (or run Command Palette command `Detect and connect local LM Studio instance`) to detect LM Studio, fetch loaded models, and configure the active model instantly.
+* **Refresh Support**: Click **Refresh from LM Studio** to sync newly loaded model weights without re-entering configurations.
+* **OpenAI-Compatible Active Model**: Connect any OpenAI-compatible API gateway (Ollama, LocalAI, vLLM, OpenRouter) as the Active Model with automatic `/v1` endpoint normalization and fallback parameter handling (`max_completion_tokens` vs `max_tokens`).
 
-### 📚 Developer Documentation & Q&A Log
-* Added [`DEVELOPMENT.md`](DEVELOPMENT.md) documenting plugin architecture, InnerTube ingestion, AI model retirement, playlist discovery heuristics, and tag deduplication.
-* Includes an ongoing Developer Q&A log covering `mx-uid` origins, YouTube Data API reverse lookup strategies, mix filtering, and OpenAI token handling.
+### 📋 Upgrade Notes with Creator Playlists
+* **Command Palette**: Run `Upgrade video summary notes with playlist from YouTube Data API`, `...in folder...`, or `...in entire vault`.
+* **Settings Card**: Action buttons under *Upgrade playlist frontmatter* to process selected folders or the whole vault.
+* **Safe Frontmatter Merging**: Safely populates `playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, and `playlist_count` while strictly preserving custom properties, tags, and summary body text.
+
+### 📁 Folder-Scoped Batch Operations
+* **Configured Scan Folders**: Specify comma-separated folders under `Scan folders for batch upgrades` (e.g. `YouTube, Media/Summaries`) to automatically restrict batch runs.
+* **Folder Picker**: Dedicated commands open an interactive folder search modal (`FuzzySuggestModal`).
+* **File Explorer Context Menu**: Right-click any folder in Obsidian's navigation tree to trigger targeted upgrades for notes inside that folder.
+
+### 🎬 Media Extended Enhancements
+* **Section Headings & Spacing**: Companion notes now feature distinct `# Description`, `# Transcript`, and `# Related` sections with standardized spacing.
+* **Description Timestamp Conversion**: Video description timestamps (e.g. `01:23`, `[04:20]`, `1:05:30`) are converted into clickable Media Extended playback links.
+* **Per-Run Checkbox Toggle**: Summary prompt modals feature an interactive checkbox to choose whether to generate companion notes on a per-video basis without changing your permanent setting.
 
 ---
 
