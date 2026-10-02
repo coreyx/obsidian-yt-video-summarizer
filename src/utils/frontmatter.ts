@@ -736,3 +736,61 @@ export function buildMediaExtendedNote(
 	return `${fm}\n\n${body.trim()}\n`;
 }
 
+/**
+ * Parses a comma- or newline-separated string of folder paths into normalized folder paths.
+ * Normalizes backslashes to forward slashes and strips leading/trailing slashes.
+ */
+export function parseFolderList(foldersStr: string): string[] {
+	if (!foldersStr || !foldersStr.trim()) return [];
+	return foldersStr
+		.split(/[\n,]/)
+		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+		.filter((f) => f.length > 0);
+}
+
+/**
+ * Filters a list of files by target folder paths (prefix match).
+ * If targetFolders is empty, returns all files.
+ */
+export function filterFilesByFolderPaths<T extends { path: string }>(
+	files: T[],
+	targetFolders: string[]
+): T[] {
+	if (!targetFolders || targetFolders.length === 0) {
+		return files;
+	}
+	const normalizedTargets = targetFolders
+		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+		.filter((f) => f.length > 0);
+
+	if (normalizedTargets.length === 0) {
+		return files;
+	}
+
+	return files.filter((file) => {
+		const filePath = file.path.replace(/\\/g, '/');
+		return normalizedTargets.some(
+			(folder) => filePath.startsWith(folder + '/') || filePath === folder
+		);
+	});
+}
+
+/**
+ * Filters a list of files by a specific folder (or vault root).
+ * If folder is root, returns all files.
+ */
+export function filterFilesByFolder<T extends { path: string }>(
+	files: T[],
+	folder: { path: string; isRoot(): boolean }
+): T[] {
+	if (folder.isRoot()) {
+		return files;
+	}
+	const folderPath = folder.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	return files.filter((file) => {
+		const filePath = file.path.replace(/\\/g, '/');
+		return filePath.startsWith(folderPath + '/') || filePath === folderPath;
+	});
+}
+
+

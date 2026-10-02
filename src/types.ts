@@ -57,7 +57,9 @@ export interface StoredSettings {
 	mediaExtendedFolder?: string;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
+	scanFolders?: string;
 }
+
 
 /** Represents the plugin settings and provides methods to manage them */
 export interface PluginSettings {
@@ -164,6 +166,10 @@ export interface PluginSettings {
 
 	getDiscoverPlaylist(): boolean;
 	updateDiscoverPlaylist(value: boolean): void;
+
+	getScanFolders(): string;
+	updateScanFolders(value: string): Promise<void>;
+	getScanFolderList(): string[];
 
 	/**
 	 * Validates a model ID.

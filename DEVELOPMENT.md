@@ -227,8 +227,10 @@ npm test
 20. YouTube description frontmatter block and cross-source tag deduplication.
 21. Creator playlist discovery, frontmatter serialization, and header formatting.
 22. Missing companion note detection and missing description frontmatter upgrade.
+23. Folder parsing, folder filtering, and folder-scoped discovery.
 
 ---
+
 
 ## Release Process
 
@@ -351,3 +353,51 @@ This section preserves technical and design questions asked during development f
   [`isNoteMissingDescriptionFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) checks whether the note's YAML frontmatter contains a `description:` key. Notes already possessing `description:` (or companion notes in `Media Library/`) are skipped.
 * **Safe Frontmatter Upgrade**:
   For matching notes, the command queries YouTube metadata (and YouTube Data API v3 if configured), extracts tags from title & description, merges Data API tags, normalizes tags through `deduplicateTags()`, and updates the note via `updateNoteContentWithFrontmatter()`. Existing OCR thumbnail text and custom frontmatter properties are preserved without re-running AI inference or overwriting existing note content.
+
+---
+
+### Q8: Where do the "Create Missing Media Extended Notes" and "Upgrade Tags & Description" commands discover notes from, and is this documented?
+
+**Context**: User asked where these two commands get the folder from to discover the candidate notes, and where it is documented.
+
+**Answer**:
+1. **Discovery Scope (Vault-Wide Scan)**:
+   - Neither command restricts input discovery to a specific folder. Both commands call `this.app.vault.getMarkdownFiles()`, scanning **all Markdown files across the entire Obsidian vault**.
+   - **Exclusion of Companion Notes**: To prevent infinite loops or modifying companion notes, both commands pass candidate files through [`isMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), which immediately ignores:
+     - Any file residing inside the configured Media Extended folder (default: `Media Library/`).
+     - Any file containing `mx-uid:` in its frontmatter.
+   - **Candidate Qualification**: Only notes containing a valid YouTube URL (via [`extractYouTubeUrlFromNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts)) and satisfying the respective condition (missing companion link in `# Related`, or missing `description:` in frontmatter) are processed.
+2. **Destination Folder for Media Extended Notes**:
+   - The *destination* folder where newly generated Media Extended companion notes are written is retrieved from `this.settings.getMediaExtendedFolder()`, which defaults to `"Media Library"` at the vault root and is configurable in the plugin settings UI under **Media Extended -> Media Extended Folder**.
+3. **Where It Is Documented**:
+   - In [`README.md`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/README.md#method-6-create-missing-media-extended-notes) under **Method 6** and **Method 7** ("Scans the vault...").
+   - In code JSDoc comments in [`src/main.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts#L810-L813) and [`src/main.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts#L910-L913).
+   - In this development document ([`DEVELOPMENT.md`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/DEVELOPMENT.md#q8-where-do-the-create-missing-media-extended-notes-and-upgrade-tags--description-commands-discover-notes-from-and-is-this-documented)).
+
+---
+
+### Q9: Why and how is note discovery restricted to specific folders instead of scanning the entire vault?
+
+**Context**: User requested: *"We do need to restrict it to certain folders as it wouldn't be efficient to run it vault-wide unless the user wanted."*
+
+**Answer**:
+1. **Performance & Efficiency Rationale**:
+   - In large vaults with thousands or tens of thousands of markdown files, scanning every note requires reading each file from disk to check for YouTube URLs, companion notes, and frontmatter. This is I/O-intensive and unnecessary when a user organizes video notes into designated folders (e.g. `YouTube`, `Videos`, `Notes/Summaries`).
+   - Running vault-wide should be an explicit, opt-in choice rather than the default behavior.
+2. **Multi-Layered Architecture**:
+   - **Persistent Setting (`scanFolders`)**:
+     A configurable setting (`Video notes folders to scan (optional)`) in plugin settings accepts a comma-separated list of folder paths. If populated, default batch commands and settings buttons automatically target these folders without scanning the rest of the vault.
+   - **Interactive Selection (`FolderSuggestModal`)**:
+     Commands ending in `in folder...` and corresponding settings buttons open a fuzzy-search modal listing all vault folders, with `/ (Vault root)` as the top item for 1-click vault-wide execution when explicitly desired.
+     If `scanFolders` is empty, calling the default batch commands automatically prompts via `FolderSuggestModal` to prevent accidental vault-wide scans.
+   - **File Explorer Context Menus**:
+     Right-clicking any folder in the Obsidian File Explorer provides instant folder-scoped actions:
+     - `Upgrade YouTube notes in this folder`
+     - `Create missing Media Extended notes in this folder`
+     - `Upgrade video notes with tags and description in this folder`
+   - **Dedicated Vault Commands & Buttons**:
+     Explicit commands (`... in entire vault`) and buttons (`... All in Vault`) allow running across the whole vault whenever the user intentionally chooses to do so.
+3. **Filtering & Path Normalization**:
+   - Implemented via [`parseFolderList()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), [`filterFilesByFolderPaths()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), and [`filterFilesByFolder()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts). It normalizes slashes, handles trailing slashes, and performs strict prefix matching (`${folder}/` or exact match).
+
+

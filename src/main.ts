@@ -18,6 +18,8 @@ import {
 	deduplicateTags,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
+	filterFilesByFolder,
+	filterFilesByFolderPaths,
 	formatTranscript,
 	FrontmatterData,
 	hasRelatedMediaExtendedLink,
@@ -69,9 +71,26 @@ export class YouTubeSummarizerPlugin extends Plugin {
 									await this.upgradeNotesInFolder(file);
 								});
 						});
+						menu.addItem((item) => {
+							item
+								.setTitle('Create missing Media Extended notes in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.createMediaExtendedInFolder(file);
+								});
+						});
+						menu.addItem((item) => {
+							item
+								.setTitle('Upgrade video notes with tags and description in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.upgradeNotesWithTagsAndDescriptionInFolder(file);
+								});
+						});
 					}
 				})
 			);
+
 		} catch (error) {
 			new Notice(`Error: ${error.message}`);
 		}
@@ -232,12 +251,48 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			},
 		});
 
+		// Command to create Media Extended notes for video summaries in a specific folder
+		this.addCommand({
+			id: 'create-missing-media-extended-notes-folder',
+			name: 'Create Media Extended notes for video summaries in folder...',
+			callback: () => {
+				this.promptCreateMediaExtendedNotes();
+			},
+		});
+
+		// Command to create Media Extended notes for video summaries in the entire vault
+		this.addCommand({
+			id: 'create-missing-media-extended-notes-vault',
+			name: 'Create Media Extended notes for video summaries in entire vault',
+			callback: async () => {
+				await this.createMediaExtendedInVault();
+			},
+		});
+
 		// Command to create Media Extended notes for video summaries without matching companion note
 		this.addCommand({
 			id: 'create-missing-media-extended-notes',
 			name: 'Create Media Extended notes for video summaries without companion note',
 			callback: async () => {
 				await this.createMediaExtendedForMissingNotes();
+			},
+		});
+
+		// Command to upgrade video summary notes with tags and description in a specific folder
+		this.addCommand({
+			id: 'upgrade-notes-with-tags-and-description-folder',
+			name: 'Upgrade video summary notes with tags and description in folder...',
+			callback: () => {
+				this.promptUpgradeNotesWithTagsAndDescription();
+			},
+		});
+
+		// Command to upgrade video summary notes with tags and description in the entire vault
+		this.addCommand({
+			id: 'upgrade-notes-with-tags-and-description-vault',
+			name: 'Upgrade video summary notes with tags and description in entire vault',
+			callback: async () => {
+				await this.upgradeNotesWithTagsAndDescriptionInVault();
 			},
 		});
 
@@ -250,6 +305,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			},
 		});
 	}
+
 
 	/**
 	 * Summarizes the YouTube video for the given URL and updates the markdown view with the summary.
@@ -789,11 +845,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * @param folder The folder to scan.
 	 */
 	public async upgradeNotesInFolder(folder: TFolder): Promise<void> {
-		const isRoot = folder.isRoot();
-		const files = isRoot
-			? this.app.vault.getMarkdownFiles()
-			: this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(folder.path + '/'));
-		const scopeDescription = isRoot ? 'vault root' : `folder "${folder.path}"`;
+		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+		await this.upgradeNotes(files, scopeDescription);
+	}
+
+	/**
+	 * Scans notes within user-configured folders for YouTube videos missing new frontmatter.
+	 */
+	public async upgradeNotesInConfiguredFolders(): Promise<void> {
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length === 0) {
+			this.promptFolderUpgrade();
+			return;
+		}
+		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
+		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
 		await this.upgradeNotes(files, scopeDescription);
 	}
 
@@ -807,11 +874,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Scans the vault for video summary notes that do not have a matching Media Extended companion note
-	 * (detected by the presence of # Related and a wikilink to the note), creates the companion note,
-	 * and adds the bidirectional link.
+	 * Processes a list of markdown files, creating Media Extended companion notes for any
+	 * that lack one, and adds the bidirectional link.
+	 * @param files The files to scan.
+	 * @param scopeDescription Human-readable label for progress notifications.
 	 */
-	public async createMediaExtendedForMissingNotes(): Promise<void> {
+	public async processMediaExtendedNotes(files: TFile[], scopeDescription: string): Promise<void> {
 		if (this.isProcessing) {
 			new Notice('Already processing a video or upgrading notes, please wait...');
 			return;
@@ -820,9 +888,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		try {
 			this.isProcessing = true;
 			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-			new Notice('Scanning vault for video summary notes without Media Extended companion notes...');
+			new Notice(`Scanning ${scopeDescription} for video summary notes without Media Extended companion notes...`);
 
-			const files = this.app.vault.getMarkdownFiles();
 			const candidates: { file: TFile; url: string; title: string }[] = [];
 
 			for (const file of files) {
@@ -857,11 +924,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice('All video summary notes already have matching Media Extended companion notes!');
+				new Notice(`All video summary notes in ${scopeDescription} already have matching Media Extended companion notes!`);
 				return;
 			}
 
-			new Notice(`Found ${candidates.length} video summary note(s) without companion notes. Creating Media Extended notes...`);
+			new Notice(`Found ${candidates.length} video summary note(s) in ${scopeDescription} without companion notes. Creating Media Extended notes...`);
 
 			let successCount = 0;
 			let failCount = 0;
@@ -896,7 +963,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			new Notice(
-				`Complete! Created ${successCount} Media Extended companion note(s)${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+				`Complete! Created ${successCount} Media Extended companion note(s) for ${scopeDescription}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
 			);
 		} catch (error) {
 			new Notice(`Failed to process Media Extended notes: ${error.message}`);
@@ -907,10 +974,70 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Scans the vault for video summary notes that do not have the description frontmatter property,
-	 * fetches metadata and tags from the YouTube Data API / metadata, and updates their frontmatter.
+	 * Scans all notes in the vault for video summary notes without companion notes.
 	 */
-	public async upgradeNotesWithTagsAndDescription(): Promise<void> {
+	public async createMediaExtendedInVault(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		await this.processMediaExtendedNotes(files, 'vault');
+	}
+
+	/**
+	 * Scans notes within a specific folder (and its subfolders) for video summary notes without companion notes.
+	 */
+	public async createMediaExtendedInFolder(folder: TFolder): Promise<void> {
+		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+		await this.processMediaExtendedNotes(files, scopeDescription);
+	}
+
+	/**
+	 * Scans notes within user-configured folders for video summary notes without companion notes.
+	 */
+	public async createMediaExtendedInConfiguredFolders(): Promise<void> {
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length === 0) {
+			this.promptCreateMediaExtendedNotes();
+			return;
+		}
+		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
+		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
+		await this.processMediaExtendedNotes(files, scopeDescription);
+	}
+
+	/**
+	 * Opens a folder selection modal to create companion notes in the chosen folder.
+	 */
+	public promptCreateMediaExtendedNotes(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.createMediaExtendedInFolder(folder);
+		}).open();
+	}
+
+	/**
+	 * Entry point for creating missing Media Extended notes.
+	 * If folder is specified, runs on that folder.
+	 * If scanFolders setting is configured, runs on configured folders.
+	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
+	 */
+	public async createMediaExtendedForMissingNotes(folder?: TFolder): Promise<void> {
+		if (folder) {
+			await this.createMediaExtendedInFolder(folder);
+			return;
+		}
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length > 0) {
+			await this.createMediaExtendedInConfiguredFolders();
+			return;
+		}
+		this.promptCreateMediaExtendedNotes();
+	}
+
+	/**
+	 * Processes a list of markdown files, upgrading video summary notes that lack description frontmatter.
+	 * @param files The files to scan.
+	 * @param scopeDescription Human-readable label for progress notifications.
+	 */
+	public async processNotesWithTagsAndDescription(files: TFile[], scopeDescription: string): Promise<void> {
 		if (this.isProcessing) {
 			new Notice('Already processing a video or upgrading notes, please wait...');
 			return;
@@ -919,9 +1046,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		try {
 			this.isProcessing = true;
 			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-			new Notice('Scanning vault for video summary notes missing description frontmatter...');
+			new Notice(`Scanning ${scopeDescription} for video summary notes missing description frontmatter...`);
 
-			const files = this.app.vault.getMarkdownFiles();
 			const candidates: { file: TFile; url: string }[] = [];
 
 			for (const file of files) {
@@ -943,12 +1069,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice('All video summary notes already have description frontmatter!');
+				new Notice(`All video summary notes in ${scopeDescription} already have description frontmatter!`);
 				return;
 			}
 
 			new Notice(
-				`Found ${candidates.length} video summary note(s) missing description frontmatter. Upgrading with tags & description...`
+				`Found ${candidates.length} video summary note(s) in ${scopeDescription} missing description frontmatter. Upgrading with tags & description...`
 			);
 
 			let successCount = 0;
@@ -1017,7 +1143,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			new Notice(
-				`Upgrade complete! Successfully upgraded ${successCount} note(s) with tags & description${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+				`Upgrade complete! Successfully upgraded ${successCount} note(s) in ${scopeDescription} with tags & description${failCount > 0 ? ` (${failCount} failed)` : ''}.`
 			);
 		} catch (error) {
 			new Notice(`Failed to upgrade notes: ${error.message}`);
@@ -1026,6 +1152,66 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			this.isProcessing = false;
 		}
 	}
+
+	/**
+	 * Scans all notes in the vault for video summary notes missing description frontmatter and upgrades them.
+	 */
+	public async upgradeNotesWithTagsAndDescriptionInVault(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		await this.processNotesWithTagsAndDescription(files, 'vault');
+	}
+
+	/**
+	 * Scans notes within a specific folder (and its subfolders) for video summary notes missing description frontmatter.
+	 */
+	public async upgradeNotesWithTagsAndDescriptionInFolder(folder: TFolder): Promise<void> {
+		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+		await this.processNotesWithTagsAndDescription(files, scopeDescription);
+	}
+
+	/**
+	 * Scans notes within user-configured folders for video summary notes missing description frontmatter.
+	 */
+	public async upgradeNotesWithTagsAndDescriptionInConfiguredFolders(): Promise<void> {
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length === 0) {
+			this.promptUpgradeNotesWithTagsAndDescription();
+			return;
+		}
+		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
+		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
+		await this.processNotesWithTagsAndDescription(files, scopeDescription);
+	}
+
+	/**
+	 * Opens a folder selection modal to upgrade notes missing description frontmatter in the chosen folder.
+	 */
+	public promptUpgradeNotesWithTagsAndDescription(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.upgradeNotesWithTagsAndDescriptionInFolder(folder);
+		}).open();
+	}
+
+	/**
+	 * Entry point for upgrading notes with tags & description frontmatter.
+	 * If folder is specified, runs on that folder.
+	 * If scanFolders setting is configured, runs on configured folders.
+	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
+	 */
+	public async upgradeNotesWithTagsAndDescription(folder?: TFolder): Promise<void> {
+		if (folder) {
+			await this.upgradeNotesWithTagsAndDescriptionInFolder(folder);
+			return;
+		}
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length > 0) {
+			await this.upgradeNotesWithTagsAndDescriptionInConfiguredFolders();
+			return;
+		}
+		this.promptUpgradeNotesWithTagsAndDescription();
+	}
+
 
 	private buildPrompt(transcriptText: string, customPrompt?: string): string {
 		let basePrompt = customPrompt && customPrompt.trim()

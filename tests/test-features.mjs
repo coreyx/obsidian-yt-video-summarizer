@@ -2030,7 +2030,98 @@ assert(mergedUpgradedNote.includes('channel_name: "Channel"'));
 
 console.log('✓ Missing companion note detection and description frontmatter upgrade passed');
 
+// Test 23: Folder parsing, folder filtering, and folder-scoped discovery
+console.log('Testing folder parsing, folder filtering, and folder-scoped discovery...');
+
+function testParseFolderList(foldersStr) {
+	if (!foldersStr || !foldersStr.trim()) return [];
+	return foldersStr
+		.split(/[\n,]/)
+		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+		.filter((f) => f.length > 0);
+}
+
+function testFilterFilesByFolderPaths(files, targetFolders) {
+	if (!targetFolders || targetFolders.length === 0) {
+		return files;
+	}
+	const normalizedTargets = targetFolders
+		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+		.filter((f) => f.length > 0);
+
+	if (normalizedTargets.length === 0) {
+		return files;
+	}
+
+	return files.filter((file) => {
+		const filePath = file.path.replace(/\\/g, '/');
+		return normalizedTargets.some(
+			(folder) => filePath.startsWith(folder + '/') || filePath === folder
+		);
+	});
+}
+
+function testFilterFilesByFolder(files, folder) {
+	if (folder.isRoot()) {
+		return files;
+	}
+	const folderPath = folder.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	return files.filter((file) => {
+		const filePath = file.path.replace(/\\/g, '/');
+		return filePath.startsWith(folderPath + '/') || filePath === folderPath;
+	});
+}
+
+// Case 1: parseFolderList
+assert.deepStrictEqual(
+	testParseFolderList('YouTube, Notes/Videos, Archive/2026'),
+	['YouTube', 'Notes/Videos', 'Archive/2026']
+);
+assert.deepStrictEqual(
+	testParseFolderList(' /YouTube/ \n \\Notes\\Videos\\ , , \n   '),
+	['YouTube', 'Notes/Videos']
+);
+assert.deepStrictEqual(testParseFolderList(''), []);
+assert.deepStrictEqual(testParseFolderList('   '), []);
+
+// Case 2: filterFilesByFolderPaths
+const mockVaultFiles = [
+	{ path: 'YouTube/Rick Astley.md' },
+	{ path: 'YouTube/Tutorials/Agent.md' },
+	{ path: 'Notes/Videos/Conference.md' },
+	{ path: 'Articles/Blog.md' },
+	{ path: 'RootNote.md' }
+];
+
+const filteredByPaths = testFilterFilesByFolderPaths(mockVaultFiles, ['YouTube', 'Notes/Videos']);
+assert.strictEqual(filteredByPaths.length, 3);
+assert.deepStrictEqual(
+	filteredByPaths.map((f) => f.path),
+	['YouTube/Rick Astley.md', 'YouTube/Tutorials/Agent.md', 'Notes/Videos/Conference.md']
+);
+
+// Empty folder list returns all files
+assert.strictEqual(testFilterFilesByFolderPaths(mockVaultFiles, []).length, 5);
+
+// Case 3: filterFilesByFolder (single folder or root)
+const mockSubFolder = { path: 'YouTube', isRoot: () => false };
+const vaultRootFolder = { path: '/', isRoot: () => true };
+
+const filteredByFolder = testFilterFilesByFolder(mockVaultFiles, mockSubFolder);
+assert.strictEqual(filteredByFolder.length, 2);
+assert.deepStrictEqual(
+	filteredByFolder.map((f) => f.path),
+	['YouTube/Rick Astley.md', 'YouTube/Tutorials/Agent.md']
+);
+
+const filteredByRoot = testFilterFilesByFolder(mockVaultFiles, vaultRootFolder);
+assert.strictEqual(filteredByRoot.length, 5);
+
+
+console.log('✓ Folder parsing, folder filtering, and folder-scoped discovery passed');
+
 console.log('\nAll tests passed successfully!');
+
 
 
 

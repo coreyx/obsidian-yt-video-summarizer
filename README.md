@@ -204,17 +204,25 @@ This safely populates the new metadata (`title`, `channel_name`, `channel_userna
 
 ### Method 6: Create Missing Media Extended Notes
 
-- **Command Palette**: Run `Create Media Extended notes for video summaries without companion note` (`Ctrl/Cmd + P`).
-- **Settings Tab**: Click **Create Missing Notes** under the *Create Media Extended notes* section.
+- **Specific Folder**:
+  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Create missing Media Extended notes in this folder**.
+  - **Command Palette**: Run `Create Media Extended notes for video summaries in folder...` and pick a folder.
+  - **Settings Tab**: Click **Create in Folder...** under *Create missing Media Extended notes*.
+- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)** (e.g. `YouTube, Notes/Videos`). The default command `Create Media Extended notes for video summaries without companion note` will automatically target those folders without scanning the entire vault.
+- **Entire Vault**: Run `Create Media Extended notes for video summaries in entire vault` from the Command Palette, or click **Create All in Vault** in settings.
 
-Scans the vault for video summary notes that do not have a matching Media Extended companion note (detected by checking for `# Related` and a wikilink to the companion note), automatically creates the companion note in `Media Library/` (configurable) with timestamped transcripts, and links them bidirectionally.
+Scans the target scope (excluding notes already inside the configured Media Extended folder, default `Media Library/`) for video summary notes that do not have a matching Media Extended companion note (detected by checking for `# Related` and a wikilink to the companion note), automatically creates the companion note in `Media Library/` (configurable in settings) with timestamped transcripts, and links them bidirectionally.
 
 ### Method 7: Upgrade Notes with Tags & Description Frontmatter
 
-- **Command Palette**: Run `Upgrade video summary notes with tags and description frontmatter` (`Ctrl/Cmd + P`).
-- **Settings Tab**: Click **Upgrade Tags & Description** under the *Upgrade previous notes* section.
+- **Specific Folder**:
+  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade video notes with tags and description in this folder**.
+  - **Command Palette**: Run `Upgrade video summary notes with tags and description in folder...` and pick a folder.
+  - **Settings Tab**: Click **Upgrade Tags & Description in Folder...** under *Upgrade tags & description frontmatter*.
+- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)**. The default command `Upgrade video summary notes with tags and description frontmatter` will automatically target those folders without scanning the entire vault.
+- **Entire Vault**: Run `Upgrade video summary notes with tags and description in entire vault` from the Command Palette, or click **Upgrade Tags & Description in Vault** in settings.
 
-Identifies video summary notes that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
+Identifies video summary notes in the selected scope that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
 
 ## Output Format
 
