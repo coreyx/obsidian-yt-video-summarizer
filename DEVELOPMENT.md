@@ -204,7 +204,7 @@ npm install
   - Converts to lowercase kebab-case.
   - Strips `#` and filesystem-illegal characters.
   - Reconciles run-together hashtags with hyphenated variants (e.g. collapses `#RickAstley` into `rick-astley`).
-  - Prioritizes hierarchical grouped tags with `/` (e.g. `ai/music-videos` over flat `ai-music-videos`).
+  - Prioritizes hierarchical grouped tags with `/` (e.g. `ai/machine-learning` over flat `ai-machine-learning`).
 * **AI Semantic Topic Tagging & Compressed Vault Tag Cache**:
   - Optional setting: `Generate semantic topic tags` (`addTopicsAsTags`).
   - Prior to triggering inference, rebuilds a compressed in-memory cache of all tags across the whole vault via [`buildVaultTagData()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts) (scanning `app.metadataCache.getTags()` and cached markdown frontmatter).
@@ -212,7 +212,8 @@ npm install
   - Injects existing video tags, cached vault tag list, established prefixes, and strict rules into the prompt:
     1. Reuses existing tags from the cached vault list whenever semantically appropriate.
     2. Only creates new tags in kebab-case when no appropriate tag exists.
-    3. Groups tags under established prefixes (e.g. `ai/music-videos` instead of `ai-music-videos`).
+    3. Groups tags under established prefixes (e.g. `ai/machine-learning` instead of `ai-machine-learning`).
+  - Detailed architecture guide available in [`AI_TAGGING.md`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/AI_TAGGING.md).
 
 ---
 
@@ -571,7 +572,7 @@ This section preserves technical and design questions asked during development f
 - Important rules:
   - Always prefer to reuse a tag that already exists instead of creating a new one. Only create new tags when necessary if semantic meaning of the desired tag does not already exist in the cached tag list.
   - Use kebab case for any new tags created.
-  - Group tags where it makes sense: If there is a large group prefix like `ai/`, group the more specific part under that instead of creating an entirely new tag at the top level (e.g. `ai/music-videos` instead of `ai-music-videos`).
+  - Group tags where it makes sense: If there is a large group prefix like `ai/`, group the more specific part under that instead of creating an entirely new tag at the top level (e.g. `ai/machine-learning` instead of `ai-machine-learning`).
 - Require a compressed cache of all tags across the whole vault, rebuilt prior to triggering inference, and added to the AI context.
 - Only activate this functionality if the AI tagging feature is enabled.
 - Update the feature description in settings to mention that it is semantic and inferred, uses the configured AI model and inference, and may increase the context window and token usage.
@@ -597,15 +598,15 @@ This section preserves technical and design questions asked during development f
        2. *Is there any obvious tag that is missing in the existing set of tags?*
      - Supplies the video's pre-identified tags (from title/description hashtags and YouTube Data API keywords).
      - Injects the cached vault tag list and detected group prefixes.
-     - Enforces the strict reuse, kebab-case, and hierarchical prefix rules (`ai/music-videos` instead of `ai-music-videos`).
+     - Enforces the strict reuse, kebab-case, and hierarchical prefix rules (`ai/machine-learning` instead of `ai-machine-learning`).
      - Constrains output to 3 to 7 concise lowercase comma-separated tags with no `#` and no markdown chatter.
 
 4. **Hierarchical Deduplication**:
-   - In [`deduplicateTags()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), the tag collapsing pass was refined: when collapsing tags that share the same alphanumeric key (e.g. `ai-music-videos` vs `ai/music-videos`), hierarchical tags containing `/` are explicitly preferred over flat hyphenated variants.
+   - In [`deduplicateTags()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), the tag collapsing pass was refined: when collapsing tags that share the same alphanumeric key (e.g. `ai-machine-learning` vs `ai/machine-learning`), hierarchical tags containing `/` are explicitly preferred over flat hyphenated variants.
 
 5. **Settings UI Transparency**:
    - The setting description in [`src/ui/settings.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts) explicitly informs users:
-     *"Use AI semantic analysis and inference with your configured AI model to infer relevant topic tags and fill in obvious missing tags. Automatically indexes your entire vault's existing tag taxonomy into a compressed cache prior to inference to prioritize tag reuse and group under established hierarchies (e.g. ai/music-videos). Note: This is semantic and inferred, adds your vault's tag list to the AI context, and may increase the size of the context window and token usage."*
+     *"Use AI semantic analysis and inference with your configured AI model to infer relevant topic tags and fill in obvious missing tags. Automatically indexes your entire vault's existing tag taxonomy into a compressed cache prior to inference to prioritize tag reuse and group under established hierarchies (e.g. ai/machine-learning). Note: This is semantic and inferred, adds your vault's tag list to the AI context, and may increase the size of the context window and token usage."*
 
 
 
