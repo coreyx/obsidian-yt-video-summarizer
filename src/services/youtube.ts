@@ -245,37 +245,151 @@ export class YouTubeService {
 	}
 
 	/**
-	 * Fetches playlist details using the YouTube Data API v3.
+	/**
+	 * Scrapes playlist details directly from YouTube's playlist web page without requiring an API key.
 	 */
-	static async fetchPlaylistDetails(playlistId: string, apiKey: string): Promise<{
+	static async fetchPlaylistDetailsFromWeb(playlistId: string): Promise<{
 		title?: string;
 		itemCount?: number;
 		channelId?: string;
 	}> {
-		if (!apiKey || !apiKey.trim() || !playlistId) return {};
+		if (!playlistId) return {};
+		const cleanPlaylistId = playlistId.trim();
 		try {
+			const playlistUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(cleanPlaylistId)}`;
 			const response = await requestUrl({
-				url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&id=${playlistId}&key=${apiKey.trim()}`,
-				method: 'GET',
+				url: playlistUrl,
 				headers: {
-					'Accept': 'application/json',
+					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+					'Accept-Language': 'en-US,en;q=0.9',
 				},
 			});
-			if (response.status === 200) {
-				const data = JSON.parse(response.text);
-				const item = data.items?.[0];
-				if (item) {
-					return {
-						title: item.snippet?.title,
-						itemCount: item.contentDetails?.itemCount !== undefined ? parseInt(item.contentDetails.itemCount, 10) : undefined,
-						channelId: item.snippet?.channelId,
-					};
+
+			if (response.status !== 200) {
+				return {};
+			}
+
+			const html = response.text;
+			let title: string | undefined;
+
+			// 1. Try og:title / title meta tags
+			const ogMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i) ||
+			                html.match(/<meta\s+name="title"\s+content="([^"]+)"/i);
+			if (ogMatch && ogMatch[1].trim()) {
+				const candidate = ogMatch[1].trim();
+				if (candidate !== 'undefined' && candidate.toLowerCase() !== 'youtube') {
+					title = candidate;
 				}
 			}
+
+			// 2. Try playlistMetadataRenderer JSON in page script
+			if (!title) {
+				const jsonMatch = html.match(/"playlistMetadataRenderer":\{"title":"([^"]+)"/);
+				if (jsonMatch && jsonMatch[1].trim()) {
+					const candidate = jsonMatch[1].trim();
+					if (candidate !== 'undefined' && candidate.toLowerCase() !== 'youtube') {
+						title = candidate;
+					}
+				}
+			}
+
+			// 3. Try playlistHeaderRenderer JSON
+			if (!title) {
+				const headerMatch = html.match(/"playlistHeaderRenderer":\{.*?"title":\{.*?"text":"([^"]+)"/);
+				if (headerMatch && headerMatch[1].trim()) {
+					const candidate = headerMatch[1].trim();
+					if (candidate !== 'undefined' && candidate.toLowerCase() !== 'youtube') {
+						title = candidate;
+					}
+				}
+			}
+
+			// 4. Try <title> tag (e.g. "Title - YouTube")
+			if (!title) {
+				const titleTagMatch = html.match(/<title>([^<]+)<\/title>/i);
+				if (titleTagMatch) {
+					const candidate = titleTagMatch[1].replace(/\s*-\s*YouTube$/i, '').trim();
+					if (candidate && candidate !== 'undefined' && candidate.toLowerCase() !== 'youtube') {
+						title = candidate;
+					}
+				}
+			}
+
+			// Extract item count if available
+			let itemCount: number | undefined;
+			const totalVideosMatch = html.match(/"totalVideos":([0-9]+)/) ||
+			                         html.match(/"videoCount":"([0-9]+)"/);
+			if (totalVideosMatch) {
+				itemCount = parseInt(totalVideosMatch[1], 10);
+			} else {
+				const textCountMatch = html.match(/([0-9,]+)\s+videos/i);
+				if (textCountMatch) {
+					itemCount = parseInt(textCountMatch[1].replace(/,/g, ''), 10);
+				}
+			}
+
+			// Extract channel ID if available
+			let channelId: string | undefined;
+			const channelMatch = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{22})"/);
+			if (channelMatch) {
+				channelId = channelMatch[1];
+			}
+
+			return {
+				title: title ? YouTubeService.decodeHTML(title) : undefined,
+				itemCount: !isNaN(itemCount as number) ? itemCount : undefined,
+				channelId,
+			};
 		} catch (error) {
-			console.warn(`YouTube Data API playlists request failed for ${playlistId}:`, error);
+			console.warn(`Web fallback failed for playlist ${cleanPlaylistId}:`, error);
+			return {};
 		}
-		return {};
+	}
+
+	/**
+	 * Fetches playlist details using the YouTube Data API v3 if an API key is available,
+	 * with automatic fallback to YouTube web scraping if no API key is provided, if the API call
+	 * fails, or if the API returns no items.
+	 */
+	static async fetchPlaylistDetails(playlistId: string, apiKey?: string): Promise<{
+		title?: string;
+		itemCount?: number;
+		channelId?: string;
+	}> {
+		if (!playlistId) return {};
+		const cleanPlaylistId = playlistId.trim();
+
+		// Priority 1: YouTube Data API v3 (if apiKey is configured)
+		if (apiKey && apiKey.trim()) {
+			try {
+				const response = await requestUrl({
+					url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&id=${encodeURIComponent(cleanPlaylistId)}&key=${encodeURIComponent(apiKey.trim())}`,
+					method: 'GET',
+					headers: {
+						'Accept': 'application/json',
+					},
+				});
+				if (response.status === 200) {
+					const data = JSON.parse(response.text);
+					const item = data.items?.[0];
+					if (item && item.snippet?.title) {
+						const decodedTitle = YouTubeService.decodeHTML(item.snippet.title).trim();
+						if (decodedTitle && decodedTitle.toLowerCase() !== 'playlist') {
+							return {
+								title: decodedTitle,
+								itemCount: item.contentDetails?.itemCount !== undefined ? parseInt(item.contentDetails.itemCount, 10) : undefined,
+								channelId: item.snippet?.channelId,
+							};
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(`YouTube Data API playlists request failed for ${cleanPlaylistId}:`, error);
+			}
+		}
+
+		// Priority 2: Web Scraping Fallback
+		return await YouTubeService.fetchPlaylistDetailsFromWeb(cleanPlaylistId);
 	}
 
 	/**
@@ -285,7 +399,7 @@ export class YouTubeService {
 		if (!apiKey || !apiKey.trim() || !playlistId || !videoId) return undefined;
 		try {
 			const response = await requestUrl({
-				url: `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&videoId=${videoId}&maxResults=1&key=${apiKey.trim()}`,
+				url: `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(playlistId.trim())}&videoId=${encodeURIComponent(videoId.trim())}&maxResults=1&key=${encodeURIComponent(apiKey.trim())}`,
 				method: 'GET',
 				headers: {
 					'Accept': 'application/json',
@@ -324,19 +438,20 @@ export class YouTubeService {
 		const urlIndex = YouTubeService.extractPlaylistIndex(options.url);
 
 		if (urlPlaylistId) {
-			let details: { title?: string; itemCount?: number; channelId?: string } = {};
+			const details = await YouTubeService.fetchPlaylistDetails(urlPlaylistId, apiKey);
 			let position = urlIndex;
 
-			if (apiKey) {
-				details = await YouTubeService.fetchPlaylistDetails(urlPlaylistId, apiKey);
-				if (position === undefined) {
-					position = await YouTubeService.fetchVideoPositionInPlaylist(urlPlaylistId, options.videoId, apiKey);
-				}
+			if (position === undefined && apiKey) {
+				position = await YouTubeService.fetchVideoPositionInPlaylist(urlPlaylistId, options.videoId, apiKey);
 			}
+
+			const title = details.title && details.title.trim().toLowerCase() !== 'playlist'
+				? details.title.trim()
+				: undefined;
 
 			return {
 				id: urlPlaylistId,
-				title: details.title || 'Playlist',
+				title,
 				url: `https://www.youtube.com/playlist?list=${urlPlaylistId}`,
 				index: position,
 				count: details.itemCount,
@@ -349,17 +464,20 @@ export class YouTubeService {
 			if (descMatch) {
 				const descPlaylistId = descMatch[1];
 				if (!descPlaylistId.startsWith('RD') && descPlaylistId !== 'WL' && descPlaylistId !== 'LL') {
-					let details: { title?: string; itemCount?: number; channelId?: string } = {};
+					const details = await YouTubeService.fetchPlaylistDetails(descPlaylistId, apiKey);
 					let position: number | undefined;
 
 					if (apiKey) {
-						details = await YouTubeService.fetchPlaylistDetails(descPlaylistId, apiKey);
 						position = await YouTubeService.fetchVideoPositionInPlaylist(descPlaylistId, options.videoId, apiKey);
 					}
 
+					const title = details.title && details.title.trim().toLowerCase() !== 'playlist'
+						? details.title.trim()
+						: undefined;
+
 					return {
 						id: descPlaylistId,
-						title: details.title || 'Playlist',
+						title,
 						url: `https://www.youtube.com/playlist?list=${descPlaylistId}`,
 						index: position,
 						count: details.itemCount,
@@ -372,7 +490,7 @@ export class YouTubeService {
 		if (apiKey && options.channelId) {
 			try {
 				const response = await requestUrl({
-					url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&channelId=${options.channelId}&maxResults=25&key=${apiKey}`,
+					url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&channelId=${encodeURIComponent(options.channelId)}&maxResults=25&key=${encodeURIComponent(apiKey)}`,
 					method: 'GET',
 					headers: {
 						'Accept': 'application/json',
@@ -387,9 +505,16 @@ export class YouTubeService {
 					for (const item of items.slice(0, 10)) {
 						const pos = await YouTubeService.fetchVideoPositionInPlaylist(item.id, options.videoId, apiKey);
 						if (typeof pos === 'number') {
+							let rawTitle = item.snippet?.title ? YouTubeService.decodeHTML(item.snippet.title).trim() : undefined;
+							if (!rawTitle || rawTitle.toLowerCase() === 'playlist') {
+								const fallbackDetails = await YouTubeService.fetchPlaylistDetails(item.id, apiKey);
+								rawTitle = fallbackDetails.title;
+							}
+							const title = rawTitle && rawTitle.toLowerCase() !== 'playlist' ? rawTitle : undefined;
+
 							return {
 								id: item.id,
-								title: item.snippet?.title || 'Playlist',
+								title,
 								url: `https://www.youtube.com/playlist?list=${item.id}`,
 								index: pos,
 								count: item.contentDetails?.itemCount !== undefined ? parseInt(item.contentDetails.itemCount, 10) : undefined,
@@ -573,11 +698,11 @@ export class YouTubeService {
 			url: `https://www.youtube.com/watch?v=${videoId}`,
 			videoId,
 			channelId: channelId || undefined,
-			title: this.decodeHTML(title),
-			author: this.decodeHTML(author),
+			title: YouTubeService.decodeHTML(title),
+			author: YouTubeService.decodeHTML(author),
 			channelUrl,
 			channelUsername: channelUsername || undefined,
-			description: this.decodeHTML(description, true),
+			description: YouTubeService.decodeHTML(description, true),
 			tags: tags.length > 0 ? tags : undefined,
 			duration,
 			publishedAt,
@@ -770,7 +895,7 @@ export class YouTubeService {
 			if (tMatch && dMatch) {
 				const start = parseInt(tMatch[1]); // Already in milliseconds
 				const duration = parseInt(dMatch[1]);
-				const text = this.decodeHTML(content.replace(/<[^>]+>/g, ' ')); // Strip any inner tags
+				const text = YouTubeService.decodeHTML(content.replace(/<[^>]+>/g, ' ')); // Strip any inner tags
 
 				if (text.trim()) {
 					lines.push({
@@ -798,7 +923,7 @@ export class YouTubeService {
 				if (startMatch && durMatch) {
 					const start = parseFloat(startMatch[1]) * 1000; // Convert to milliseconds
 					const duration = parseFloat(durMatch[1]) * 1000;
-					const text = this.decodeHTML(content.replace(/<[^>]+>/g, ' '));
+					const text = YouTubeService.decodeHTML(content.replace(/<[^>]+>/g, ' '));
 
 					if (text.trim()) {
 						lines.push({
@@ -866,7 +991,7 @@ export class YouTubeService {
 	 * @param preserveNewlines - If true, preserves line breaks instead of collapsing them
 	 * @returns Decoded text string
 	 */
-	private decodeHTML(text: string, preserveNewlines = false): string {
+	public static decodeHTML(text: string, preserveNewlines = false): string {
 		const decoded = text
 			.replace(/&#39;/g, "'")
 			.replace(/&amp;/g, '&')

@@ -1,11 +1,13 @@
 import { arrayBufferToBase64, Editor, MarkdownView, Notice, Plugin, TFile, TFolder } from 'obsidian';
-import { PluginSettings, TranscriptResponse } from './types';
+import { BatchItemResult, BatchOperationReport, PluginSettings, TranscriptResponse } from './types';
 
 import { SettingsTab } from './ui/settings';
 import { YouTubeService } from './services/youtube';
 import { YouTubeURLModal } from './ui/modals/youtube-url';
 import { CustomPromptModal } from './ui/modals/CustomPromptModal';
 import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
+import { BatchReportModal } from './ui/modals/BatchReportModal';
+import { BatchProgressTracker } from './utils/BatchProgressTracker';
 import { PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
@@ -49,6 +51,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	private provider: AIModelProvider | null = null;
 	private isProcessing = false;
 	private cachedVaultTagData: VaultTagData | null = null;
+	private lastBatchReport: BatchOperationReport | null = null;
 
 	/**
 	 * Called when the plugin is loaded.
@@ -376,6 +379,40 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				await this.detectAndConnectLMStudio();
 			},
 		});
+
+		// Command to view the last batch operation report & logs
+		this.addCommand({
+			id: 'view-last-batch-report',
+			name: 'View last batch operation report & logs',
+			callback: () => {
+				this.showLastBatchReport();
+			},
+		});
+	}
+
+	/**
+	 * Retrieves the report of the most recently executed batch operation, if any.
+	 */
+	public getLastBatchReport(): BatchOperationReport | null {
+		return this.lastBatchReport;
+	}
+
+	/**
+	 * Stores the report of the most recently executed batch operation.
+	 */
+	public setLastBatchReport(report: BatchOperationReport): void {
+		this.lastBatchReport = report;
+	}
+
+	/**
+	 * Displays the modal containing the complete logs and statistics of the last batch operation.
+	 */
+	public showLastBatchReport(): void {
+		if (!this.lastBatchReport) {
+			new Notice('No batch operation report available yet. Run an upgrade command first.');
+			return;
+		}
+		new BatchReportModal(this.app, this.lastBatchReport).open();
 	}
 
 
@@ -551,6 +588,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			// Step 8: Apply frontmatter and insert body content
 			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
+			const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+				? playlist.title.trim()
+				: undefined;
 			const fmData: FrontmatterData = {
 				title: transcript.title,
 				channel_name: transcript.author,
@@ -561,7 +601,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				thumbnail_text: thumbnailText,
 				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
 				tags: frontmatterTags,
-				playlist_title: playlist?.title,
+				playlist_title: pTitle,
 				playlist_url: playlist?.url,
 				playlist_id: playlist?.id,
 				playlist_index: playlist?.index,
@@ -837,6 +877,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
 
 			const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
+			const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+				? playlist.title.trim()
+				: undefined;
 			const fmData: FrontmatterData = {
 				title: metadata.title,
 				channel_name: metadata.author,
@@ -847,7 +890,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				thumbnail_text: thumbnailText,
 				description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
 				tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-				playlist_title: playlist?.title,
+				playlist_title: pTitle,
 				playlist_url: playlist?.url,
 				playlist_id: playlist?.id,
 				playlist_index: playlist?.index,
@@ -893,14 +936,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice(`All YouTube notes in ${scopeDescription} already have up-to-date frontmatter!`);
+				BatchProgressTracker.finishEmpty(
+					this,
+					'Upgrade previous notes',
+					scopeDescription,
+					`All YouTube notes in ${scopeDescription} already have up-to-date frontmatter!`
+				);
 				return;
 			}
 
-			new Notice(`Found ${candidates.length} note(s) to upgrade in ${scopeDescription}. Starting upgrade...`);
-
-			let successCount = 0;
-			let failCount = 0;
+			const tracker = new BatchProgressTracker(
+				this,
+				'Upgrade previous notes',
+				scopeDescription,
+				candidates.length
+			);
 
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
@@ -941,6 +991,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
 
 					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
+					const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+						? playlist.title.trim()
+						: undefined;
 					const fmData: FrontmatterData = {
 						title: metadata.title,
 						channel_name: metadata.author,
@@ -951,7 +1004,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						thumbnail_text: thumbnailText,
 						description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
 						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-						playlist_title: playlist?.title,
+						playlist_title: pTitle,
 						playlist_url: playlist?.url,
 						playlist_id: playlist?.id,
 						playlist_index: playlist?.index,
@@ -961,10 +1014,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					const currentContent = await this.app.vault.read(file);
 					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
 					await this.app.vault.modify(file, updatedContent);
-					successCount++;
+
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'success',
+						message: `Upgraded frontmatter (${metadata.title})${thumbnailText ? ' with OCR text' : ''}`
+					});
 				} catch (error) {
-					console.error(`Failed to upgrade note ${file.path}:`, error);
-					failCount++;
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'error',
+						message: error.message || String(error)
+					});
 				}
 
 				if (i < candidates.length - 1) {
@@ -972,9 +1037,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			new Notice(
-				`Upgrade complete! Successfully upgraded ${successCount} note(s) in ${scopeDescription}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
-			);
+			tracker.finish();
 		} catch (error) {
 			new Notice(`Upgrade failed: ${error.message}`);
 			console.error(`Upgrade notes in ${scopeDescription} failed:`, error);
@@ -1076,14 +1139,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice(`All video summary notes in ${scopeDescription} already have matching Media Extended companion notes!`);
+				BatchProgressTracker.finishEmpty(
+					this,
+					'Create Media Extended companion notes',
+					scopeDescription,
+					`All video summary notes in ${scopeDescription} already have matching Media Extended companion notes!`
+				);
 				return;
 			}
 
-			new Notice(`Found ${candidates.length} video summary note(s) in ${scopeDescription} without companion notes. Creating Media Extended notes...`);
-
-			let successCount = 0;
-			let failCount = 0;
+			const tracker = new BatchProgressTracker(
+				this,
+				'Create Media Extended companion notes',
+				scopeDescription,
+				candidates.length
+			);
 
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
@@ -1100,13 +1170,31 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						const currentContent = await this.app.vault.read(file);
 						const updatedContent = addRelatedLink(currentContent, mediaLink);
 						await this.app.vault.modify(file, updatedContent);
-						successCount++;
+
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url,
+							status: 'success',
+							message: `Created companion note "${mediaNote.basename}" with ${transcript.lines.length} transcript line(s)`
+						});
 					} else {
-						failCount++;
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url,
+							status: 'error',
+							message: 'Failed to create Media Extended companion note'
+						});
 					}
 				} catch (error) {
-					console.error(`Failed to create Media Extended note for ${file.path}:`, error);
-					failCount++;
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'error',
+						message: error.message || String(error)
+					});
 				}
 
 				if (i < candidates.length - 1) {
@@ -1114,9 +1202,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			new Notice(
-				`Complete! Created ${successCount} Media Extended companion note(s) for ${scopeDescription}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
-			);
+			tracker.finish();
 		} catch (error) {
 			new Notice(`Failed to process Media Extended notes: ${error.message}`);
 			console.error('Failed to create missing Media Extended notes:', error);
@@ -1221,16 +1307,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice(`All video summary notes in ${scopeDescription} already have description frontmatter!`);
+				BatchProgressTracker.finishEmpty(
+					this,
+					'Upgrade tags & description frontmatter',
+					scopeDescription,
+					`All video summary notes in ${scopeDescription} already have description frontmatter!`
+				);
 				return;
 			}
 
-			new Notice(
-				`Found ${candidates.length} video summary note(s) in ${scopeDescription} missing description frontmatter. Upgrading with tags & description...`
+			const tracker = new BatchProgressTracker(
+				this,
+				'Upgrade tags & description frontmatter',
+				scopeDescription,
+				candidates.length
 			);
-
-			let successCount = 0;
-			let failCount = 0;
 
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
@@ -1263,6 +1354,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
 					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
+					const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+						? playlist.title.trim()
+						: undefined;
 
 					const fmData: FrontmatterData = {
 						title: metadata.title,
@@ -1274,7 +1368,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						thumbnail_text: thumbnailText,
 						description: metadata.description,
 						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-						playlist_title: playlist?.title,
+						playlist_title: pTitle,
 						playlist_url: playlist?.url,
 						playlist_id: playlist?.id,
 						playlist_index: playlist?.index,
@@ -1283,10 +1377,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
 					await this.app.vault.modify(file, updatedContent);
-					successCount++;
+
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'success',
+						message: `Added description (${(metadata.description || '').length} chars) and ${newTags.length} tag(s)`
+					});
 				} catch (error) {
-					console.error(`Failed to upgrade note ${file.path}:`, error);
-					failCount++;
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'error',
+						message: error.message || String(error)
+					});
 				}
 
 				if (i < candidates.length - 1) {
@@ -1294,9 +1400,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			new Notice(
-				`Upgrade complete! Successfully upgraded ${successCount} note(s) in ${scopeDescription} with tags & description${failCount > 0 ? ` (${failCount} failed)` : ''}.`
-			);
+			tracker.finish();
 		} catch (error) {
 			new Notice(`Failed to upgrade notes: ${error.message}`);
 			console.error('Failed to upgrade notes with tags and description:', error);
@@ -1401,17 +1505,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			if (candidates.length === 0) {
-				new Notice(`All video summary notes in ${scopeDescription} already have playlist frontmatter!`);
+				BatchProgressTracker.finishEmpty(
+					this,
+					'Upgrade playlist frontmatter',
+					scopeDescription,
+					`All video summary notes in ${scopeDescription} already have playlist frontmatter!`
+				);
 				return;
 			}
 
-			new Notice(
-				`Found ${candidates.length} video summary note(s) in ${scopeDescription} missing playlist frontmatter. Querying YouTube Data API for playlists...`
+			const tracker = new BatchProgressTracker(
+				this,
+				'Upgrade playlist frontmatter',
+				scopeDescription,
+				candidates.length
 			);
-
-			let upgradedCount = 0;
-			let noPlaylistCount = 0;
-			let failCount = 0;
 
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
@@ -1430,6 +1538,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 							if (tMatch) thumbnailText = tMatch[1].trim();
 						}
 
+						const pTitle = metadata.playlist.title && metadata.playlist.title.trim().toLowerCase() !== 'playlist'
+							? metadata.playlist.title.trim()
+							: undefined;
+
 						const fmData: FrontmatterData = {
 							title: metadata.title,
 							channel_name: metadata.author,
@@ -1439,22 +1551,49 @@ export class YouTubeSummarizerPlugin extends Plugin {
 							thumbnail: YouTubeService.getThumbnailUrl(metadata.videoId),
 							thumbnail_text: thumbnailText,
 							description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
-							playlist_title: metadata.playlist.title,
+							playlist_title: pTitle,
 							playlist_url: metadata.playlist.url,
 							playlist_id: metadata.playlist.id,
 							playlist_index: metadata.playlist.index,
 							playlist_count: metadata.playlist.count,
 						};
 
-						const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, { excludeTags: true });
+						let updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, { excludeTags: true });
+						if (pTitle) {
+							// Update any legacy "Playlist: Playlist" links in the note body
+							updatedContent = updatedContent.replace(
+								/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
+								`[Playlist: ${pTitle}$1]`
+							);
+						}
 						await this.app.vault.modify(file, updatedContent);
-						upgradedCount++;
+
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url,
+							status: 'success',
+							message: pTitle
+								? `Added playlist: "${pTitle}" (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
+								: `Added playlist: ${metadata.playlist.id} (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
+						});
 					} else {
-						noPlaylistCount++;
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url,
+							status: 'skipped',
+							message: 'Video is not part of a playlist on YouTube'
+						});
 					}
 				} catch (error) {
-					console.error(`Failed to upgrade note with playlist ${file.path}:`, error);
-					failCount++;
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url,
+						status: 'error',
+						message: error.message || String(error)
+					});
 				}
 
 				if (i < candidates.length - 1) {
@@ -1462,15 +1601,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			if (upgradedCount > 0) {
-				new Notice(
-					`Playlist upgrade complete! Successfully upgraded ${upgradedCount} note(s) in ${scopeDescription} with playlist metadata${noPlaylistCount > 0 ? ` (${noPlaylistCount} had no playlist)` : ''}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
-				);
-			} else {
-				new Notice(
-					`Processed ${candidates.length} note(s) in ${scopeDescription}, but none were found to belong to a playlist on YouTube${failCount > 0 ? ` (${failCount} failed)` : ''}.`
-				);
-			}
+			tracker.finish();
 		} catch (error) {
 			new Notice(`Failed to upgrade notes with playlist: ${error.message}`);
 			console.error('Failed to upgrade notes with playlist:', error);
@@ -1623,7 +1754,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
 			if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
 				const p = transcript.playlist;
-				let pLabel = p.title || 'Playlist';
+				let pLabel = p.title ?? 'Playlist';
 				if (typeof p.index === 'number' && typeof p.count === 'number') {
 					pLabel += ` (${p.index}/${p.count})`;
 				} else if (typeof p.index === 'number') {
@@ -1723,7 +1854,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
 		if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
 			const p = transcript.playlist;
-			let pLabel = p.title || 'Playlist';
+			let pLabel = p.title ?? 'Playlist';
 			if (typeof p.index === 'number' && typeof p.count === 'number') {
 				pLabel += ` (${p.index}/${p.count})`;
 			} else if (typeof p.index === 'number') {

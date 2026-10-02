@@ -3049,6 +3049,275 @@ assert(enabledResult.compressedContext.length > 0);
 
 console.log('✓ Vault tag caching, AI topic tagging prompt, and grouped tag deduplication passed');
 
+// Test 29: Batch operation progress tracking, item logging, and markdown reporting
+console.log('Testing batch operation progress tracking, item logging, and markdown reporting...');
+
+function formatBatchReportAsMarkdownHelper(report) {
+	const startTimeStr = new Date(report.startTime).toLocaleString();
+	const durationSec = report.endTime
+		? ((report.endTime - report.startTime) / 1000).toFixed(1)
+		: '0.0';
+
+	const lines = [
+		`# Batch Operation Report: ${report.operationName}`,
+		`- **Scope:** ${report.scope}`,
+		`- **Started:** ${startTimeStr}`,
+		`- **Duration:** ${durationSec}s`,
+		`- **Total Notes:** ${report.total}`,
+		`- **Succeeded:** ${report.succeeded}`,
+		`- **Skipped:** ${report.skipped}`,
+		`- **Failed:** ${report.failed}`,
+		'',
+		'## Processed Notes',
+		'| Status | File | Message | URL |',
+		'| :--- | :--- | :--- | :--- |'
+	];
+
+	if (report.items.length === 0) {
+		lines.push('| - | None | No notes were processed. | - |');
+	} else {
+		for (const item of report.items) {
+			const statusLabel =
+				item.status === 'success'
+					? '✓ Success'
+					: item.status === 'skipped'
+					? '⊘ Skipped'
+					: '✕ Error';
+			const sanitizedMsg = (item.message || '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+			const urlCol = item.url ? item.url : '-';
+			lines.push(`| ${statusLabel} | [[${item.fileName}]] | ${sanitizedMsg} | ${urlCol} |`);
+		}
+	}
+
+	return lines.join('\n');
+}
+
+class MockBatchProgressTracker {
+	constructor(host, operationName, scope, total) {
+		this.host = host;
+		this.report = {
+			operationName,
+			scope,
+			startTime: Date.now(),
+			total,
+			succeeded: 0,
+			skipped: 0,
+			failed: 0,
+			items: []
+		};
+		this.updates = [];
+	}
+
+	update(current, fileName, detail) {
+		const pct = this.report.total > 0 ? Math.round((current / this.report.total) * 100) : 100;
+		this.updates.push({ current, fileName, detail, pct });
+	}
+
+	recordItem(item) {
+		item.timestamp = item.timestamp || Date.now();
+		this.report.items.push(item);
+		if (item.status === 'success') this.report.succeeded++;
+		else if (item.status === 'skipped') this.report.skipped++;
+		else if (item.status === 'error') this.report.failed++;
+		this.update(this.report.items.length, item.fileName, item.status.toUpperCase());
+	}
+
+	finish() {
+		this.report.endTime = Date.now();
+		this.host.setLastBatchReport(this.report);
+		return this.report;
+	}
+
+	static finishEmpty(host, operationName, scope, message) {
+		const report = {
+			operationName,
+			scope,
+			startTime: Date.now(),
+			endTime: Date.now(),
+			total: 0,
+			succeeded: 0,
+			skipped: 0,
+			failed: 0,
+			items: []
+		};
+		host.setLastBatchReport(report);
+		return report;
+	}
+}
+
+class MockHost {
+	constructor() {
+		this.lastReport = null;
+	}
+	setLastBatchReport(report) {
+		this.lastReport = report;
+	}
+}
+
+// 29.1: Basic recording and tallies
+const host1 = new MockHost();
+const tracker1 = new MockBatchProgressTracker(host1, 'Upgrade playlist frontmatter', 'vault', 3);
+
+tracker1.recordItem({
+	filePath: 'Notes/Video 1.md',
+	fileName: 'Video 1',
+	url: 'https://www.youtube.com/watch?v=vid1',
+	status: 'success',
+	message: 'Added playlist: "AI Tutorials" (Index 1/10)'
+});
+
+tracker1.recordItem({
+	filePath: 'Notes/Video 2.md',
+	fileName: 'Video 2',
+	url: 'https://www.youtube.com/watch?v=vid2',
+	status: 'skipped',
+	message: 'Video is not part of a playlist on YouTube'
+});
+
+tracker1.recordItem({
+	filePath: 'Notes/Video 3.md',
+	fileName: 'Video 3',
+	url: 'https://www.youtube.com/watch?v=vid3',
+	status: 'error',
+	message: 'HTTP 403: Quota exceeded'
+});
+
+const report1 = tracker1.finish();
+assert.strictEqual(report1.total, 3);
+assert.strictEqual(report1.succeeded, 1);
+assert.strictEqual(report1.skipped, 1);
+assert.strictEqual(report1.failed, 1);
+assert.strictEqual(report1.items.length, 3);
+assert.strictEqual(host1.lastReport, report1);
+assert(report1.endTime >= report1.startTime);
+
+// 29.2: Progress update percentages
+assert.deepStrictEqual(tracker1.updates, [
+	{ current: 1, fileName: 'Video 1', detail: 'SUCCESS', pct: 33 },
+	{ current: 2, fileName: 'Video 2', detail: 'SKIPPED', pct: 67 },
+	{ current: 3, fileName: 'Video 3', detail: 'ERROR', pct: 100 }
+]);
+
+// 29.3: finishEmpty handling
+const host2 = new MockHost();
+const emptyReport = MockBatchProgressTracker.finishEmpty(
+	host2,
+	'Upgrade playlist frontmatter',
+	'folder "Podcasts"',
+	'All notes already up-to-date!'
+);
+assert.strictEqual(emptyReport.total, 0);
+assert.strictEqual(emptyReport.succeeded, 0);
+assert.strictEqual(emptyReport.skipped, 0);
+assert.strictEqual(emptyReport.failed, 0);
+assert.strictEqual(emptyReport.items.length, 0);
+assert.strictEqual(host2.lastReport, emptyReport);
+
+const emptyMarkdown = formatBatchReportAsMarkdownHelper(emptyReport);
+assert(emptyMarkdown.includes('# Batch Operation Report: Upgrade playlist frontmatter'));
+assert(emptyMarkdown.includes('- **Total Notes:** 0'));
+assert(emptyMarkdown.includes('No notes were processed.'));
+
+// 29.4: formatBatchReportAsMarkdown output verification
+const markdownOutput = formatBatchReportAsMarkdownHelper(report1);
+assert(markdownOutput.includes('# Batch Operation Report: Upgrade playlist frontmatter'));
+assert(markdownOutput.includes('- **Scope:** vault'));
+assert(markdownOutput.includes('- **Total Notes:** 3'));
+assert(markdownOutput.includes('- **Succeeded:** 1'));
+assert(markdownOutput.includes('- **Skipped:** 1'));
+assert(markdownOutput.includes('- **Failed:** 1'));
+assert(markdownOutput.includes('| ✓ Success | [[Video 1]] | Added playlist: "AI Tutorials" (Index 1/10) | https://www.youtube.com/watch?v=vid1 |'));
+assert(markdownOutput.includes('| ⊘ Skipped | [[Video 2]] | Video is not part of a playlist on YouTube | https://www.youtube.com/watch?v=vid2 |'));
+assert(markdownOutput.includes('| ✕ Error | [[Video 3]] | HTTP 403: Quota exceeded | https://www.youtube.com/watch?v=vid3 |'));
+
+// Verify pipe escaping in messages
+const pipeItemReport = {
+	operationName: 'Test',
+	scope: 'vault',
+	startTime: Date.now(),
+	endTime: Date.now(),
+	total: 1,
+	succeeded: 1,
+	skipped: 0,
+	failed: 0,
+	items: [
+		{
+			filePath: 'test.md',
+			fileName: 'test',
+			status: 'success',
+			message: 'Param A | Param B | Param C'
+		}
+	]
+};
+const pipeMarkdown = formatBatchReportAsMarkdownHelper(pipeItemReport);
+assert(pipeMarkdown.includes('Param A \\| Param B \\| Param C'));
+
+// 29.5: Playlist Upgrade simulation across diverse states
+function simulatePlaylistUpgradeBatch(candidates, mockApi) {
+	const host = new MockHost();
+	const tracker = new MockBatchProgressTracker(host, 'Upgrade playlist frontmatter', 'vault', candidates.length);
+
+	for (const candidate of candidates) {
+		try {
+			const metadata = mockApi(candidate.url);
+			if (metadata.playlist) {
+				tracker.recordItem({
+					filePath: candidate.filePath,
+					fileName: candidate.fileName,
+					url: candidate.url,
+					status: 'success',
+					message: `Added playlist: "${metadata.playlist.title}" (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
+				});
+			} else {
+				tracker.recordItem({
+					filePath: candidate.filePath,
+					fileName: candidate.fileName,
+					url: candidate.url,
+					status: 'skipped',
+					message: 'Video is not part of a playlist on YouTube'
+				});
+			}
+		} catch (error) {
+			tracker.recordItem({
+				filePath: candidate.filePath,
+				fileName: candidate.fileName,
+				url: candidate.url,
+				status: 'error',
+				message: error.message || String(error)
+			});
+		}
+	}
+
+	return tracker.finish();
+}
+
+const mockCandidates = [
+	{ filePath: 'Videos/A.md', fileName: 'A', url: 'https://youtu.be/a' },
+	{ filePath: 'Videos/B.md', fileName: 'B', url: 'https://youtu.be/b' },
+	{ filePath: 'Videos/C.md', fileName: 'C', url: 'https://youtu.be/c' }
+];
+
+const mockApi = (url) => {
+	if (url === 'https://youtu.be/a') {
+		return { playlist: { title: 'Deep Learning 101', index: 2, count: 8 } };
+	}
+	if (url === 'https://youtu.be/b') {
+		return { playlist: null };
+	}
+	throw new Error('Network timeout');
+};
+
+const simReport = simulatePlaylistUpgradeBatch(mockCandidates, mockApi);
+assert.strictEqual(simReport.total, 3);
+assert.strictEqual(simReport.succeeded, 1);
+assert.strictEqual(simReport.skipped, 1);
+assert.strictEqual(simReport.failed, 1);
+assert.strictEqual(simReport.items[0].message, 'Added playlist: "Deep Learning 101" (Index 2/8)');
+assert.strictEqual(simReport.items[1].message, 'Video is not part of a playlist on YouTube');
+assert.strictEqual(simReport.items[2].message, 'Network timeout');
+
+console.log('✓ Batch operation progress tracking, item logging, and markdown reporting passed');
+
 console.log('\nAll tests passed successfully!');
 
 

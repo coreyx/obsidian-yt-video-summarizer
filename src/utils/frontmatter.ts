@@ -411,7 +411,8 @@ export function isNoteMissingDescriptionFrontmatter(content: string): boolean {
 }
 
 /**
- * Checks if a note is missing playlist properties (playlist_title, playlist_url, etc.) in its frontmatter.
+ * Checks if a note is missing playlist properties (playlist_title, playlist_url, etc.) in its frontmatter,
+ * or if it only has the generic placeholder "Playlist" as its playlist_title.
  */
 export function isNoteMissingPlaylistFrontmatter(content: string): boolean {
 	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -419,7 +420,14 @@ export function isNoteMissingPlaylistFrontmatter(content: string): boolean {
 		return true;
 	}
 	const yaml = fmMatch[1];
-	return !/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml);
+	if (!/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml)) {
+		return true;
+	}
+	// If the note has playlist_title: "Playlist", it was affected by the placeholder bug and needs upgrade
+	if (/^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml)) {
+		return true;
+	}
+	return false;
 }
 
 /**

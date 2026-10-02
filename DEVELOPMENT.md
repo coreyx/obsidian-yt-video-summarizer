@@ -608,5 +608,65 @@ This section preserves technical and design questions asked during development f
    - The setting description in [`src/ui/settings.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts) explicitly informs users:
      *"Use AI semantic analysis and inference with your configured AI model to infer relevant topic tags and fill in obvious missing tags. Automatically indexes your entire vault's existing tag taxonomy into a compressed cache prior to inference to prioritize tag reuse and group under established hierarchies (e.g. ai/machine-learning). Note: This is semantic and inferred, adds your vault's tag list to the AI context, and may increase the size of the context window and token usage."*
 
+---
+
+### Q15: How does batch operation monitoring, real-time progress tracking, error logging, and the diagnostics report modal work across all upgrade commands?
+
+**Context**: User requested:
+- Real-time progress monitoring, error logging, notifications, and status tracking for the playlist upgrade command and all other batch upgrade commands.
+- Provide clear visibility into which notes succeeded, which were skipped (e.g. video not part of a playlist), and which failed with exact error messages.
+
+**Answer**:
+1. **Architecture & Data Structures**:
+   - Defined structured interfaces in [`src/types.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/types.ts):
+     ```ts
+     export interface BatchItemResult {
+         filePath: string;
+         fileName: string;
+         url?: string;
+         status: 'success' | 'skipped' | 'error';
+         message: string;
+         timestamp?: number;
+     }
+
+     export interface BatchOperationReport {
+         operationName: string;
+         scope: string;
+         startTime: number;
+         endTime?: number;
+         total: number;
+         succeeded: number;
+         skipped: number;
+         failed: number;
+         items: BatchItemResult[];
+     }
+     ```
+
+2. **Real-Time Progress & Notification Management**:
+   - Implemented in [`src/utils/BatchProgressTracker.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/BatchProgressTracker.ts):
+     - **In-Place Live Notification**: Uses Obsidian's `Notice(message, 0)` with indefinite duration, updating text in place via `liveNotice.setMessage('[i/N] (X%) ...')` as each file finishes processing. Prevents UI notification stacking while keeping the user informed. Cleanly dismissed with `liveNotice.hide()` upon completion.
+     - **Status Bar Integration**: Dynamically adds a transient status bar item via `this.plugin.addStatusBarItem()` displaying live percentage (e.g. `YT: [3/12] 25%`) and automatically cleans it up 4 seconds after the operation concludes.
+     - **Console & Memory Logging**: Logs structured tagged lines (`[YouTube Summarizer] [SUCCESS|SKIPPED|ERROR] ...`) to the developer console and records individual items into `BatchOperationReport`.
+     - **Completion Notice**: Emits a single final summary toast notifying the user of total succeeded, skipped, and failed notes, with guidance to view full logs.
+
+3. **Batch Report & Diagnostics Modal (`BatchReportModal`)**:
+   - Implemented in [`src/ui/modals/BatchReportModal.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/BatchReportModal.ts):
+     - **Header & Timing**: Displays operation name, target scope (`vault`, `folder "..."`), start time, and total elapsed duration in seconds.
+     - **Overview Metrics**: Displays color-coded metric cards for *Total*, *Succeeded* (green), *Skipped* (warning/yellow), and *Failed* (danger/red).
+     - **Status Filter Controls**: Interactive filter tabs allowing the user to filter items by *All*, *Succeeded*, *Skipped*, or *Failed*.
+     - **Interactive Note Links**: Each processed note is rendered with its status badge, clickable note title (which opens the note directly in Obsidian workspace and closes the modal), YouTube URL link, and exact status/error explanation.
+     - **Clipboard Export**: A *Copy Log to Clipboard* action exports the entire run as a formatted GitHub-flavored Markdown report table via [`formatBatchReportAsMarkdown()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/BatchProgressTracker.ts).
+
+4. **Full Coverage Across All 4 Batch Operations**:
+   - Covered in [`src/main.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts):
+     1. [`processNotesWithPlaylist`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts): Tracks notes updated with playlist metadata, notes skipped because the video is not on a playlist, and any network/API errors.
+     2. [`processNotesWithTagsAndDescription`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts): Tracks notes updated with YouTube description frontmatter and tags.
+     3. [`processMediaExtendedNotes`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts): Tracks generated companion notes, line counts, and bidirectional link creation.
+     4. [`upgradeNotes`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts): Tracks legacy note upgrades for metadata, thumbnail OCR, and channel handles.
+
+5. **User Access & Settings**:
+   - **Command Palette**: `View last batch operation report & logs` (`view-last-batch-report`) provides immediate access to the last run's diagnostic modal.
+   - **Settings Tab**: A dedicated card in [`src/ui/settings.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts) shows the summary of the last batch operation and provides a *View Last Report & Logs* button.
+
 
 

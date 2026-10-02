@@ -280,6 +280,20 @@ Identifies video summary notes in the selected scope that lack `playlist_` front
 
 Automatically connects to your local LM Studio instance (`http://localhost:1234/v1` or `http://127.0.0.1:1234/v1`), detects loaded/available local models, updates the LM Studio provider, and sets the active model for 100% private, free summarization.
 
+### Method 10: Batch Operation Monitoring, Live Progress, & Logs
+
+Every batch upgrade operation (Playlist Upgrades, Description & Tags Upgrades, Companion Notes Generation, and Previous Notes Frontmatter Upgrades) features comprehensive real-time monitoring, error logging, and inspection:
+
+- **Live Progress Notifications**: As a batch operation runs across your notes, a single in-place notification continuously updates with current note progress (`[i/N] (X%) Processing: ...`), preventing notification spam.
+- **Status Bar Indicator**: Obsidian's bottom status bar dynamically displays the ongoing operation and live percentage (`YT: [3/12] 25%`), automatically dismissing when complete.
+- **Detailed Activity & Error Logging**: Every file processed is categorized with its exact outcome:
+  - `✓ Success`: Upgraded with new metadata, playlist, companion note, or tags.
+  - `⊘ Skipped`: Note skipped with reasons (e.g. video is not part of a playlist on YouTube).
+  - `✕ Error`: Exact error message captured if network or API failures occurred.
+- **Diagnostics Report Modal**:
+  - Run the command `View last batch operation report & logs` from the Command Palette (`Ctrl/Cmd + P`), or click **View Last Report & Logs** in plugin settings.
+  - Displays summary metric pills (Total, Succeeded, Skipped, Failed), elapsed execution duration, interactive filter tabs, clickable note links to jump straight to notes in Obsidian, and a **Copy Log to Clipboard** button exporting a GitHub-flavored Markdown table.
+
 ## Output Format
 
 The plugin generates structured notes with comprehensive YAML frontmatter and markdown sections:
