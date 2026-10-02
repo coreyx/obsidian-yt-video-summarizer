@@ -369,15 +369,22 @@ export class SettingsTab extends PluginSettingTab {
         // Create missing Media Extended companion notes
         new Setting(containerEl)
             .setName('Create missing Media Extended notes')
-            .setDesc('Scan the vault for video summary notes that do not have a matching Media Extended companion note and generate them')
+            .setDesc('Scan for video summary notes that do not have a matching Media Extended companion note and generate them')
             .addButton(button =>
                 button
-                    .setButtonText('Create Missing Notes')
-                    .setCta()
+                    .setButtonText('Create in Folder...')
+                    .onClick(() => {
+                        this.plugin.promptCreateMediaExtendedNotes();
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Create All in Vault')
                     .onClick(async () => {
-                        await this.plugin.createMediaExtendedForMissingNotes();
+                        await this.plugin.createMediaExtendedInVault();
                     })
             );
+
 
         // Semantic Topic tags
         new Setting(containerEl)
@@ -464,18 +471,23 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Scan folders setting
+        new Setting(containerEl)
+            .setName('Video notes folders to scan (optional)')
+            .setDesc('Comma-separated list of vault folders where your YouTube video notes are stored (e.g. "YouTube, Notes/Videos"). If specified, batch upgrade and companion note operations will target these folders instead of scanning the entire vault.')
+            .addText(text =>
+                text
+                    .setPlaceholder('e.g. YouTube, Notes/Videos')
+                    .setValue(this.settings.getScanFolders())
+                    .onChange(async (value) => {
+                        await this.settings.updateScanFolders(value.trim());
+                    })
+            );
+
         // Upgrade previous notes
         new Setting(containerEl)
             .setName('Upgrade previous notes')
             .setDesc('Re-process notes from YouTube videos to add all new frontmatter metadata (title, channel, handle, thumbnail, and vision OCR) without re-generating summaries or topic tags.')
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade All in Vault')
-                    .setCta()
-                    .onClick(async () => {
-                        await this.plugin.upgradeVaultNotes();
-                    })
-            )
             .addButton(button =>
                 button
                     .setButtonText('Upgrade in Folder...')
@@ -485,13 +497,32 @@ export class SettingsTab extends PluginSettingTab {
             )
             .addButton(button =>
                 button
-                    .setButtonText('Upgrade Tags & Description')
-                    .setTooltip('Upgrade notes that are missing the description frontmatter property')
+                    .setButtonText('Upgrade All in Vault')
                     .onClick(async () => {
-                        await this.plugin.upgradeNotesWithTagsAndDescription();
+                        await this.plugin.upgradeVaultNotes();
+                    })
+            );
+
+        // Upgrade tags and description frontmatter
+        new Setting(containerEl)
+            .setName('Upgrade tags & description frontmatter')
+            .setDesc('Add YouTube tags and video descriptions to existing notes that lack the description frontmatter property')
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade in Folder...')
+                    .onClick(() => {
+                        this.plugin.promptUpgradeNotesWithTagsAndDescription();
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade All in Vault')
+                    .onClick(async () => {
+                        await this.plugin.upgradeNotesWithTagsAndDescriptionInVault();
                     })
             );
     }
+
 
     private displaySponsorSection(containerEl: HTMLElement): void {
         containerEl.createEl('hr');

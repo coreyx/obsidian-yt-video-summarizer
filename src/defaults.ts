@@ -381,5 +381,7 @@ export const DEFAULT_CREATE_MEDIA_EXTENDED_NOTES = true;
 export const DEFAULT_MEDIA_EXTENDED_FOLDER = 'Media Library';
 export const DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER = true;
 export const DEFAULT_DISCOVER_PLAYLIST = true;
+export const DEFAULT_SCAN_FOLDERS = '';
+
 
 

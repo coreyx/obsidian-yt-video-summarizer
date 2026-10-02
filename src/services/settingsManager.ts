@@ -24,10 +24,13 @@ import {
     DEFAULT_MEDIA_EXTENDED_FOLDER,
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
+    DEFAULT_SCAN_FOLDERS,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
 } from "src/defaults";
+import { parseFolderList } from "src/utils/frontmatter";
+
 
 /** Manages plugin settings and provides methods to interact with them */
 export class SettingsManager implements PluginSettings {
@@ -61,6 +64,7 @@ export class SettingsManager implements PluginSettings {
             mediaExtendedFolder: DEFAULT_MEDIA_EXTENDED_FOLDER,
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
+            scanFolders: DEFAULT_SCAN_FOLDERS,
         };
     }
 
@@ -101,6 +105,7 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
+                scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -143,6 +148,7 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
+                scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
             };
 
             await this.saveData();
@@ -514,6 +520,20 @@ export class SettingsManager implements PluginSettings {
         this.settings.discoverPlaylist = value;
         this.saveData();
     }
+
+    getScanFolders(): string {
+        return this.settings.scanFolders ?? DEFAULT_SCAN_FOLDERS;
+    }
+
+    getScanFolderList(): string[] {
+        return parseFolderList(this.getScanFolders());
+    }
+
+    async updateScanFolders(value: string): Promise<void> {
+        this.settings.scanFolders = value;
+        await this.saveData();
+    }
+
 
     private async saveData(): Promise<void> {
         try {
