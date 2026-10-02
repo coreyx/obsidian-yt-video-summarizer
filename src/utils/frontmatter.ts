@@ -431,6 +431,32 @@ export function isNoteMissingPlaylistFrontmatter(content: string): boolean {
 }
 
 /**
+ * Returns true if the note has playlist frontmatter but playlist_title is the generic "Playlist" placeholder.
+ * Unlike isNoteMissingPlaylistFrontmatter, this does NOT match notes that are entirely missing playlist fields —
+ * it specifically targets notes that were previously written with the placeholder bug.
+ */
+export function hasPlaylistTitlePlaceholder(content: string): boolean {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return false;
+	const yaml = fmMatch[1];
+	// Must already have playlist fields (playlist_id at minimum)
+	if (!/^playlist_id:\s*.+/m.test(yaml)) return false;
+	return /^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml);
+}
+
+/**
+ * Extracts the playlist_id value from a note's YAML frontmatter.
+ * Returns undefined if not present or blank.
+ */
+export function extractPlaylistIdFromFrontmatter(content: string): string | undefined {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return undefined;
+	const m = fmMatch[1].match(/^playlist_id:\s*["']?([^"'\r\n]+?)["']?\s*$/m);
+	return m?.[1]?.trim() || undefined;
+}
+
+
+/**
  * Extracts hashtags from text (such as YouTube video titles and descriptions).
  * Matches patterns like #ai, #web-development, #coding_tutorial, #React
  * Ignores pure numbers like #123, markdown headings like ## Title, and empty hashes.

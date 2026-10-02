@@ -19,12 +19,14 @@ import {
 	buildFrontmatter,
 	buildMediaExtendedNote,
 	deduplicateTags,
+	extractPlaylistIdFromFrontmatter,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
 	filterFilesByFolder,
 	filterFilesByFolderPaths,
 	formatTranscript,
 	FrontmatterData,
+	hasPlaylistTitlePlaceholder,
 	hasRelatedMediaExtendedLink,
 	isMediaExtendedCompanionNote,
 	isNoteMissingDescriptionFrontmatter,
@@ -101,6 +103,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 								.setIcon('youtube')
 								.onClick(async () => {
 									await this.upgradeNotesWithPlaylistInFolder(file);
+								});
+						});
+						menu.addItem((item) => {
+							item
+								.setTitle('Fix playlist title placeholder in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.fixPlaylistTitlePlaceholderInFolder(file);
 								});
 						});
 					}
@@ -368,6 +378,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Upgrade video summary notes with playlist from YouTube Data API',
 			callback: async () => {
 				await this.upgradeNotesWithPlaylist();
+			},
+		});
+
+		// Command to fix notes where playlist_title is the generic "Playlist" placeholder
+		this.addCommand({
+			id: 'fix-playlist-title-placeholder',
+			name: 'Fix playlist title placeholder in folder...',
+			callback: () => {
+				this.promptFixPlaylistTitlePlaceholder();
 			},
 		});
 
@@ -1667,6 +1686,145 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 		this.promptUpgradeNotesWithPlaylist();
+	}
+
+	/**
+	 * Processes a list of markdown files, finding those where playlist_title is the generic "Playlist"
+	 * placeholder and re-fetching the real playlist title (using the stored playlist_id — no full
+	 * video metadata fetch required). Updates both frontmatter and body link text.
+	 */
+	public async processFixPlaylistTitlePlaceholder(files: TFile[], scopeDescription: string): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+			new Notice(`Scanning ${scopeDescription} for notes with placeholder playlist titles...`);
+
+			const candidates: { file: TFile; playlistId: string }[] = [];
+
+			for (const file of files) {
+				const content = await this.app.vault.read(file);
+
+				// Skip companion notes
+				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
+					continue;
+				}
+
+				if (hasPlaylistTitlePlaceholder(content)) {
+					const playlistId = extractPlaylistIdFromFrontmatter(content);
+					if (playlistId) {
+						candidates.push({ file, playlistId });
+					}
+				}
+			}
+
+			if (candidates.length === 0) {
+				BatchProgressTracker.finishEmpty(
+					this,
+					'Fix playlist title placeholder',
+					scopeDescription,
+					`No notes with a placeholder playlist title found in ${scopeDescription}.`
+				);
+				return;
+			}
+
+			const tracker = new BatchProgressTracker(
+				this,
+				'Fix playlist title placeholder',
+				scopeDescription,
+				candidates.length
+			);
+
+			for (let i = 0; i < candidates.length; i++) {
+				const { file, playlistId } = candidates[i];
+				try {
+					// Fetch the real title directly — no full video metadata fetch needed
+					const details = await YouTubeService.fetchPlaylistDetails(
+						playlistId,
+						this.settings.getYoutubeApiKey() || undefined
+					);
+
+					const pTitle = details.title && details.title.trim().toLowerCase() !== 'playlist'
+						? details.title.trim()
+						: undefined;
+
+					if (pTitle) {
+						const currentContent = await this.app.vault.read(file);
+
+						// Replace only the playlist_title line — leave all other frontmatter untouched
+						let updatedContent = currentContent.replace(
+							/^(playlist_title:\s*)["']?Playlist["']?\s*$/im,
+							`playlist_title: ${JSON.stringify(pTitle)}`
+						);
+
+						// Also fix any legacy "Playlist: Playlist" body link text
+						updatedContent = updatedContent.replace(
+							/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
+							`[Playlist: ${pTitle}$1]`
+						);
+
+						await this.app.vault.modify(file, updatedContent);
+
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url: `https://www.youtube.com/playlist?list=${playlistId}`,
+							status: 'success',
+							message: `Playlist title fixed → "${pTitle}"`,
+						});
+					} else {
+						tracker.recordItem({
+							filePath: file.path,
+							fileName: file.basename,
+							url: `https://www.youtube.com/playlist?list=${playlistId}`,
+							status: 'skipped',
+							message: 'Could not determine real playlist title from YouTube',
+						});
+					}
+				} catch (error) {
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url: `https://www.youtube.com/playlist?list=${playlistId}`,
+						status: 'error',
+						message: error.message || String(error),
+					});
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			tracker.finish();
+		} catch (error) {
+			new Notice(`Failed to fix playlist title placeholders: ${error.message}`);
+			console.error('Failed to fix playlist title placeholders:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Fixes playlist_title placeholders within a specific folder (and its subfolders).
+	 */
+	public async fixPlaylistTitlePlaceholderInFolder(folder: TFolder): Promise<void> {
+		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+		await this.processFixPlaylistTitlePlaceholder(files, scopeDescription);
+	}
+
+	/**
+	 * Opens a folder selection modal for the fix-playlist-title-placeholder command.
+	 */
+	public promptFixPlaylistTitlePlaceholder(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.fixPlaylistTitlePlaceholderInFolder(folder);
+		}).open();
 	}
 
 

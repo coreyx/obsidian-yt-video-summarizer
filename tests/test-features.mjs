@@ -3318,6 +3318,114 @@ assert.strictEqual(simReport.items[2].message, 'Network timeout');
 
 console.log('✓ Batch operation progress tracking, item logging, and markdown reporting passed');
 
+// ─── Test 30: hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-title regex ───
+console.log('Testing hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-playlist-title-placeholder logic...');
+
+function hasPlaylistTitlePlaceholder(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return false;
+	const yaml = fmMatch[1];
+	if (!/^playlist_id:\s*.+/m.test(yaml)) return false;
+	return /^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml);
+}
+
+function extractPlaylistIdFromFrontmatter(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return undefined;
+	const m = fmMatch[1].match(/^playlist_id:\s*["']?([^"'\r\n]+?)["']?\s*$/m);
+	return m?.[1]?.trim() || undefined;
+}
+
+// Note with placeholder title and a known playlist_id
+const placeholderNote = `---
+title: "Some Video"
+playlist_title: "Playlist"
+playlist_id: "PLxyz123"
+playlist_url: "https://www.youtube.com/playlist?list=PLxyz123"
+---
+
+Some content here.`;
+
+// Note with a real title (should NOT match)
+const realTitleNote = `---
+title: "Some Video"
+playlist_title: "My Real Playlist"
+playlist_id: "PLxyz123"
+playlist_url: "https://www.youtube.com/playlist?list=PLxyz123"
+---`;
+
+// Note with no playlist fields at all (should NOT match hasPlaylistTitlePlaceholder but IS missing)
+const noPlaylistNote = `---
+title: "No Playlist"
+channel_name: "Channel"
+---`;
+
+// Note with single-quoted placeholder
+const singleQuotedNote = `---
+playlist_title: 'Playlist'
+playlist_id: PLabc
+---`;
+
+// Note with unquoted placeholder
+const unquotedNote = `---
+playlist_title: Playlist
+playlist_id: PLdef
+---`;
+
+assert.strictEqual(hasPlaylistTitlePlaceholder(placeholderNote), true, 'double-quoted Playlist should match');
+assert.strictEqual(hasPlaylistTitlePlaceholder(singleQuotedNote), true, 'single-quoted Playlist should match');
+assert.strictEqual(hasPlaylistTitlePlaceholder(unquotedNote), true, 'unquoted Playlist should match');
+assert.strictEqual(hasPlaylistTitlePlaceholder(realTitleNote), false, 'real title should not match');
+assert.strictEqual(hasPlaylistTitlePlaceholder(noPlaylistNote), false, 'note without playlist_id should not match');
+
+assert.strictEqual(extractPlaylistIdFromFrontmatter(placeholderNote), 'PLxyz123');
+assert.strictEqual(extractPlaylistIdFromFrontmatter(singleQuotedNote), 'PLabc');
+assert.strictEqual(extractPlaylistIdFromFrontmatter(unquotedNote), 'PLdef');
+assert.strictEqual(extractPlaylistIdFromFrontmatter(noPlaylistNote), undefined);
+
+// Simulate the targeted regex replacement used in processFixPlaylistTitlePlaceholder
+function fixPlaylistTitleInContent(content, realTitle) {
+	// Step 1: fix frontmatter
+	let updated = content.replace(
+		/^(playlist_title:\s*)["']?Playlist["']?\s*$/im,
+		`playlist_title: ${JSON.stringify(realTitle)}`
+	);
+	// Step 2: fix body link text
+	updated = updated.replace(
+		/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
+		`[Playlist: ${realTitle}$1]`
+	);
+	return updated;
+}
+
+const noteWithBodyLink = `---
+playlist_title: "Playlist"
+playlist_id: PLxyz123
+playlist_url: https://www.youtube.com/playlist?list=PLxyz123
+---
+
+Body content.
+
+📋 [Playlist: Playlist (3/10)](https://www.youtube.com/playlist?list=PLxyz123)`;
+
+const fixed = fixPlaylistTitleInContent(noteWithBodyLink, 'Deep Learning 101');
+assert.ok(fixed.includes('playlist_title: "Deep Learning 101"'), 'frontmatter should be updated');
+assert.ok(fixed.includes('[Playlist: Deep Learning 101 (3/10)]'), 'body link should be updated');
+assert.ok(!fixed.includes('Playlist: Playlist'), 'old placeholder should be gone');
+
+// Edge: no body link, only frontmatter fix
+const fmOnlyNote = `---
+playlist_title: Playlist
+playlist_id: PLabc
+---
+
+No body link here.`;
+const fmFixed = fixPlaylistTitleInContent(fmOnlyNote, 'Intro to TypeScript');
+assert.ok(fmFixed.includes('playlist_title: "Intro to TypeScript"'), 'frontmatter updated without body link');
+assert.ok(fmFixed.includes('No body link here.'), 'body content preserved');
+
+console.log('✓ hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-playlist-title-placeholder logic passed');
+
 console.log('\nAll tests passed successfully!');
 
 
