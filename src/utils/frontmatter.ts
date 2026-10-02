@@ -411,6 +411,18 @@ export function isNoteMissingDescriptionFrontmatter(content: string): boolean {
 }
 
 /**
+ * Checks if a note is missing playlist properties (playlist_title, playlist_url, etc.) in its frontmatter.
+ */
+export function isNoteMissingPlaylistFrontmatter(content: string): boolean {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) {
+		return true;
+	}
+	const yaml = fmMatch[1];
+	return !/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml);
+}
+
+/**
  * Extracts hashtags from text (such as YouTube video titles and descriptions).
  * Matches patterns like #ai, #web-development, #coding_tutorial, #React
  * Ignores pure numbers like #123, markdown headings like ## Title, and empty hashes.

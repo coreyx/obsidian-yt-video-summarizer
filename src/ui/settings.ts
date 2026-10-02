@@ -570,6 +570,25 @@ export class SettingsTab extends PluginSettingTab {
                         await this.plugin.upgradeNotesWithTagsAndDescriptionInVault();
                     })
             );
+
+        // Upgrade playlist frontmatter
+        new Setting(containerEl)
+            .setName('Upgrade playlist frontmatter')
+            .setDesc('Query YouTube Data API to discover creator playlists for existing notes that lack playlist frontmatter properties')
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade in Folder...')
+                    .onClick(() => {
+                        this.plugin.promptUpgradeNotesWithPlaylist();
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade All in Vault')
+                    .onClick(async () => {
+                        await this.plugin.upgradeNotesWithPlaylistInVault();
+                    })
+            );
     }
 
 

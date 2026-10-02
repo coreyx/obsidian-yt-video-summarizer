@@ -27,6 +27,7 @@ import {
 	isMediaExtendedCompanionNote,
 	isNoteMissingDescriptionFrontmatter,
 	isNoteMissingFrontmatter,
+	isNoteMissingPlaylistFrontmatter,
 	MediaExtendedMetadata,
 	sanitizeFileName,
 	sanitizeTag,
@@ -86,6 +87,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 								.setIcon('youtube')
 								.onClick(async () => {
 									await this.upgradeNotesWithTagsAndDescriptionInFolder(file);
+								});
+						});
+						menu.addItem((item) => {
+							item
+								.setTitle('Upgrade video notes with playlist in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.upgradeNotesWithPlaylistInFolder(file);
 								});
 						});
 					}
@@ -326,6 +335,33 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Upgrade video summary notes with tags and description frontmatter',
 			callback: async () => {
 				await this.upgradeNotesWithTagsAndDescription();
+			},
+		});
+
+		// Command to upgrade video summary notes with playlist from YouTube Data API in a specific folder
+		this.addCommand({
+			id: 'upgrade-notes-with-playlist-folder',
+			name: 'Upgrade video summary notes with playlist in folder...',
+			callback: () => {
+				this.promptUpgradeNotesWithPlaylist();
+			},
+		});
+
+		// Command to upgrade video summary notes with playlist in the entire vault
+		this.addCommand({
+			id: 'upgrade-notes-with-playlist-vault',
+			name: 'Upgrade video summary notes with playlist in entire vault',
+			callback: async () => {
+				await this.upgradeNotesWithPlaylistInVault();
+			},
+		});
+
+		// Command to upgrade video summary notes with playlist from YouTube Data API
+		this.addCommand({
+			id: 'upgrade-notes-with-playlist',
+			name: 'Upgrade video summary notes with playlist from YouTube Data API',
+			callback: async () => {
+				await this.upgradeNotesWithPlaylist();
 			},
 		});
 
@@ -1252,6 +1288,180 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 		this.promptUpgradeNotesWithTagsAndDescription();
+	}
+
+	/**
+	 * Processes a list of markdown files, checking each for YouTube video summary notes
+	 * that lack playlist properties in their frontmatter, querying YouTube Data API for playlist membership,
+	 * and merging playlist metadata into the frontmatter.
+	 */
+	public async processNotesWithPlaylist(files: TFile[], scopeDescription: string): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+			new Notice(`Scanning ${scopeDescription} for video summary notes missing playlist frontmatter...`);
+
+			const candidates: { file: TFile; url: string }[] = [];
+
+			for (const file of files) {
+				const content = await this.app.vault.read(file);
+
+				// Skip companion notes
+				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
+					continue;
+				}
+
+				const url = extractYouTubeUrlFromNote(content);
+				if (!url) {
+					continue;
+				}
+
+				if (isNoteMissingPlaylistFrontmatter(content)) {
+					candidates.push({ file, url });
+				}
+			}
+
+			if (candidates.length === 0) {
+				new Notice(`All video summary notes in ${scopeDescription} already have playlist frontmatter!`);
+				return;
+			}
+
+			new Notice(
+				`Found ${candidates.length} video summary note(s) in ${scopeDescription} missing playlist frontmatter. Querying YouTube Data API for playlists...`
+			);
+
+			let upgradedCount = 0;
+			let noPlaylistCount = 0;
+			let failCount = 0;
+
+			for (let i = 0; i < candidates.length; i++) {
+				const { file, url } = candidates[i];
+				try {
+					const metadata = await this.youtubeService.fetchVideoMetadata(
+						url,
+						this.settings.getYoutubeApiKey()
+					);
+
+					if (metadata.playlist) {
+						const currentContent = await this.app.vault.read(file);
+						const fmMatch = currentContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+						let thumbnailText = '';
+						if (fmMatch) {
+							const tMatch = fmMatch[1].match(/^thumbnail_text:\s*["']?([^"'\r\n]*)["']?/m);
+							if (tMatch) thumbnailText = tMatch[1].trim();
+						}
+
+						const fmData: FrontmatterData = {
+							title: metadata.title,
+							channel_name: metadata.author,
+							channel_username: metadata.channelUsername || '',
+							channel_url: metadata.channelUrl,
+							video_url: metadata.url,
+							thumbnail: YouTubeService.getThumbnailUrl(metadata.videoId),
+							thumbnail_text: thumbnailText,
+							description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
+							playlist_title: metadata.playlist.title,
+							playlist_url: metadata.playlist.url,
+							playlist_id: metadata.playlist.id,
+							playlist_index: metadata.playlist.index,
+							playlist_count: metadata.playlist.count,
+						};
+
+						const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, { excludeTags: true });
+						await this.app.vault.modify(file, updatedContent);
+						upgradedCount++;
+					} else {
+						noPlaylistCount++;
+					}
+				} catch (error) {
+					console.error(`Failed to upgrade note with playlist ${file.path}:`, error);
+					failCount++;
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			if (upgradedCount > 0) {
+				new Notice(
+					`Playlist upgrade complete! Successfully upgraded ${upgradedCount} note(s) in ${scopeDescription} with playlist metadata${noPlaylistCount > 0 ? ` (${noPlaylistCount} had no playlist)` : ''}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+				);
+			} else {
+				new Notice(
+					`Processed ${candidates.length} note(s) in ${scopeDescription}, but none were found to belong to a playlist on YouTube${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+				);
+			}
+		} catch (error) {
+			new Notice(`Failed to upgrade notes with playlist: ${error.message}`);
+			console.error('Failed to upgrade notes with playlist:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Scans all notes in the vault for video summary notes missing playlist frontmatter and upgrades them.
+	 */
+	public async upgradeNotesWithPlaylistInVault(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		await this.processNotesWithPlaylist(files, 'vault');
+	}
+
+	/**
+	 * Scans notes within a specific folder (and its subfolders) for video summary notes missing playlist frontmatter.
+	 */
+	public async upgradeNotesWithPlaylistInFolder(folder: TFolder): Promise<void> {
+		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+		await this.processNotesWithPlaylist(files, scopeDescription);
+	}
+
+	/**
+	 * Scans notes within user-configured folders for video summary notes missing playlist frontmatter.
+	 */
+	public async upgradeNotesWithPlaylistInConfiguredFolders(): Promise<void> {
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length === 0) {
+			this.promptUpgradeNotesWithPlaylist();
+			return;
+		}
+		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
+		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
+		await this.processNotesWithPlaylist(files, scopeDescription);
+	}
+
+	/**
+	 * Opens a folder selection modal to upgrade notes missing playlist frontmatter in the chosen folder.
+	 */
+	public promptUpgradeNotesWithPlaylist(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.upgradeNotesWithPlaylistInFolder(folder);
+		}).open();
+	}
+
+	/**
+	 * Entry point for upgrading notes with playlist frontmatter from YouTube Data API.
+	 * If folder is specified, runs on that folder.
+	 * If scanFolders setting is configured, runs on configured folders.
+	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
+	 */
+	public async upgradeNotesWithPlaylist(folder?: TFolder): Promise<void> {
+		if (folder) {
+			await this.upgradeNotesWithPlaylistInFolder(folder);
+			return;
+		}
+		const configuredFolders = this.settings.getScanFolderList();
+		if (configuredFolders.length > 0) {
+			await this.upgradeNotesWithPlaylistInConfiguredFolders();
+			return;
+		}
+		this.promptUpgradeNotesWithPlaylist();
 	}
 
 
