@@ -22,6 +22,7 @@ import {
     DEFAULT_YOUTUBE_API_KEY,
     DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
     DEFAULT_MEDIA_EXTENDED_FOLDER,
+    DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
     DEFAULT_SCAN_FOLDERS,
@@ -64,6 +65,7 @@ export class SettingsManager implements PluginSettings {
             youtubeApiKey: DEFAULT_YOUTUBE_API_KEY,
             createMediaExtendedNotes: DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
             mediaExtendedFolder: DEFAULT_MEDIA_EXTENDED_FOLDER,
+            mediaExtendedIncludeDescription: DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
             scanFolders: DEFAULT_SCAN_FOLDERS,
@@ -106,6 +108,7 @@ export class SettingsManager implements PluginSettings {
                 youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
                 createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
+                mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -150,6 +153,7 @@ export class SettingsManager implements PluginSettings {
                 youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
                 createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
+                mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -505,6 +509,15 @@ export class SettingsManager implements PluginSettings {
 
     updateMediaExtendedFolder(value: string): void {
         this.settings.mediaExtendedFolder = value;
+        this.saveData();
+    }
+
+    getMediaExtendedIncludeDescription(): boolean {
+        return this.settings.mediaExtendedIncludeDescription ?? DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION;
+    }
+
+    updateMediaExtendedIncludeDescription(value: boolean): void {
+        this.settings.mediaExtendedIncludeDescription = value;
         this.saveData();
     }
 

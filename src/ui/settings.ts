@@ -390,6 +390,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Include description in Media Extended note
+        new Setting(containerEl)
+            .setName('Include description in Media Extended note')
+            .setDesc('Include the YouTube video description in the Media Extended companion note (enabled by default). Any timestamps in the description are converted into Media Extended playback links.')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedIncludeDescription())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedIncludeDescription(value);
+                    })
+            );
+
         // Media Extended notes folder
         new Setting(containerEl)
             .setName('Media Extended notes folder')

@@ -105,7 +105,7 @@ npm install
   ```bash
   npm test
   ```
-  Runs `tests/test-features.mjs` verifying 21 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, playlist discovery, etc.).
+  Runs `tests/test-features.mjs` verifying 26 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery, etc.).
 * **Compile TypeScript & Bundle (Production)**:
   ```bash
   npm run build
@@ -168,8 +168,14 @@ npm install
   aspect_ratio: 427 / 240
   ---
   ```
+* **Section Headings & Description Integration**:
+  - Companion notes organize content under explicit markdown headings:
+    - `# Description`: Contains the creator's video description with all chapter timestamps (`0:00`, `01:23`, `[01:23]`, `1:05:30`) automatically parsed and converted into clickable Media Extended playback links (`[HH:MM:SS](https://...&t=SECONDS#t=HH:MM:SS.00)`) via [`convertDescriptionTimestampsToMediaExtended()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+    - `# Transcript`: Contains the timestamped transcript with Media Extended playback URLs.
+    - `# Related`: Contains the bidirectional wikilink back to the original summary note (`- [[Summary Note]]`).
+  - **Clean Spacing**: Every heading (`# Description`, `# Transcript`, `# Related`) is followed by an empty line (`\n\n`) before content begins.
 * **Bidirectional Linking**:
-  When a companion note is created, the summary note receives a `- [[Media Library/Note Name]]` link under `# Related`. Similarly, the Media Extended companion note receives a link back to the summary note.
+  When a companion note is created, the summary note receives a `- [[Media Library/Note Name]]` link under `# Related` (also formatted with an empty line after the heading). Similarly, the Media Extended companion note receives a link back to the summary note.
 
 ### 4. Creator Playlist Discovery
 
@@ -450,6 +456,44 @@ This section preserves technical and design questions asked during development f
      - **Settings Tab**: A dedicated "LM Studio (Local LLM)" card with a **Detect & Connect** button.
      - **Provider Accordion**: A **Refresh from LM Studio** button inside the LM Studio card to quickly re-sync newly loaded models after switching weights in LM Studio.
      - **Command Palette**: A dedicated command `Detect and connect local LM Studio instance` for keyboard-driven local model switching.
+
+---
+
+### Q12: How are descriptions and timestamps integrated into Media Extended companion notes, and how is heading spacing standardized?
+
+**Context**: User requested:
+1. New option to put description in Media Extended companion note (on by default).
+2. If description has timestamps, bring them over but modify them to be in Media Extended format.
+3. Add headings for each section to Media Extended note:
+   - `# Description` for the description
+   - `# Transcript` for the transcript
+   - Continue to carry over transcript timestamps as Media Extended links.
+4. Put an empty line before the content begins after added headings, including in the Video Summary note after the `# Related` heading.
+
+**Answer**:
+1. **Description Inclusion & Setting Architecture**:
+   - Added `DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true` in [`src/defaults.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/defaults.ts).
+   - Added `mediaExtendedIncludeDescription` property in [`StoredSettings`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/types.ts) and getter/setter methods in [`SettingsManager`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/settingsManager.ts).
+   - In [`SettingsTab`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts), a toggle control *Include description in Media Extended note* lets users enable or disable description inclusion.
+   - When generating companion notes in [`createMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts), the option `{ includeDescription: this.settings.getMediaExtendedIncludeDescription() }` is passed to [`buildMediaExtendedNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+
+2. **Description Timestamp Parsing & Conversion Pipeline**:
+   - Implemented in [`convertDescriptionTimestampsToMediaExtended()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts):
+     - **Timestamp Pattern**: Matches 2-part (`M:SS`, `MM:SS`) and 3-part (`H:MM:SS`, `HH:MM:SS`) timestamps where seconds are strictly `[0-5]\d`.
+     - **Token Protection Steps**:
+       1. Detects and converts existing markdown links where the link text is a timestamp (`[01:23](...)`), updating the target URL to Media Extended format `https://www.youtube.com/watch?v=VIDEO_ID&t=SECONDS#t=MM:SS.00` and replacing with a temporary protected token (`@@@ME_PROTECTED_TOKEN_N@@@`).
+       2. Protects any other existing markdown links (`[text](url)`) to avoid corrupting link labels or target URLs.
+       3. Protects raw URLs (`https://...` or `http://...`) so digits or port numbers inside URLs are never touched.
+       4. Detects bracketed timestamps (`[01:23]`), converting them cleanly into `[01:23](url)` without generating double brackets (`[[01:23](url)]`).
+       5. Detects standalone timestamps guarded by lookbehind (`(?<=^|[\s(>•-])`) and lookahead (`(?=$|[\s):.,!?-])(?!\\s*(?:am|pm)\\b)`). This safely matches timestamps after bullets, dashes, colons, or parentheses while rejecting times of day (e.g. `10:00 AM`) and aspect ratios (e.g. `16:9`).
+       6. Restores all protected tokens.
+
+3. **Heading Organization & Empty Line Formatting**:
+   - In [`buildMediaExtendedNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), companion note content is organized under explicit markdown headings:
+     - `# Description\n\n${formattedDescription}` (if description exists and setting is enabled)
+     - `# Transcript\n\n${formattedTranscript}` (if transcript exists)
+     - `# Related\n\n- [[Summary Note]]`
+   - In [`addRelatedLink()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), creating or updating the `# Related` section always guarantees an empty line (`\n\n`) between the `# Related` header and the first bulleted wikilink. Because `addRelatedLink()` is used for both directions (summary note to companion note, and companion note to summary note), both files adhere to the clean markdown spacing standard.
 
 
 

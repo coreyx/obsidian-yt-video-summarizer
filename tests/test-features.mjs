@@ -1232,21 +1232,108 @@ function addRelatedLinkHelper(content, linkTarget) {
 		const header = match[2];
 		const body = match[3] || '';
 		
-		const updatedBody = body.trimEnd() ? `${body.trimEnd()}\n${linkLine}` : `\n${linkLine}`;
+		const cleanBody = body.trim();
+		const updatedBody = cleanBody ? `\n\n${cleanBody}\n${linkLine}` : `\n\n${linkLine}`;
 		const replacement = `${match[1]}${header}${updatedBody}`;
 		return trimmed.replace(fullMatch, () => replacement);
 	}
 
-	return `${trimmed}\n\n# Related\n${linkLine}\n`;
+	return trimmed ? `${trimmed}\n\n# Related\n\n${linkLine}\n` : `# Related\n\n${linkLine}\n`;
 }
 
-function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink) {
+function parseTimestampToMediaExtendedUrlHelper(timeStr, videoId) {
+	const parts = timeStr.split(':').map((p) => parseInt(p, 10));
+	if (parts.some((n) => isNaN(n))) return null;
+
+	let hours = 0;
+	let minutes = 0;
+	let seconds = 0;
+
+	if (parts.length === 3) {
+		[hours, minutes, seconds] = parts;
+	} else if (parts.length === 2) {
+		[minutes, seconds] = parts;
+	} else {
+		return null;
+	}
+
+	const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+	const { meTimeStr } = formatTimestampPartsHelper(totalSeconds * 1000);
+	return `https://www.youtube.com/watch?v=${videoId}&t=${totalSeconds}#t=${meTimeStr}`;
+}
+
+function convertDescriptionTimestampsToMediaExtendedHelper(description, videoId) {
+	if (!description || !description.trim()) {
+		return description;
+	}
+
+	const protectedTokens = [];
+	const createPlaceholder = (content) => {
+		const placeholder = `@@@ME_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
+		protectedTokens.push(content);
+		return placeholder;
+	};
+
+	let processed = description;
+	const TS_PATTERN = '(?:\\d{1,2}:[0-5]\\d:[0-5]\\d|\\d{1,2}:[0-5]\\d)';
+
+	const existingMdLinkRegex = new RegExp(`\\[(${TS_PATTERN})\\]\\(([^)]+)\\)`, 'g');
+	processed = processed.replace(existingMdLinkRegex, (_match, ts) => {
+		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		return url ? createPlaceholder(`[${ts}](${url})`) : createPlaceholder(_match);
+	});
+
+	const otherMdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+	processed = processed.replace(otherMdLinkRegex, (match) => createPlaceholder(match));
+
+	const rawUrlRegex = /https?:\/\/[^\s)]+/g;
+	processed = processed.replace(rawUrlRegex, (match) => createPlaceholder(match));
+
+	const bracketedRegex = new RegExp(`\\[(${TS_PATTERN})\\]`, 'g');
+	processed = processed.replace(bracketedRegex, (_match, ts) => {
+		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		return url ? createPlaceholder(`[${ts}](${url})`) : _match;
+	});
+
+	const standaloneRegex = new RegExp(
+		`(?<=^|[\\s(>•-])(${TS_PATTERN})(?=$|[\\s):.,!?-])(?!\\s*(?:am|pm)\\b)`,
+		'gi'
+	);
+	processed = processed.replace(standaloneRegex, (ts) => {
+		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		return url ? `[${ts}](${url})` : ts;
+	});
+
+	for (let i = 0; i < protectedTokens.length; i++) {
+		const placeholder = `@@@ME_PROTECTED_TOKEN_${i}@@@`;
+		processed = processed.replace(placeholder, () => protectedTokens[i]);
+	}
+
+	return processed;
+}
+
+function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink, options) {
 	const fm = buildMediaExtendedFrontmatterHelper(data);
-	let body = transcriptText ? transcriptText.trim() : '';
+	const sections = [];
+
+	const includeDescription = options?.includeDescription ?? true;
+	if (includeDescription && data.description && data.description.trim()) {
+		const formattedDescription = convertDescriptionTimestampsToMediaExtendedHelper(
+			data.description.trim(),
+			data.videoId
+		);
+		sections.push(`# Description\n\n${formattedDescription}`);
+	}
+
+	if (transcriptText && transcriptText.trim()) {
+		sections.push(`# Transcript\n\n${transcriptText.trim()}`);
+	}
+
+	let body = sections.join('\n\n');
 	if (relatedNoteLink) {
 		body = addRelatedLinkHelper(body, relatedNoteLink);
 	}
-	return `${fm}\n\n${body.trim()}\n`;
+	return body.trim() ? `${fm}\n\n${body.trim()}\n` : `${fm}\n`;
 }
 
 // Case 1: generateMxUid test
@@ -1296,12 +1383,12 @@ assert(specialFm.includes('title: "Guide: How to use Obsidian with AI"'));
 // Case 4: addRelatedLink helper when no # Related section exists
 const noteWithoutRelated = '# Summary\n\nThis is a summary of the video.';
 const linkedNote = addRelatedLinkHelper(noteWithoutRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
-assert(linkedNote.includes('# Related\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
+assert(linkedNote.includes('# Related\n\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
 
 // Case 5: addRelatedLink helper when # Related already exists
 const noteWithRelated = '# Summary\n\nNotes.\n\n# Related\n- [[Existing Link]]';
 const linkedNote2 = addRelatedLinkHelper(noteWithRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
-assert(linkedNote2.includes('# Related\n- [[Existing Link]]\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
+assert(linkedNote2.includes('# Related\n\n- [[Existing Link]]\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
 
 // Case 6: addRelatedLink helper does not duplicate links
 const linkedNote3 = addRelatedLinkHelper(linkedNote2, 'Media Library/Rick Astley - Never Gonna Give You Up');
@@ -1323,9 +1410,11 @@ const fullMediaExtendedNote = buildMediaExtendedNoteHelper(
 	'Rick Astley - Never Gonna Give You Up'
 );
 assert(fullMediaExtendedNote.startsWith('---\nmx-uid: vcxchy79gecb4s69v25oxq9s'));
+assert(fullMediaExtendedNote.includes('# Description\n\n'));
+assert(fullMediaExtendedNote.includes('# Transcript\n\n'));
 assert(fullMediaExtendedNote.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First line'));
 assert(fullMediaExtendedNote.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second line'));
-assert(fullMediaExtendedNote.includes('# Related\n- [[Rick Astley - Never Gonna Give You Up]]'));
+assert(fullMediaExtendedNote.includes('# Related\n\n- [[Rick Astley - Never Gonna Give You Up]]'));
 
 // Case 9: Bidirectional link simulation
 // Summary note links to Media Library/Title
@@ -2309,6 +2398,116 @@ assert.strictEqual(testSettings.providers[1].url, 'http://127.0.0.1:1234/v1');
 assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
 
 console.log('✓ OpenAI-compatible URL normalization and LM Studio model parsing passed');
+
+// Test 26: Description in Media Extended note, timestamp conversion, section headings, and empty lines
+console.log('Testing Media Extended note description, timestamp conversion, and section headings...');
+
+// 26.1: parseTimestampToMediaExtendedUrlHelper unit tests
+const testVideoId = 'abc123XYZ';
+assert.strictEqual(
+	parseTimestampToMediaExtendedUrlHelper('0:00', testVideoId),
+	'https://www.youtube.com/watch?v=abc123XYZ&t=0#t=00:00.00'
+);
+assert.strictEqual(
+	parseTimestampToMediaExtendedUrlHelper('01:23', testVideoId),
+	'https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00'
+);
+assert.strictEqual(
+	parseTimestampToMediaExtendedUrlHelper('1:23:45', testVideoId),
+	'https://www.youtube.com/watch?v=abc123XYZ&t=5025#t=01:23:45.00'
+);
+assert.strictEqual(parseTimestampToMediaExtendedUrlHelper('invalid', testVideoId), null);
+
+// 26.2: convertDescriptionTimestampsToMediaExtendedHelper tests
+const sampleRawDescription = `Welcome to this tutorial!
+Chapters:
+0:00 - Introduction
+- 01:23 Getting Started
+• 02:45 Basic Workflow
+03:50: Best Practices
+[04:20] Advanced Tips
+(05:15) Q&A Session
+1:05:30 Final Thoughts
+
+Resources:
+See [our blog](https://example.com/guide:1) for written steps.
+Visit https://example.com/repo/12:34 for the source code.
+Already formatted: [06:00](https://youtube.com/watch?v=old&t=360)
+Note: Meeting is at 10:00 AM (not a video timestamp)
+Aspect ratio is 16:9 widescreen`;
+
+const convertedDesc = convertDescriptionTimestampsToMediaExtendedHelper(sampleRawDescription, testVideoId);
+
+// 0:00 converted
+assert(convertedDesc.includes('[0:00](https://www.youtube.com/watch?v=abc123XYZ&t=0#t=00:00.00) - Introduction'));
+// - 01:23 converted
+assert(convertedDesc.includes('- [01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00) Getting Started'));
+// • 02:45 converted
+assert(convertedDesc.includes('• [02:45](https://www.youtube.com/watch?v=abc123XYZ&t=165#t=02:45.00) Basic Workflow'));
+// 03:50: converted with colon preserved
+assert(convertedDesc.includes('[03:50](https://www.youtube.com/watch?v=abc123XYZ&t=230#t=03:50.00): Best Practices'));
+// [04:20] bracketed converted without double brackets
+assert(convertedDesc.includes('[04:20](https://www.youtube.com/watch?v=abc123XYZ&t=260#t=04:20.00) Advanced Tips'));
+assert(!convertedDesc.includes('[[04:20]('));
+// (05:15) parenthesized preserved
+assert(convertedDesc.includes('([05:15](https://www.youtube.com/watch?v=abc123XYZ&t=315#t=05:15.00)) Q&A Session'));
+// 1:05:30 3-part timestamp converted
+assert(convertedDesc.includes('[1:05:30](https://www.youtube.com/watch?v=abc123XYZ&t=3930#t=01:05:30.00) Final Thoughts'));
+// Existing link converted to Media Extended URL
+assert(convertedDesc.includes('[06:00](https://www.youtube.com/watch?v=abc123XYZ&t=360#t=06:00.00)'));
+// Regular markdown link preserved
+assert(convertedDesc.includes('[our blog](https://example.com/guide:1)'));
+// Raw URL preserved
+assert(convertedDesc.includes('https://example.com/repo/12:34'));
+// 10:00 AM not matched as timestamp
+assert(convertedDesc.includes('10:00 AM'));
+// 16:9 aspect ratio not matched
+assert(convertedDesc.includes('16:9 widescreen'));
+
+// 26.3: Empty description handling
+assert.strictEqual(convertDescriptionTimestampsToMediaExtendedHelper('', testVideoId), '');
+assert.strictEqual(convertDescriptionTimestampsToMediaExtendedHelper(undefined, testVideoId), undefined);
+
+// 26.4: buildMediaExtendedNoteHelper with sections and empty lines
+const testMetadata = {
+	mxUid: 'test12345678901234567890',
+	videoId: testVideoId,
+	title: 'Complete TypeScript Guide',
+	description: 'A great tutorial.\n0:00 Intro\n01:23 Code walkthrough',
+	duration: 300,
+	creator: 'Code Master'
+};
+const testTranscript = '- [00:00](https://www.youtube.com/watch?v=abc123XYZ&t=0#t=00:00.00) Hello world\n- [01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00) Let us begin';
+const testRelatedNote = 'TypeScript Summary Note';
+
+// Default includes description (on by default)
+const fullNoteWithDesc = buildMediaExtendedNoteHelper(testMetadata, testTranscript, testRelatedNote);
+assert(fullNoteWithDesc.startsWith('---\nmx-uid: test12345678901234567890'));
+// Section headings must exist
+assert(fullNoteWithDesc.includes('\n\n# Description\n\n'));
+assert(fullNoteWithDesc.includes('\n\n# Transcript\n\n'));
+assert(fullNoteWithDesc.includes('\n\n# Related\n\n'));
+// Empty lines must follow each heading before content
+assert(fullNoteWithDesc.includes('# Description\n\nA great tutorial.'));
+assert(fullNoteWithDesc.includes('# Transcript\n\n- [00:00]'));
+assert(fullNoteWithDesc.includes('# Related\n\n- [[TypeScript Summary Note]]'));
+// Timestamps in description must be converted to Media Extended links
+assert(fullNoteWithDesc.includes('[01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00) Code walkthrough'));
+
+// 26.5: Turning off includeDescription setting
+const meNoteWithoutDesc = buildMediaExtendedNoteHelper(testMetadata, testTranscript, testRelatedNote, {
+	includeDescription: false
+});
+assert(!meNoteWithoutDesc.includes('# Description'));
+assert(meNoteWithoutDesc.includes('# Transcript\n\n- [00:00]'));
+assert(meNoteWithoutDesc.includes('# Related\n\n- [[TypeScript Summary Note]]'));
+
+// 26.6: Empty line after # Related in Video Summary note
+const summaryBodyNote = '# Video Summary\n\nHere are the key takeaways.';
+const summaryLinked = addRelatedLinkHelper(summaryBodyNote, 'Media Library/Complete TypeScript Guide');
+assert(summaryLinked.includes('\n\n# Related\n\n- [[Media Library/Complete TypeScript Guide]]\n'));
+
+console.log('✓ Media Extended note description, timestamp conversion, and section headings passed');
 
 console.log('\nAll tests passed successfully!');
 
