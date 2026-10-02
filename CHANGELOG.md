@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-10-02
+
+### Added
+- **AI Semantic Topic Tagging & Compressed Vault Tag Cache**: Upgraded `Generate semantic topic tags` with whole-vault context awareness. Rebuilds a compressed in-memory cache of your vault's existing tag taxonomy prior to inference to maximize tag reuse and prevent tag sprawl. The enhanced prompt instructs the model to identify what topic(s) the video belongs to, fill in obvious missing tags, strictly prefer reusing existing vault tags, use lowercase kebab-case, and nest under established group prefixes (e.g. `ai/machine-learning` instead of `ai-machine-learning`). Dedicated documentation added in [`AI_TAGGING.md`](AI_TAGGING.md).
+- **Hierarchical Group Tag Deduplication**: Enhanced `deduplicateTags()` to explicitly favor hierarchical tags containing `/` (e.g. `ai/machine-learning`) over flat hyphenated variants (`ai-machine-learning`) when normalizing and collapsing similar tags.
+- **LM Studio One-Click Auto-Detection & OpenAI-Compatible Active Model**: Native auto-detection of local LM Studio servers (`http://localhost:1234/v1` and `http://127.0.0.1:1234/v1`). Automatically discovers loaded local models, adds or syncs the LM Studio provider, and sets the active model for private, 100% offline summarization. Added Command Palette command `Detect and connect local LM Studio instance` and Settings tab card.
+- **OpenAI-Compatible Server Support**: Full support for running any custom OpenAI-compatible server (LM Studio, Ollama, LocalAI, vLLM, OpenRouter) as the Active Model with resilient authentication fallbacks and URL normalization.
+- **Command: Upgrade Notes with Playlist from YouTube Data API**: Added Command Palette commands (`Upgrade video summary notes with playlist from YouTube Data API`, `...in folder...`, `...in entire vault`) and a Settings tab card. Detects notes missing `playlist_` properties, discovers creator playlist membership via YouTube Data API and metadata fallbacks, and merges playlist frontmatter while preserving existing tags and summaries.
+- **Folder-Scoped Batch Processing & Scan Folders Setting**: Added flexible scoping for all batch operations (`Scan folders for batch upgrades` setting, interactive folder picker modal, whole vault commands, and right-click folder context menu integration in Obsidian's File Explorer).
+- **Per-Run Media Extended Checkbox**: Added an interactive toggle checkbox in the YouTube URL input modal and custom prompt modal to selectively choose whether to create a Media Extended companion note for the current summarization without altering permanent settings.
+- **Media Extended Descriptions & Converted Playback Timestamps**: Organized Media Extended companion notes under clean section headings (`# Description`, `# Transcript`, `# Related`) with standardized spacing. Includes a high-fidelity parser that automatically converts timestamps in video descriptions into clickable Media Extended playback URLs.
+
+---
+
 ## [1.9.0] - 2026-10-02
 
 ### Added
