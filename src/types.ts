@@ -55,6 +55,7 @@ export interface StoredSettings {
 	youtubeApiKey?: string;
 	createMediaExtendedNotes?: boolean;
 	mediaExtendedFolder?: string;
+	mediaExtendedIncludeDescription?: boolean;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
 	scanFolders?: string;
@@ -161,6 +162,9 @@ export interface PluginSettings {
 
 	getMediaExtendedFolder(): string;
 	updateMediaExtendedFolder(value: string): void;
+
+	getMediaExtendedIncludeDescription(): boolean;
+	updateMediaExtendedIncludeDescription(value: boolean): void;
 
 	getAddDescriptionToFrontmatter(): boolean;
 	updateAddDescriptionToFrontmatter(value: boolean): void;

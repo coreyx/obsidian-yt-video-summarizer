@@ -652,7 +652,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				: originalFile.basename;
 		}
 
-		const noteContent = buildMediaExtendedNote(metadata, formattedTranscript, originalNoteLink);
+		const noteContent = buildMediaExtendedNote(metadata, formattedTranscript, originalNoteLink, {
+			includeDescription: this.settings.getMediaExtendedIncludeDescription(),
+		});
 
 		try {
 			if (existingFile) {

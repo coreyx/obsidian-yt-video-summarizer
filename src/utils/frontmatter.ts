@@ -691,8 +691,105 @@ export function buildMediaExtendedFrontmatter(data: MediaExtendedMetadata): stri
 }
 
 /**
+ * Converts a timestamp string (e.g. "0:00", "01:23", "1:23:45") into a Media Extended playback URL.
+ */
+export function parseTimestampToMediaExtendedUrl(timeStr: string, videoId: string): string | null {
+	const parts = timeStr.split(':').map((p) => parseInt(p, 10));
+	if (parts.some((n) => isNaN(n))) return null;
+
+	let hours = 0;
+	let minutes = 0;
+	let seconds = 0;
+
+	if (parts.length === 3) {
+		[hours, minutes, seconds] = parts;
+	} else if (parts.length === 2) {
+		[minutes, seconds] = parts;
+	} else {
+		return null;
+	}
+
+	const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+	const { meTimeStr } = formatTimestampParts(totalSeconds * 1000);
+	return `https://www.youtube.com/watch?v=${videoId}&t=${totalSeconds}#t=${meTimeStr}`;
+}
+
+/**
+ * Scans a video description for timestamps (e.g. "0:00", "01:23", "[01:23]", "(01:23)", "1:05:30")
+ * and converts them into Media Extended markdown links ([MM:SS](https://...&t=SECONDS#t=MM:SS.00))
+ * while preserving existing non-timestamp markdown links and URLs.
+ */
+export function convertDescriptionTimestampsToMediaExtended(
+	description: string,
+	videoId: string
+): string {
+	if (!description || !description.trim()) {
+		return description;
+	}
+
+	// Placeholders to protect already processed or existing links/URLs
+	const protectedTokens: string[] = [];
+	const createPlaceholder = (content: string): string => {
+		const placeholder = `@@@ME_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
+		protectedTokens.push(content);
+		return placeholder;
+	};
+
+	let processed = description;
+
+	// Pattern for matching timestamp digits: H:MM:SS, HH:MM:SS, M:SS, or MM:SS
+	// Seconds must be 00-59. Minutes in 3-part must be 00-59.
+	const TS_PATTERN = '(?:\\d{1,2}:[0-5]\\d:[0-5]\\d|\\d{1,2}:[0-5]\\d)';
+
+	// Step 1: Convert existing markdown links where the link text is a timestamp
+	// e.g. [01:23](https://youtube.com/...)
+	const existingMdLinkRegex = new RegExp(`\\[(${TS_PATTERN})\\]\\(([^)]+)\\)`, 'g');
+	processed = processed.replace(existingMdLinkRegex, (_match, ts) => {
+		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		return url ? createPlaceholder(`[${ts}](${url})`) : createPlaceholder(_match);
+	});
+
+	// Step 2: Protect any other existing markdown links [text](url)
+	const otherMdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+	processed = processed.replace(otherMdLinkRegex, (match) => createPlaceholder(match));
+
+	// Step 3: Protect existing URLs (http:// or https://)
+	const rawUrlRegex = /https?:\/\/[^\s)]+/g;
+	processed = processed.replace(rawUrlRegex, (match) => createPlaceholder(match));
+
+	// Step 4: Convert bracketed timestamps e.g. [01:23] or [1:23:45]
+	const bracketedRegex = new RegExp(`\\[(${TS_PATTERN})\\]`, 'g');
+	processed = processed.replace(bracketedRegex, (_match, ts) => {
+		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		return url ? createPlaceholder(`[${ts}](${url})`) : _match;
+	});
+
+	// Step 5: Convert standalone timestamps
+	// Preceded by start of string, whitespace, '(', '>', '•', or '-'
+	// Followed by end of string, whitespace, ')', ':', '.', ',', '!', '?', or '-'
+	// Not followed by AM or PM (e.g. 10:00 AM)
+	const standaloneRegex = new RegExp(
+		`(?<=^|[\\s(>•-])(${TS_PATTERN})(?=$|[\\s):.,!?-])(?!\\s*(?:am|pm)\\b)`,
+		'gi'
+	);
+	processed = processed.replace(standaloneRegex, (ts) => {
+		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		return url ? `[${ts}](${url})` : ts;
+	});
+
+	// Step 6: Restore all protected placeholders
+	for (let i = 0; i < protectedTokens.length; i++) {
+		const placeholder = `@@@ME_PROTECTED_TOKEN_${i}@@@`;
+		processed = processed.replace(placeholder, () => protectedTokens[i]);
+	}
+
+	return processed;
+}
+
+/**
  * Appends or merges a wikilink into the "# Related" section of a markdown document.
  * If the section does not exist, it appends it to the end of the document.
+ * Always ensures an empty line after the "# Related" heading before link items begin.
  */
 export function addRelatedLink(content: string, linkTarget: string): string {
 	const trimmed = content.trimEnd();
@@ -711,29 +808,54 @@ export function addRelatedLink(content: string, linkTarget: string): string {
 		const header = match[2];
 		const body = match[3] || '';
 		
-		const updatedBody = body.trimEnd() ? `${body.trimEnd()}\n${linkLine}` : `\n${linkLine}`;
+		const cleanBody = body.trim();
+		const updatedBody = cleanBody ? `\n\n${cleanBody}\n${linkLine}` : `\n\n${linkLine}`;
 		const replacement = `${match[1]}${header}${updatedBody}`;
 		return trimmed.replace(fullMatch, () => replacement);
 	}
 
-	return `${trimmed}\n\n# Related\n${linkLine}\n`;
+	return trimmed ? `${trimmed}\n\n# Related\n\n${linkLine}\n` : `# Related\n\n${linkLine}\n`;
+}
+
+export interface BuildMediaExtendedNoteOptions {
+	includeDescription?: boolean;
 }
 
 /**
  * Builds the complete text for a Media Extended note, combining frontmatter,
- * optional timestamped transcript, and the # Related link back to the original summary note.
+ * optional timestamped description, optional timestamped transcript,
+ * and the # Related link back to the original summary note.
+ * Places clean headings (# Description, # Transcript, # Related) with empty lines
+ * before section content begins.
  */
 export function buildMediaExtendedNote(
 	data: MediaExtendedMetadata,
 	transcriptText?: string,
-	relatedNoteLink?: string
+	relatedNoteLink?: string,
+	options?: BuildMediaExtendedNoteOptions
 ): string {
 	const fm = buildMediaExtendedFrontmatter(data);
-	let body = transcriptText ? transcriptText.trim() : '';
+	const sections: string[] = [];
+
+	const includeDescription = options?.includeDescription ?? true;
+	if (includeDescription && data.description && data.description.trim()) {
+		const formattedDescription = convertDescriptionTimestampsToMediaExtended(
+			data.description.trim(),
+			data.videoId
+		);
+		sections.push(`# Description\n\n${formattedDescription}`);
+	}
+
+	if (transcriptText && transcriptText.trim()) {
+		sections.push(`# Transcript\n\n${transcriptText.trim()}`);
+	}
+
+	let body = sections.join('\n\n');
 	if (relatedNoteLink) {
 		body = addRelatedLink(body, relatedNoteLink);
 	}
-	return `${fm}\n\n${body.trim()}\n`;
+
+	return body.trim() ? `${fm}\n\n${body.trim()}\n` : `${fm}\n`;
 }
 
 /**

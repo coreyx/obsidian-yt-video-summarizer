@@ -315,12 +315,13 @@ tags:
 [Original YouTube video description and external links...]
 
 # Related
+
 - [[Media Library/Video Title]]
 ```
 
 ### Media Extended Companion Note Format
 
-When **Create Media Extended notes** is enabled (on by default), a companion note is automatically generated in `Media Library/` (configurable) with bidirectional linking:
+When **Create Media Extended notes** is enabled (on by default), a companion note is automatically generated in `Media Library/` (configurable) with bidirectional linking, structured section headings (`# Description`, `# Transcript`, `# Related`), and empty lines before content:
 
 ```markdown
 ---
@@ -338,14 +339,24 @@ cover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"
 aspect_ratio: 427 / 240
 ---
 
+# Description
+
+Welcome to this video tutorial! Check out the chapter timestamps below:
+- [0:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Introduction
+- [01:23](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=83#t=01:23.00) Getting Started
+- [04:15](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=255#t=04:15.00) Deep Dive
+
+# Transcript
+
 - [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) Transcript line with Media Extended playback link
 - [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Next transcript line
 
 # Related
+
 - [[Original Summary Note]]
 ```
 
-The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, and the video description section can each be toggled on or off in the plugin settings.
+The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, video description in companion notes (with automatic timestamp conversion), and the video description section can each be toggled on or off in the plugin settings.
 
 ## Development
 
