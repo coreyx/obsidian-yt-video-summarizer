@@ -12,7 +12,8 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 ## Features
 
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
--   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, etc.).
+-   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, LM Studio, etc.).
+-   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
 -   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `description`, and `tags`.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Optionally archives the creator's complete video description, timestamps, and external links directly in the note body.
@@ -81,28 +82,61 @@ only the display name can be modified as the model name is the technical identif
 > **Note for OpenAI users**: Make sure that both default and custom models you use are available in your OpenAI project.
 You can verify model availability in your [OpenAI dashboard](https://platform.openai.com/docs/models).
 
-### Adding Custom AI Providers
+### Using LM Studio (Local LLMs with One-Click Auto-Detect)
 
-The plugin supports adding custom AI providers that are compatible with OpenAI or Anthropic APIs.
-This is useful for services like OpenRouter, Grok, or self-hosted models.
+The plugin includes native auto-detection for [LM Studio](https://lmstudio.ai/), allowing you to summarize YouTube videos completely locally and privately with **zero API costs**:
 
-To add a custom provider, click the "Add Provider" button at the bottom of the AI Providers tab.
-You'll need to specify a name for your provider, select the API compatibility type, enter your API key, and optionally set a custom API endpoint URL.
+1. **Start Local Server in LM Studio**:
+   - Open LM Studio and download or load your preferred model (e.g. `Qwen 2.5 Coder`, `Llama 3.2`, `Mistral 7B`).
+   - Navigate to the **Developer** tab (or Local Server icon) and click **Start Server**.
+   - By default, LM Studio serves on `http://localhost:1234` (or `http://127.0.0.1:1234`).
+2. **Auto-Detect & Connect**:
+   - In Obsidian, open **Settings** → **YouTube Video Summarizer** → **AI Providers**.
+   - Under **LM Studio (Local LLM)**, verify the server URL (`http://localhost:1234/v1`) and click **Detect & Connect** (or run the command `Detect and connect local LM Studio instance` from Obsidian's Command Palette).
+   - The plugin will query LM Studio's `/v1/models` endpoint, automatically register the "LM Studio" provider, import all loaded/available local models, and set the **Active Model** to your detected local model!
+3. **Switching or Reloading Models**:
+   - Whenever you load a different model in LM Studio, click **Refresh from LM Studio** inside the LM Studio provider accordion (or click **Detect & Connect** again) to sync the latest loaded model without re-configuring anything.
 
-> **Examples of compatible providers**: 
-> - OpenRouter has been tested with this plugin using the endpoint URL: `https://openrouter.ai/api/v1`.
-> You can find your API keys at [OpenRouter Settings](https://openrouter.ai/settings/keys) and explore available models on their website.
-> - Grok has been tested using the endpoint URL: `https://api.x.ai/v1`. API keys and model names can be found in the [Grok console](https://console.x.ai/).
-> - Any other provider with compatible API endpoints can also be added
+### Configuring OpenAI-Compatible Servers for Active Model
 
-Custom providers can be edited or removed using the respective icons next to their names.
+In addition to built-in frontier models (Google Gemini, OpenAI GPT, Anthropic Claude), you can configure **any OpenAI API compatible server**—both local offline runtimes and remote gateways—and select it as your **Active Model**:
+
+| Server / Service | Provider Type | Default Base URL | API Key | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **LM Studio** | `OpenAI` | `http://localhost:1234/v1` | `not-needed` (or left blank) | Use **Detect & Connect** button for 1-click setup |
+| **Ollama** | `OpenAI` | `http://localhost:11434/v1` | `not-needed` (or `ollama`) | Start Ollama and run `ollama serve` |
+| **LocalAI** | `OpenAI` | `http://localhost:8080/v1` | `not-needed` | Self-hosted OpenAI-compatible REST server |
+| **vLLM** | `OpenAI` | `http://localhost:8000/v1` | `not-needed` | High-throughput local LLM inference server |
+| **OpenRouter** | `OpenAI` | `https://openrouter.ai/api/v1` | Your OpenRouter API key | Multi-model cloud gateway ([Get key](https://openrouter.ai/settings/keys)) |
+| **Grok (xAI)** | `OpenAI` | `https://api.x.ai/v1` | Your xAI API key | xAI Grok platform ([Get key](https://console.x.ai/)) |
+| **Groq** | `OpenAI` | `https://api.groq.com/openai/v1` | Your Groq API key | Ultra-low-latency LPU inference |
+| **Together AI** | `OpenAI` | `https://api.together.xyz/v1` | Your Together API key | Cloud open-source models |
+
+#### Step-by-Step Manual Setup:
+
+1. Open Obsidian **Settings** → **YouTube Video Summarizer** → **AI Providers**.
+2. Scroll to the bottom and click **Add Provider**.
+3. Fill in the provider details:
+   - **Provider Name**: Enter a name (e.g. `Ollama`, `LocalAI`, `OpenRouter`, `vLLM`).
+   - **Provider Type**: Select **`OpenAI`**.
+   - **Base URL**: Enter your server's base URL (e.g. `http://localhost:11434/v1`).
+     *(Note: The plugin automatically normalizes URLs and appends `/v1` if you omit it).*
+   - **API Key**: Enter your service API key. If running a local server without authentication, you can leave it blank or enter `not-needed`.
+4. Click **Save Provider**.
+5. Inside the newly created provider accordion, click **Add Model**:
+   - **Model Name**: The technical model identifier expected by your server (e.g. `llama3.2`, `mistral`, `qwen2.5-coder-7b-instruct`).
+   - **Display Name**: An optional human-friendly name (e.g. `Llama 3.2 3B Local`).
+6. Scroll back to the top of the **AI Providers** tab, open the **Active Model** dropdown, and select your newly added model (e.g. `Ollama / Llama 3.2 3B Local`).
+7. All subsequent YouTube summaries will now be processed by your custom OpenAI-compatible server!
 
 ### Selecting the Active Model
 
-At the top of the settings page, you can select which model will be used for generating summaries
-from the "Active Model" dropdown. This dropdown shows all available models from all configured providers.
+At the top of the **AI Providers** tab, the **Active Model** dropdown displays all available models across all configured providers:
+- Built-in frontier models (`Gemini / Gemini 3.8 Flash`, `OpenAI / GPT-4o`, `Anthropic / Claude Sonnet 5.5`)
+- Local LLM servers (`LM Studio / qwen2.5-coder-7b-instruct`, `Ollama / llama3.2`)
+- Custom third-party cloud gateways (`OpenRouter / ...`, `Grok / ...`)
 
-After selecting a model, it will be used for all summary operations until you change it again.
+Select any model from this dropdown to make it active. All video summarization commands will use the selected active model until you switch it.
 
 ### Summary Settings
 
@@ -226,6 +260,14 @@ Scans the target scope (excluding notes already inside the configured Media Exte
 - **Entire Vault**: Run `Upgrade video summary notes with tags and description in entire vault` from the Command Palette, or click **Upgrade Tags & Description in Vault** in settings.
 
 Identifies video summary notes in the selected scope that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
+
+### Method 8: Connect or Refresh LM Studio (Local LLMs)
+
+- **Command Palette**: Run `Detect and connect local LM Studio instance` (`Ctrl/Cmd + P`).
+- **Settings Tab**: Open **AI Providers** → **LM Studio (Local LLM)** and click **Detect & Connect**.
+- **Provider Accordion**: Click **Refresh from LM Studio** inside the LM Studio provider card.
+
+Automatically connects to your local LM Studio instance (`http://localhost:1234/v1` or `http://127.0.0.1:1234/v1`), detects loaded/available local models, updates the LM Studio provider, and sets the active model for 100% private, free summarization.
 
 ## Output Format
 

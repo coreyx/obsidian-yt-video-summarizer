@@ -9,6 +9,7 @@ import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
+import { detectLMStudioServer } from './services/lmStudio';
 import { AIModelProvider } from './types';
 import {
 	addRelatedLink,
@@ -325,6 +326,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Upgrade video summary notes with tags and description frontmatter',
 			callback: async () => {
 				await this.upgradeNotesWithTagsAndDescription();
+			},
+		});
+
+		// Command to auto-detect and connect to a running LM Studio instance
+		this.addCommand({
+			id: 'detect-connect-lm-studio',
+			name: 'Detect and connect local LM Studio instance',
+			callback: async () => {
+				await this.detectAndConnectLMStudio();
 			},
 		});
 	}
@@ -1465,6 +1475,49 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		}
 
 		return summaryParts.join('\n\n');
+	}
+
+	/**
+	 * Automatically detects a running LM Studio instance and connects to it,
+	 * discovering loaded models and updating the active model.
+	 */
+	public async detectAndConnectLMStudio(customUrl?: string, silent = false): Promise<boolean> {
+		try {
+			const targetUrl = customUrl || this.settings.getLmStudioUrl();
+			const result = await detectLMStudioServer(targetUrl);
+
+			if (!result.success) {
+				if (!silent) {
+					new Notice(`Could not connect to LM Studio at ${result.url}. Ensure LM Studio is open and the local server is started in the Developer tab.`);
+				}
+				return false;
+			}
+
+			// Save detected URL back to settings if different
+			if (result.url !== this.settings.getLmStudioUrl()) {
+				await this.settings.updateLmStudioUrl(result.url);
+			}
+
+			const { modelCount, activeModelId } = await this.settings.syncLMStudioProvider(result.url, result.models);
+			await this.initializeServices();
+
+			if (!silent) {
+				if (modelCount === 0) {
+					new Notice(`Connected to LM Studio at ${result.url}, but no models are loaded. Please load a model in LM Studio and try again.`);
+				} else {
+					const modelName = activeModelId ? activeModelId.split(':')[1] : (result.models[0]?.id || 'LM Studio');
+					new Notice(`Connected to LM Studio at ${result.url}! Discovered ${modelCount} model(s). Active model set to "${modelName}".`);
+				}
+			}
+
+			return true;
+		} catch (error: any) {
+			console.error('Failed to detect/connect LM Studio:', error);
+			if (!silent) {
+				new Notice(`Error connecting to LM Studio: ${error?.message || error}`);
+			}
+			return false;
+		}
 	}
 }
 

@@ -173,4 +173,12 @@ export class SettingsEventHandlers {
             console.error('Failed to save API key:', error);
         }
     }
+
+    async handleDetectLMStudio(customUrl?: string): Promise<boolean> {
+        const success = await this.plugin.detectAndConnectLMStudio(customUrl);
+        if (success) {
+            this.callbacks.onActiveModelChanged?.();
+        }
+        return success;
+    }
 }

@@ -382,6 +382,7 @@ export const DEFAULT_MEDIA_EXTENDED_FOLDER = 'Media Library';
 export const DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER = true;
 export const DEFAULT_DISCOVER_PLAYLIST = true;
 export const DEFAULT_SCAN_FOLDERS = '';
+export const DEFAULT_LM_STUDIO_URL = 'http://localhost:1234/v1';
 
 
 

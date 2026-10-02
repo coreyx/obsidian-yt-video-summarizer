@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { AIModelProvider } from 'src/types';
 
+import { normalizeOpenAIBaseUrl } from '../lmStudio';
+
 export class OpenAIProvider implements AIModelProvider {
     private client: OpenAI;
     private model: string;
@@ -15,8 +17,8 @@ export class OpenAIProvider implements AIModelProvider {
         baseUrl?: string
     ) {
         this.client = new OpenAI({
-            apiKey: apiKey,
-            baseURL: baseUrl,
+            apiKey: (apiKey && apiKey.trim()) ? apiKey.trim() : 'not-needed',
+            baseURL: baseUrl ? normalizeOpenAIBaseUrl(baseUrl) : undefined,
             dangerouslyAllowBrowser: true // required to run inside the browser-like Obsidian
         });
         this.model = model;
@@ -29,7 +31,13 @@ export class OpenAIProvider implements AIModelProvider {
             await this.client.models.retrieve(this.model);
             return true;
         } catch (error) {
-            console.error('OpenAI connection test failed:', error);
+            // Fallback for OpenAI-compatible servers (e.g. LM Studio, Ollama) that only support models.list()
+            try {
+                const list = await this.client.models.list();
+                if (list) return true;
+            } catch (listErr) {
+                console.error('OpenAI connection test failed:', error, listErr);
+            }
             return false;
         }
     }
@@ -39,10 +47,14 @@ export class OpenAIProvider implements AIModelProvider {
             return await this.client.chat.completions.create(params);
         } catch (error: any) {
             // If a legacy or custom OpenAI-compatible server rejects max_completion_tokens, fall back to max_tokens
+            const errMsg = String(error?.message || error || '').toLowerCase();
             if (
                 params.max_completion_tokens !== undefined &&
-                error?.message &&
-                (error.message.includes('max_completion_tokens') || error.message.includes('extra fields'))
+                (errMsg.includes('max_completion_tokens') ||
+                 errMsg.includes('extra fields') ||
+                 errMsg.includes('unrecognized') ||
+                 errMsg.includes('unknown parameter') ||
+                 errMsg.includes('unsupported parameter'))
             ) {
                 const fallbackParams = { ...params };
                 fallbackParams.max_tokens = fallbackParams.max_completion_tokens;
