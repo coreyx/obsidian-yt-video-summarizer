@@ -280,6 +280,10 @@ aspect_ratio: 427 / 240
 
 The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, and the video description section can each be toggled on or off in the plugin settings.
 
+## Development
+
+For architecture documentation, technical design decisions, testing guides, and the developer Q&A log, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Support
 
 If this plugin helps your YouTube + Obsidian workflow, consider supporting development.
