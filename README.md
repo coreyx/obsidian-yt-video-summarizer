@@ -166,6 +166,7 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 2. Open command palette (`Ctrl/Cmd + P`)
 3. Search for "Summarize YouTube Video"
 4. Paste URL when prompted
+5. Optionally toggle the "Create Media Extended note" checkbox (inherits your permanent setting for this run without altering it)
 
 ### Method 2: Selection
 
@@ -178,9 +179,11 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 1. Copy YouTube URL
 2. Open command palette (`Ctrl/Cmd + P`)
 3. Search for "Summarize YouTube Video (with prompt)"
-4. Paste the URL
+4. Paste the URL (or select URL in note)
 5. Enter custom instructions in the prompt modal
-6. The instructions are appended to the default prompt for this summarization only
+6. Optionally toggle the "Create Media Extended note" checkbox (inherits your permanent setting for this run without altering it)
+7. The instructions are appended to the default prompt for this summarization only
+
 
 ### Method 4: Retrieve Video Transcript (No AI)
 

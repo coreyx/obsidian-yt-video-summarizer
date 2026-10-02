@@ -1,19 +1,30 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 
 /**
- * A modal dialog for entering a YouTube URL.
+ * A modal dialog for entering a YouTube URL and run options.
  */
 export class YouTubeURLModal extends Modal {
-	private onSubmit: (url: string) => void;
+	private onSubmit: (url: string, createMediaExtended: boolean) => void;
+	private createMediaExtended: boolean;
+	private showMediaExtendedOption: boolean;
 
 	/**
 	 * Constructs a new YouTubeURLModal.
 	 * @param app - The Obsidian app instance.
-	 * @param onSubmit - Callback function to handle the submitted URL.
+	 * @param onSubmit - Callback function to handle the submitted URL and options.
+	 * @param initialCreateMediaExtended - Inherited state from permanent setting.
+	 * @param showMediaExtendedOption - Whether to display the Media Extended checkbox.
 	 */
-	constructor(app: App, onSubmit: (url: string) => void) {
+	constructor(
+		app: App,
+		onSubmit: (url: string, createMediaExtended: boolean) => void,
+		initialCreateMediaExtended = true,
+		showMediaExtendedOption = true
+	) {
 		super(app);
 		this.onSubmit = onSubmit;
+		this.createMediaExtended = initialCreateMediaExtended;
+		this.showMediaExtendedOption = showMediaExtendedOption;
 	}
 
 	/**
@@ -38,6 +49,20 @@ export class YouTubeURLModal extends Modal {
 				cls: 'yt-summarizer__input',
 			});
 
+			// Media Extended option
+			if (this.showMediaExtendedOption) {
+				new Setting(modalEl)
+					.setName('Create Media Extended note')
+					.setDesc('Create a separate companion note for Media Extended (does not change permanent setting)')
+					.addToggle((toggle) =>
+						toggle
+							.setValue(this.createMediaExtended)
+							.onChange((value) => {
+								this.createMediaExtended = value;
+							})
+					);
+			}
+
 			// Action buttons
 			const actions = modalEl.createDiv({
 				cls: 'yt-summarizer__actions',
@@ -57,10 +82,18 @@ export class YouTubeURLModal extends Modal {
 			submitBtn.addEventListener('click', () => {
 				const url = inputEl.value.trim();
 				if (url) {
-					this.onSubmit(url);
+					this.onSubmit(url, this.createMediaExtended);
 					this.close();
 				} else {
 					new Notice('Please enter a valid URL');
+				}
+			});
+
+			// Handle enter key in input field
+			inputEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					submitBtn.click();
 				}
 			});
 
@@ -68,6 +101,7 @@ export class YouTubeURLModal extends Modal {
 			cancelBtn.addEventListener('click', () => this.close());
 		});
 	}
+
 
 	/**
 	 * Called when the modal is closed.
