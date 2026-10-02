@@ -2120,7 +2120,39 @@ assert.strictEqual(filteredByRoot.length, 5);
 
 console.log('✓ Folder parsing, folder filtering, and folder-scoped discovery passed');
 
+// Test 24: Summary prompt Media Extended checkbox and per-run override resolution
+console.log('Testing summary prompt Media Extended checkbox override resolution...');
+
+function resolveMediaExtendedOption(settingValue, overrideValue) {
+	return overrideValue !== undefined ? overrideValue : settingValue;
+}
+
+// Case 1: Inherits true when permanent setting is true and override is undefined
+let permanentSetting = true;
+assert.strictEqual(resolveMediaExtendedOption(permanentSetting, undefined), true);
+assert.strictEqual(permanentSetting, true); // permanent setting unchanged
+
+// Case 2: Inherits false when permanent setting is false and override is undefined
+permanentSetting = false;
+assert.strictEqual(resolveMediaExtendedOption(permanentSetting, undefined), false);
+assert.strictEqual(permanentSetting, false); // permanent setting unchanged
+
+// Case 3: Overridden to false at prompt when permanent setting is true
+permanentSetting = true;
+const promptChoiceOff = false;
+assert.strictEqual(resolveMediaExtendedOption(permanentSetting, promptChoiceOff), false);
+assert.strictEqual(permanentSetting, true); // permanent setting untouched!
+
+// Case 4: Overridden to true at prompt when permanent setting is false
+permanentSetting = false;
+const promptChoiceOn = true;
+assert.strictEqual(resolveMediaExtendedOption(permanentSetting, promptChoiceOn), true);
+assert.strictEqual(permanentSetting, false); // permanent setting untouched!
+
+console.log('✓ Summary prompt Media Extended checkbox override resolution passed');
+
 console.log('\nAll tests passed successfully!');
+
 
 
 

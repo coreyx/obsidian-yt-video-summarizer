@@ -152,9 +152,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					} else if (selectedText) {
 						new Notice('Selected text is not a valid YouTube URL');
 					} else {
-						new YouTubeURLModal(this.app, async (url) => {
-							await this.summarizeVideo(url, editor, view);
-						}).open();
+						new YouTubeURLModal(
+							this.app,
+							async (url, createMediaExtended) => {
+								await this.summarizeVideo(url, editor, view, undefined, createMediaExtended);
+							},
+							this.settings.getCreateMediaExtendedNotes(),
+							true
+						).open();
 					}
 				} catch (error) {
 					new Notice(`Failed to process video: ${error.message}`);
@@ -174,17 +179,30 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						selectedText &&
 						YouTubeService.isYouTubeUrl(selectedText)
 					) {
-						new CustomPromptModal(this.app, async (customPrompt) => {
-							await this.summarizeVideo(selectedText, editor, view, customPrompt);
-						}).open();
+						new CustomPromptModal(
+							this.app,
+							async (customPrompt, createMediaExtended) => {
+								await this.summarizeVideo(selectedText, editor, view, customPrompt, createMediaExtended);
+							},
+							this.settings.getCreateMediaExtendedNotes()
+						).open();
 					} else if (selectedText) {
 						new Notice('Selected text is not a valid YouTube URL');
 					} else {
-						new YouTubeURLModal(this.app, async (url) => {
-							new CustomPromptModal(this.app, async (customPrompt) => {
-								await this.summarizeVideo(url, editor, view, customPrompt);
-							}).open();
-						}).open();
+						new YouTubeURLModal(
+							this.app,
+							async (url, urlMediaExtended) => {
+								new CustomPromptModal(
+									this.app,
+									async (customPrompt, promptMediaExtended) => {
+										await this.summarizeVideo(url, editor, view, customPrompt, promptMediaExtended);
+									},
+									urlMediaExtended
+								).open();
+							},
+							this.settings.getCreateMediaExtendedNotes(),
+							true
+						).open();
 					}
 				} catch (error) {
 					new Notice(`Failed to process video: ${error.message}`);
@@ -212,9 +230,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						if (noteUrl) {
 							await this.retrieveTranscript(noteUrl, editor, view);
 						} else {
-							new YouTubeURLModal(this.app, async (url) => {
-								await this.retrieveTranscript(url, editor, view);
-							}).open();
+							new YouTubeURLModal(
+								this.app,
+								async (url, createMediaExtended) => {
+									await this.retrieveTranscript(url, editor, view, createMediaExtended);
+								},
+								this.settings.getCreateMediaExtendedNotes(),
+								true
+							).open();
 						}
 					}
 				} catch (error) {
@@ -319,8 +342,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		url: string,
 		editor: Editor,
 		view?: MarkdownView,
-		customPrompt?: string
+		customPrompt?: string,
+		createMediaExtendedOverride?: boolean
 	): Promise<void> {
+
 		// Check if a video is already being processed
 		if (this.isProcessing) {
 			new Notice('Already processing a video, please wait...');
@@ -450,7 +475,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			);
 
 			// Step 7.5: Optionally create Media Extended companion note and link bidirectionally
-			if (this.settings.getCreateMediaExtendedNotes()) {
+			const shouldCreateMediaExtended = createMediaExtendedOverride !== undefined
+				? createMediaExtendedOverride
+				: this.settings.getCreateMediaExtendedNotes();
+
+			if (shouldCreateMediaExtended) {
+
 				try {
 					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
 					if (mediaNote) {
@@ -1237,8 +1267,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	public async retrieveTranscript(
 		url: string,
 		editor: Editor,
-		view?: MarkdownView
+		view?: MarkdownView,
+		createMediaExtendedOverride?: boolean
 	): Promise<void> {
+
 		if (this.isProcessing) {
 			new Notice('Already processing a video, please wait...');
 			return;
@@ -1324,7 +1356,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			let bodyContent = bodyParts.join('\n\n');
 
-			if (this.settings.getCreateMediaExtendedNotes()) {
+			const shouldCreateMediaExtended = createMediaExtendedOverride !== undefined
+				? createMediaExtendedOverride
+				: this.settings.getCreateMediaExtendedNotes();
+
+			if (shouldCreateMediaExtended) {
+
 				try {
 					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
 					if (mediaNote) {

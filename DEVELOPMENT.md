@@ -228,8 +228,10 @@ npm test
 21. Creator playlist discovery, frontmatter serialization, and header formatting.
 22. Missing companion note detection and missing description frontmatter upgrade.
 23. Folder parsing, folder filtering, and folder-scoped discovery.
+24. Summary prompt Media Extended checkbox and per-run override resolution.
 
 ---
+
 
 
 ## Release Process
@@ -399,5 +401,22 @@ This section preserves technical and design questions asked during development f
      Explicit commands (`... in entire vault`) and buttons (`... All in Vault`) allow running across the whole vault whenever the user intentionally chooses to do so.
 3. **Filtering & Path Normalization**:
    - Implemented via [`parseFolderList()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), [`filterFilesByFolderPaths()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), and [`filterFilesByFolder()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts). It normalizes slashes, handles trailing slashes, and performs strict prefix matching (`${folder}/` or exact match).
+
+---
+
+### Q10: How does the per-run Media Extended checkbox at the summary prompt work without altering the permanent setting?
+
+**Context**: User requested: *"Checkbox to choose at summary prompt whether to create Media Extended note or not, even if it's turned on (important: inherits state of permanent setting but doesn't change it)"*
+
+**Answer**:
+1. **State Inheritance without Mutation**:
+   - Both [`YouTubeURLModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/youtube-url.ts) and [`CustomPromptModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/CustomPromptModal.ts) accept an `initialCreateMediaExtended: boolean` constructor argument.
+   - When the modal is instantiated, this parameter is initialized from `this.settings.getCreateMediaExtendedNotes()`, pre-populating the modal's toggle to reflect the user's permanent default preference.
+   - Toggling the checkbox in the modal only modifies a local instance property (`this.createMediaExtended`) on the modal itself. It does **not** call `this.settings.updateCreateMediaExtendedNotes()` or mutate `settings.json`.
+2. **Per-Run Execution Override**:
+   - When the user submits the modal, the local boolean value is passed to the submission callback.
+   - In [`summarizeVideo()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) and [`retrieveTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts), the method checks `createMediaExtendedOverride !== undefined ? createMediaExtendedOverride : this.settings.getCreateMediaExtendedNotes()`.
+   - If an override is provided for that run, it controls whether `createMediaExtendedCompanionNote()` is called, while leaving the global configuration intact for future runs.
+
 
 

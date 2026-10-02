@@ -2,9 +2,15 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 
 export class CustomPromptModal extends Modal {
 	private prompt = '';
+	private createMediaExtended: boolean;
 
-	constructor(app: App, private onSubmit: (prompt: string) => void) {
+	constructor(
+		app: App,
+		private onSubmit: (prompt: string, createMediaExtended: boolean) => void,
+		initialCreateMediaExtended = true
+	) {
 		super(app);
+		this.createMediaExtended = initialCreateMediaExtended;
 	}
 
 	onOpen() {
@@ -24,6 +30,17 @@ export class CustomPromptModal extends Modal {
 			);
 
 		new Setting(contentEl)
+			.setName('Create Media Extended note')
+			.setDesc('Create a separate companion note for Media Extended for this video (does not change permanent setting)')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.createMediaExtended)
+					.onChange((value) => {
+						this.createMediaExtended = value;
+					})
+			);
+
+		new Setting(contentEl)
 			.addButton((btn) =>
 				btn
 					.setButtonText('Summarize')
@@ -34,7 +51,7 @@ export class CustomPromptModal extends Modal {
 							new Notice('Please enter prompt instructions');
 							return;
 						}
-						this.onSubmit(trimmed);
+						this.onSubmit(trimmed, this.createMediaExtended);
 						this.close();
 					})
 			)
@@ -44,6 +61,7 @@ export class CustomPromptModal extends Modal {
 				})
 			);
 	}
+
 
 	onClose() {
 		const { contentEl } = this;
