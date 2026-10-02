@@ -261,7 +261,18 @@ Scans the target scope (excluding notes already inside the configured Media Exte
 
 Identifies video summary notes in the selected scope that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
 
-### Method 8: Connect or Refresh LM Studio (Local LLMs)
+### Method 8: Upgrade Notes with Playlist from YouTube Data API
+
+- **Specific Folder**:
+  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade video notes with playlist in this folder**.
+  - **Command Palette**: Run `Upgrade video summary notes with playlist in folder...` and pick a folder.
+  - **Settings Tab**: Click **Upgrade in Folder...** under *Upgrade playlist frontmatter*.
+- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)**. The default command `Upgrade video summary notes with playlist from YouTube Data API` will automatically target those folders without scanning the entire vault.
+- **Entire Vault**: Run `Upgrade video summary notes with playlist in entire vault` from the Command Palette, or click **Upgrade All in Vault** under *Upgrade playlist frontmatter* in settings.
+
+Identifies video summary notes in the selected scope that lack `playlist_` frontmatter properties (`playlist_title`, `playlist_url`, `playlist_id`, etc.), queries YouTube Data API to check whether each video belongs to a creator playlist (via URL parameters, description playlist links, or channel playlists), and safely merges the playlist metadata into the YAML frontmatter without touching existing summaries or tags.
+
+### Method 9: Connect or Refresh LM Studio (Local LLMs)
 
 - **Command Palette**: Run `Detect and connect local LM Studio instance` (`Ctrl/Cmd + P`).
 - **Settings Tab**: Open **AI Providers** → **LM Studio (Local LLM)** and click **Detect & Connect**.

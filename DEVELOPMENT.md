@@ -105,7 +105,7 @@ npm install
   ```bash
   npm test
   ```
-  Runs `tests/test-features.mjs` verifying 26 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery, etc.).
+  Runs `tests/test-features.mjs` verifying 27 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery and upgrading, etc.).
 * **Compile TypeScript & Bundle (Production)**:
   ```bash
   npm run build
@@ -188,6 +188,11 @@ npm install
 * **Output**:
   - Frontmatter fields: `playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, `playlist_count`.
   - Body header badge: `📋 [Playlist: Title (3/12)](url)`.
+* **Batch Playlist Upgrading**:
+  - Scans existing video summary notes missing top-level `playlist_` frontmatter properties using [`isNoteMissingPlaylistFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+  - Resolves creator playlist membership via URL parameters, description links, or channel playlists via YouTube Data API v3.
+  - Updates note frontmatter via `updateNoteContentWithFrontmatter(..., { excludeTags: true })`, safely preserving user tags, custom properties, and AI summary content.
+  - Flexible scoping: run on selected folders, configured folders, entire vault, or directly from the File Explorer folder context menu.
 
 ### 5. Frontmatter Management & Tag Normalization
 
@@ -237,6 +242,8 @@ npm test
 23. Folder parsing, folder filtering, and folder-scoped discovery.
 24. Summary prompt Media Extended checkbox and per-run override resolution.
 25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
+26. Media Extended note description, timestamp conversion, section headings, and empty line formatting.
+27. Playlist frontmatter detection, YouTube Data API playlist upgrading, candidate filtering, and tag preservation.
 
 ---
 
@@ -494,6 +501,53 @@ This section preserves technical and design questions asked during development f
      - `# Transcript\n\n${formattedTranscript}` (if transcript exists)
      - `# Related\n\n- [[Summary Note]]`
    - In [`addRelatedLink()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), creating or updating the `# Related` section always guarantees an empty line (`\n\n`) between the `# Related` header and the first bulleted wikilink. Because `addRelatedLink()` is used for both directions (summary note to companion note, and companion note to summary note), both files adhere to the clean markdown spacing standard.
+
+---
+
+### Q13: How does the "Upgrade video summary notes with playlist from YouTube Data API" command discover candidates and merge playlist frontmatter safely?
+
+**Context**: User requested:
+- Implement a new command: `Upgrade video summary notes with playlist from YouTube Data API (if they don't have the playlist_ properties)`.
+- Follow the existing folder-scoped batch pattern (folder picker, configured folders, entire vault, and File Explorer folder context menu).
+- Safely update frontmatter with `playlist_*` fields without corrupting existing tags, descriptions, or custom user properties.
+
+**Answer**:
+1. **Candidate Detection & Filter**:
+   - Implemented in [`isNoteMissingPlaylistFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+   - Extracts the note's YAML frontmatter block (`/^---\r?\n([\s\S]*?)\r?\n---/`).
+   - If no frontmatter exists, returns `true`.
+   - Checks for any top-level key matching `/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m`.
+   - **Multiline YAML Safety**: Top-level keys strictly begin at column 0 (`^`). Indented lines inside a multiline description block (e.g. `description: |- \n  playlist_title: ...`) start with spaces and are ignored, avoiding false negatives when video descriptions happen to mention playlist attributes.
+   - The candidate scanning pipeline in [`processNotesWithPlaylist()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts):
+     1. Filters out Media Extended companion notes using [`isMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+     2. Extracts the video URL using [`extractYouTubeUrlFromNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+     3. Checks [`isNoteMissingPlaylistFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
+
+2. **Playlist Discovery Pipeline**:
+   - For each candidate note, the video's metadata and playlist membership are fetched via [`YouTubeService.getVideoMetadata()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/youtube.ts):
+     - **URL Check**: Scans for `&list=PLAYLIST_ID` and `&index=N` in the video URL.
+     - **Description Parsing**: Scans the video description for playlist links (`youtube.com/playlist?list=...`).
+     - **Channel Playlists API Lookup**: If an API key is configured, queries channel playlists and determines whether the video belongs to any curated series.
+   - If playlist membership is discovered, `playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, and `playlist_count` are populated.
+   - If the video is a standalone video not belonging to any playlist, the note is counted as having no playlist and skipped without corrupting its frontmatter or showing errors.
+
+3. **Safe Frontmatter Merging & Tag Protection**:
+   - Note contents are updated via [`updateNoteContentWithFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) with `{ excludeTags: true }`.
+   - [`mergeFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts):
+     - Targets and serializes `playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, and `playlist_count`.
+     - Preserves all pre-existing user-defined frontmatter properties (e.g. `rating`, `status`, `aliases`).
+     - When `{ excludeTags: true }` is passed, existing frontmatter tags are preserved verbatim without being overwritten by API tags.
+     - Preserves the note's existing body, AI summary, and related links unchanged.
+
+4. **Multi-Point Execution Scopes**:
+   - **Command Palette**:
+     - `Upgrade video summary notes with playlist from YouTube Data API`: Runs on configured folders (or opens folder picker if none configured).
+     - `Upgrade video summary notes with playlist in folder...`: Opens an interactive folder fuzzy modal.
+     - `Upgrade video summary notes with playlist in entire vault`: Scans all folders in the vault.
+   - **File Explorer Context Menu**:
+     - Right-clicking any folder displays `Upgrade video notes with playlist in this folder`.
+   - **Settings Tab**:
+     - Dedicated setting card **Upgrade playlist frontmatter** with *Upgrade in Folder...* and *Upgrade All in Vault* action buttons.
 
 
 

@@ -2509,6 +2509,268 @@ assert(summaryLinked.includes('\n\n# Related\n\n- [[Media Library/Complete TypeS
 
 console.log('✓ Media Extended note description, timestamp conversion, and section headings passed');
 
+// Test 27: Playlist frontmatter detection and YouTube Data API playlist upgrade
+console.log('Testing playlist frontmatter detection and YouTube Data API playlist upgrade...');
+
+function isNoteMissingPlaylistFrontmatterHelper(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) {
+		return true;
+	}
+	const yaml = fmMatch[1];
+	return !/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml);
+}
+
+function updateNoteContentWithFrontmatterHelper(fullText, data, options) {
+	const match = fullText.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (match) {
+		const rawYaml = match[1];
+		const merged = mergeFrontmatterWithPlaylist(rawYaml, data);
+		const afterFrontmatter = fullText.slice(match[0].length);
+		return `---\n${merged}\n---\n${afterFrontmatter.startsWith('\n') ? afterFrontmatter.slice(1) : afterFrontmatter}`;
+	} else {
+		return `---\ntitle: ${JSON.stringify(data.title)}\n---\n\n${fullText}`;
+	}
+}
+
+// 27.1: isNoteMissingPlaylistFrontmatterHelper tests
+const noteWithoutFm = '# Just Markdown\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ';
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithoutFm), true);
+
+const noteWithoutPlaylist = `---
+title: "Sample Video"
+channel_name: "Tech Channel"
+video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+description: "A great tech tutorial"
+tags:
+  - tech
+  - coding
+---
+# Summary
+Content here.`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithoutPlaylist), true);
+
+// Note with playlist_title
+const noteWithPlaylistTitle = `---
+title: "Sample Video"
+playlist_title: "Full Web Dev Course"
+playlist_id: "PL12345"
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistTitle), false);
+
+// Note with playlist_id only
+const noteWithPlaylistId = `---
+title: "Sample Video"
+playlist_id: "PL12345"
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistId), false);
+
+// Note with playlist_url only
+const noteWithPlaylistUrl = `---
+title: "Sample Video"
+playlist_url: "https://www.youtube.com/playlist?list=PL12345"
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistUrl), false);
+
+// Note with playlist_index only
+const noteWithPlaylistIndex = `---
+title: "Sample Video"
+playlist_index: 3
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistIndex), false);
+
+// Note with playlist_count only
+const noteWithPlaylistCount = `---
+title: "Sample Video"
+playlist_count: 12
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistCount), false);
+
+// Note with "playlist_title" inside multiline description (indented) must still be missing top-level playlist property
+const noteWithPlaylistInDesc = `---
+title: "Sample Video"
+description: |-
+  Check out my playlist_title here in description
+tags:
+  - web
+---
+# Summary`;
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistInDesc), true);
+
+// 27.2: Upgrading note frontmatter with playlist metadata while preserving existing properties
+const originalNote = `---
+title: "TypeScript Deep Dive"
+channel_name: "Code Academy"
+channel_username: "@codeacademy"
+channel_url: "https://www.youtube.com/@codeacademy"
+video_url: "https://www.youtube.com/watch?v=xyz123abc"
+thumbnail: "https://i.ytimg.com/vi/xyz123abc/maxresdefault.jpg"
+thumbnail_text: "TypeScript OCR Text"
+description: |-
+  Complete TypeScript course from beginner to advanced.
+custom_rating: 5
+tags:
+  - typescript
+  - javascript
+---
+
+# TypeScript Deep Dive
+
+## Summary
+Comprehensive guide to modern TypeScript.`;
+
+const playlistData = {
+	title: "TypeScript Deep Dive",
+	channel_name: "Code Academy",
+	channel_username: "@codeacademy",
+	channel_url: "https://www.youtube.com/@codeacademy",
+	video_url: "https://www.youtube.com/watch?v=xyz123abc",
+	thumbnail: "https://i.ytimg.com/vi/xyz123abc/maxresdefault.jpg",
+	thumbnail_text: "TypeScript OCR Text",
+	description: "Complete TypeScript course from beginner to advanced.",
+	playlist_title: "Full TypeScript Mastery Series",
+	playlist_url: "https://www.youtube.com/playlist?list=PLtsMastery123",
+	playlist_id: "PLtsMastery123",
+	playlist_index: 4,
+	playlist_count: 20
+};
+
+const upgradedNote = updateNoteContentWithFrontmatterHelper(originalNote, playlistData, { excludeTags: true });
+
+// Verify playlist properties are serialized into YAML frontmatter
+assert(upgradedNote.includes('playlist_title: "Full TypeScript Mastery Series"'));
+assert(upgradedNote.includes('playlist_url: "https://www.youtube.com/playlist?list=PLtsMastery123"'));
+assert(upgradedNote.includes('playlist_id: "PLtsMastery123"'));
+assert(upgradedNote.includes('playlist_index: 4'));
+assert(upgradedNote.includes('playlist_count: 20'));
+
+// Verify existing tags and custom frontmatter properties are preserved
+assert(upgradedNote.includes('custom_rating: 5'));
+assert(upgradedNote.includes('- typescript'));
+assert(upgradedNote.includes('- javascript'));
+assert(upgradedNote.includes('thumbnail_text: "TypeScript OCR Text"'));
+
+// Verify body was not mutated or corrupted
+assert(upgradedNote.includes('# TypeScript Deep Dive\n\n## Summary\nComprehensive guide to modern TypeScript.'));
+
+// Verify note is no longer missing playlist frontmatter
+assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(upgradedNote), false);
+
+// 27.3: Candidate scanning & filtering simulation
+const mockVaultNotes = [
+	// Candidate 1: Missing playlist frontmatter
+	{
+		path: 'Notes/Video 1.md',
+		content: `---
+title: "Video 1"
+video_url: "https://www.youtube.com/watch?v=vid1"
+---
+# Summary`,
+		hasPlaylistOnYT: true,
+		playlistInfo: {
+			title: 'Course Playlist',
+			url: 'https://www.youtube.com/playlist?list=PLCourse',
+			id: 'PLCourse',
+			index: 1,
+			count: 5
+		}
+	},
+	// Candidate 2: Missing playlist frontmatter, but standalone video (no playlist on YouTube)
+	{
+		path: 'Notes/Video 2.md',
+		content: `---
+title: "Video 2"
+video_url: "https://www.youtube.com/watch?v=vid2"
+---
+# Summary`,
+		hasPlaylistOnYT: false
+	},
+	// Should be skipped: Already has playlist frontmatter
+	{
+		path: 'Notes/Video 3.md',
+		content: `---
+title: "Video 3"
+video_url: "https://www.youtube.com/watch?v=vid3"
+playlist_title: "Existing Series"
+playlist_id: "PL999"
+---
+# Summary`,
+		hasPlaylistOnYT: true
+	},
+	// Should be skipped: Media Extended companion note
+	{
+		path: 'Media Library/Video 1.md',
+		content: `---
+mx-uid: abcdef123456789012345678
+video: https://www.youtube.com/watch?v=vid1
+---
+- [00:00](...) Intro`,
+		hasPlaylistOnYT: true
+	},
+	// Should be skipped: Non-YouTube markdown note
+	{
+		path: 'Notes/Regular Note.md',
+		content: '# Regular Note\nJust personal thoughts.',
+		hasPlaylistOnYT: false
+	}
+];
+
+const mediaFolder = 'Media Library';
+const scanCandidates = [];
+
+for (const note of mockVaultNotes) {
+	if (isMediaExtendedCompanionNoteHelper(note.content, note.path, mediaFolder)) {
+		continue;
+	}
+	const url = extractYouTubeUrlFromNote(note.content);
+	if (!url) {
+		continue;
+	}
+	if (isNoteMissingPlaylistFrontmatterHelper(note.content)) {
+		scanCandidates.push(note);
+	}
+}
+
+// Exactly Video 1 and Video 2 should be identified as candidates
+assert.strictEqual(scanCandidates.length, 2);
+assert.strictEqual(scanCandidates[0].path, 'Notes/Video 1.md');
+assert.strictEqual(scanCandidates[1].path, 'Notes/Video 2.md');
+
+// Simulation of upgrade loop
+let upgradedCount = 0;
+let noPlaylistCount = 0;
+
+for (const candidate of scanCandidates) {
+	if (candidate.hasPlaylistOnYT) {
+		const fmData = {
+			title: 'Video 1',
+			channel_name: 'Channel',
+			video_url: 'https://www.youtube.com/watch?v=vid1',
+			thumbnail: 'https://i.ytimg.com/vi/vid1/default.jpg',
+			playlist_title: candidate.playlistInfo.title,
+			playlist_url: candidate.playlistInfo.url,
+			playlist_id: candidate.playlistInfo.id,
+			playlist_index: candidate.playlistInfo.index,
+			playlist_count: candidate.playlistInfo.count
+		};
+		const updated = updateNoteContentWithFrontmatterHelper(candidate.content, fmData, { excludeTags: true });
+		assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(updated), false);
+		upgradedCount++;
+	} else {
+		noPlaylistCount++;
+	}
+}
+
+assert.strictEqual(upgradedCount, 1);
+assert.strictEqual(noPlaylistCount, 1);
+
+console.log('✓ Playlist frontmatter detection and YouTube Data API playlist upgrade passed');
+
 console.log('\nAll tests passed successfully!');
 
 
