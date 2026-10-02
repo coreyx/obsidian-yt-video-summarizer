@@ -174,7 +174,7 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
 
-**Generate Semantic Topic Tags**: Uses AI semantic analysis of the generated summary to produce relevant topic tags.
+**Generate Semantic Topic Tags**: Uses AI semantic analysis and inference with your configured AI model to infer relevant topic tags and identify obvious missing tags. When enabled, the plugin automatically indexes your entire vault's existing tag taxonomy into a compressed in-memory cache prior to inference, providing the model with your vault's existing tags and established group prefixes (e.g. `ai/`, `dev/`). The prompt strictly enforces reusing existing tags whenever semantically appropriate, formatting new tags in lowercase kebab-case, and nesting specific concepts under established group prefixes (e.g. `ai/music-videos` instead of `ai-music-videos`). *Note: This feature is semantic and inferred, adds your vault's tag list to the AI context, and may increase the context window size and token usage.*
 
 **Detect Tags in Video Title and Description**: Extracts creator hashtags (`#tag`) directly from the YouTube title and description and adds them to your tags.
 

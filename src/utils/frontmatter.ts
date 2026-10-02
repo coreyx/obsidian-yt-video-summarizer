@@ -517,8 +517,9 @@ export function deduplicateTags(tags: string[]): string[] {
 		}
 	}
 
-	// Second pass: collapse tags that only differ by hyphens, e.g. "rick-astley" vs "rickastley"
-	// We prefer the version with hyphens/separators (e.g. "rick-astley") over run-together words ("rickastley")
+	// Second pass: collapse tags that only differ by hyphens/slashes, e.g. "rick-astley" vs "rickastley"
+	// We prefer hierarchical tags with '/' (e.g. "ai/music-videos" over "ai-music-videos"),
+	// followed by versions with hyphens/separators (e.g. "rick-astley") over run-together words ("rickastley")
 	const normalizedMap = new Map<string, string>();
 	for (const tag of uniqueTags) {
 		const key = tag.replace(/[\-\/]/g, '');
@@ -526,10 +527,18 @@ export function deduplicateTags(tags: string[]): string[] {
 		if (!existing) {
 			normalizedMap.set(key, tag);
 		} else {
-			const existingHyphenCount = (existing.match(/[\-\/]/g) || []).length;
-			const currentHyphenCount = (tag.match(/[\-\/]/g) || []).length;
-			if (currentHyphenCount > existingHyphenCount) {
+			const existingHasSlash = existing.includes('/');
+			const currentHasSlash = tag.includes('/');
+			if (currentHasSlash && !existingHasSlash) {
 				normalizedMap.set(key, tag);
+			} else if (!currentHasSlash && existingHasSlash) {
+				// Keep existing hierarchical tag
+			} else {
+				const existingDelimCount = (existing.match(/[\-\/]/g) || []).length;
+				const currentDelimCount = (tag.match(/[\-\/]/g) || []).length;
+				if (currentDelimCount > existingDelimCount) {
+					normalizedMap.set(key, tag);
+				}
 			}
 		}
 	}

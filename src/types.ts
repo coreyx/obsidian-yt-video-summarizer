@@ -252,11 +252,28 @@ export interface ThumbnailQuality {
 	maxres: string; // 1280x720
 }
 
+/** Options passed to AI topic generation */
+export interface GenerateTopicsOptions {
+	existingTags?: string[];
+	vaultTags?: string[];
+	groupPrefixes?: string[];
+	compressedContext?: string;
+	title?: string;
+}
+
+/** Vault tag cache structure */
+export interface VaultTagData {
+	tags: string[];
+	groupPrefixes: string[];
+	compressedContext: string;
+	totalCount: number;
+}
+
 export interface AIModelProvider {
 	testConnection(): Promise<boolean>;
 	summarizeVideo(videoId: string, prompt: string): Promise<string>;
 	extractThumbnailText?(imageBase64: string, mimeType?: string): Promise<string>;
-	generateTopics?(summaryText: string): Promise<string[]>;
+	generateTopics?(summaryText: string, options?: GenerateTopicsOptions): Promise<string[]>;
 }
 
 /** Transcript configuration options */

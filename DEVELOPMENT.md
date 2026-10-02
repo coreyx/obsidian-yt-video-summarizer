@@ -105,7 +105,7 @@ npm install
   ```bash
   npm test
   ```
-  Runs `tests/test-features.mjs` verifying 27 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery and upgrading, etc.).
+  Runs `tests/test-features.mjs` verifying 28 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery, vault tag caching, AI topic tagging, etc.).
 * **Compile TypeScript & Bundle (Production)**:
   ```bash
   npm run build
@@ -194,16 +194,25 @@ npm install
   - Updates note frontmatter via `updateNoteContentWithFrontmatter(..., { excludeTags: true })`, safely preserving user tags, custom properties, and AI summary content.
   - Flexible scoping: run on selected folders, configured folders, entire vault, or directly from the File Explorer folder context menu.
 
-### 5. Frontmatter Management & Tag Normalization
+### 5. Frontmatter Management, Tag Normalization & AI Tagging
 
-* **Files**: `src/utils/frontmatter.ts`
+* **Files**: `src/utils/frontmatter.ts`, `src/utils/vaultTags.ts`, `src/main.ts`
 * **Safe Frontmatter Merging**:
   `mergeFrontmatter()` updates standard properties (`title`, `channel_name`, `video_url`, `thumbnail`, `playlist_*`, `description`) while strictly preserving existing custom frontmatter properties and aliases.
 * **Tag Deduplication Pipeline**:
-  `deduplicateTags()` normalizes tags across title hashtags, description hashtags, and YouTube Data API keywords:
+  `deduplicateTags()` normalizes tags across title hashtags, description hashtags, YouTube Data API keywords, and AI topic tags:
   - Converts to lowercase kebab-case.
   - Strips `#` and filesystem-illegal characters.
   - Reconciles run-together hashtags with hyphenated variants (e.g. collapses `#RickAstley` into `rick-astley`).
+  - Prioritizes hierarchical grouped tags with `/` (e.g. `ai/music-videos` over flat `ai-music-videos`).
+* **AI Semantic Topic Tagging & Compressed Vault Tag Cache**:
+  - Optional setting: `Generate semantic topic tags` (`addTopicsAsTags`).
+  - Prior to triggering inference, rebuilds a compressed in-memory cache of all tags across the whole vault via [`buildVaultTagData()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts) (scanning `app.metadataCache.getTags()` and cached markdown frontmatter).
+  - Detects established group prefixes (e.g. `ai/`, `dev/`).
+  - Injects existing video tags, cached vault tag list, established prefixes, and strict rules into the prompt:
+    1. Reuses existing tags from the cached vault list whenever semantically appropriate.
+    2. Only creates new tags in kebab-case when no appropriate tag exists.
+    3. Groups tags under established prefixes (e.g. `ai/music-videos` instead of `ai-music-videos`).
 
 ---
 
@@ -244,6 +253,7 @@ npm test
 25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
 26. Media Extended note description, timestamp conversion, section headings, and empty line formatting.
 27. Playlist frontmatter detection, YouTube Data API playlist upgrading, candidate filtering, and tag preservation.
+28. Vault tag caching, compression, group prefix detection, AI topic tagging prompt, and grouped tag deduplication.
 
 ---
 
@@ -548,6 +558,54 @@ This section preserves technical and design questions asked during development f
      - Right-clicking any folder displays `Upgrade video notes with playlist in this folder`.
    - **Settings Tab**:
      - Dedicated setting card **Upgrade playlist frontmatter** with *Upgrade in Folder...* and *Upgrade All in Vault* action buttons.
+
+---
+
+### Q14: How does the improved AI semantic topic tagging work, how is the vault tag cache built, and how does the prompt ensure tag reuse and hierarchical grouping?
+
+**Context**: User requested:
+- Improve AI tagging for new video summaries.
+- In the AI tagging prompt, ask:
+  1. What topic(s) does this video belong to?
+  2. Is there any obvious tag that is missing in the existing set of tags?
+- Important rules:
+  - Always prefer to reuse a tag that already exists instead of creating a new one. Only create new tags when necessary if semantic meaning of the desired tag does not already exist in the cached tag list.
+  - Use kebab case for any new tags created.
+  - Group tags where it makes sense: If there is a large group prefix like `ai/`, group the more specific part under that instead of creating an entirely new tag at the top level (e.g. `ai/music-videos` instead of `ai-music-videos`).
+- Require a compressed cache of all tags across the whole vault, rebuilt prior to triggering inference, and added to the AI context.
+- Only activate this functionality if the AI tagging feature is enabled.
+- Update the feature description in settings to mention that it is semantic and inferred, uses the configured AI model and inference, and may increase the context window and token usage.
+
+**Answer**:
+1. **Activation & Architecture**:
+   - The AI topic tagging feature is controlled by the optional boolean setting `Generate semantic topic tags` (`addTopicsAsTags` in [`StoredSettings`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/types.ts)).
+   - When disabled, no vault tag indexing occurs and no additional LLM inference call is made (zero overhead).
+   - When enabled, [`rebuildVaultTagCache()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) runs immediately before AI inference to provide up-to-date tag context.
+
+2. **Compressed Vault Tag Cache**:
+   - Implemented in [`src/utils/vaultTags.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts) via [`buildVaultTagData()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts):
+     - **Discovery**: Reads Obsidian's fast dictionary `app.metadataCache.getTags()` and supplements by scanning in-memory markdown file caches (`cache.frontmatter.tags` and `cache.tags`).
+     - **Sanitization & Counting**: Strips `#`, converts to lowercase, removes invalid/numeric tags, and aggregates occurrence counts.
+     - **Frequency Ranking**: Sorts tags by occurrence count descending, then alphabetically.
+     - **Token Safety (Compression)**: Limits tags to top 1,000 tags by frequency, formatting them into a compact comma-separated string to minimize token overhead while giving the model exact tag strings to copy.
+     - **Group Prefix Detection**: [`extractGroupPrefixes()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts) extracts all existing hierarchical root and sub-group prefixes (e.g. `ai/`, `dev/`, `finance/`).
+
+3. **Inference Prompt Structure**:
+   - Implemented in [`buildTopicGenerationPrompt()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/vaultTags.ts) and shared across Gemini, Anthropic, and OpenAI providers:
+     - Asks the two required questions:
+       1. *What topic(s) does this video belong to?*
+       2. *Is there any obvious tag that is missing in the existing set of tags?*
+     - Supplies the video's pre-identified tags (from title/description hashtags and YouTube Data API keywords).
+     - Injects the cached vault tag list and detected group prefixes.
+     - Enforces the strict reuse, kebab-case, and hierarchical prefix rules (`ai/music-videos` instead of `ai-music-videos`).
+     - Constrains output to 3 to 7 concise lowercase comma-separated tags with no `#` and no markdown chatter.
+
+4. **Hierarchical Deduplication**:
+   - In [`deduplicateTags()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), the tag collapsing pass was refined: when collapsing tags that share the same alphanumeric key (e.g. `ai-music-videos` vs `ai/music-videos`), hierarchical tags containing `/` are explicitly preferred over flat hyphenated variants.
+
+5. **Settings UI Transparency**:
+   - The setting description in [`src/ui/settings.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts) explicitly informs users:
+     *"Use AI semantic analysis and inference with your configured AI model to infer relevant topic tags and fill in obvious missing tags. Automatically indexes your entire vault's existing tag taxonomy into a compressed cache prior to inference to prioritize tag reuse and group under established hierarchies (e.g. ai/music-videos). Note: This is semantic and inferred, adds your vault's tag list to the AI context, and may increase the size of the context window and token usage."*
 
 
 

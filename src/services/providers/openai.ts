@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
-import { AIModelProvider } from 'src/types';
+import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
+import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
 
 import { normalizeOpenAIBaseUrl } from '../lmStudio';
 
@@ -122,14 +123,14 @@ export class OpenAIProvider implements AIModelProvider {
         }
     }
 
-    async generateTopics(summaryText: string): Promise<string[]> {
+    async generateTopics(summaryText: string, options?: GenerateTopicsOptions): Promise<string[]> {
         try {
             const isReasoningModel = /^(o[134])/i.test(this.model);
-            const prompt = `Based on the following video summary, generate 3 to 7 concise topic tags representing the key subjects. Return ONLY a comma-separated list of tags in lowercase (e.g. artificial-intelligence, physics, productivity). Do not include hashtags (#) or explanation.\n\nSummary:\n${summaryText.slice(0, 4000)}`;
+            const prompt = buildTopicGenerationPrompt(summaryText, options);
             const params: any = {
                 model: this.model,
                 messages: [{ role: 'user', content: prompt }],
-                max_completion_tokens: 100,
+                max_completion_tokens: 200,
             };
             if (!isReasoningModel) {
                 params.temperature = 0.2;

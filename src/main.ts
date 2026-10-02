@@ -34,6 +34,8 @@ import {
 	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
 } from './utils/frontmatter';
+import { buildVaultTagData } from './utils/vaultTags';
+import { VaultTagData } from './types';
 
 /**
  * Represents the YouTube Summarizer Plugin.
@@ -46,6 +48,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	private promptService: PromptService;
 	private provider: AIModelProvider | null = null;
 	private isProcessing = false;
+	private cachedVaultTagData: VaultTagData | null = null;
 
 	/**
 	 * Called when the plugin is loaded.
@@ -489,7 +492,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			let topicTags: string[] = [];
 			if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
 				try {
-					topicTags = await this.provider.generateTopics(summary);
+					const vaultTagData = await this.rebuildVaultTagCache();
+					topicTags = await this.provider.generateTopics(summary, {
+						existingTags: [...detectedTags, ...ytDataApiTags],
+						vaultTags: vaultTagData.tags,
+						groupPrefixes: vaultTagData.groupPrefixes,
+						compressedContext: vaultTagData.compressedContext,
+						title: transcript.title,
+					});
 				} catch (e) {
 					console.warn('Failed to generate topic tags:', e);
 				}
@@ -575,6 +585,70 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// Reset the processing flag
 			this.isProcessing = false;
 		}
+	}
+
+	/**
+	 * Rebuilds the compressed cache of all tags across the entire vault.
+	 * Only executes if AI topic tagging (addTopicsAsTags) is enabled.
+	 */
+	public async rebuildVaultTagCache(): Promise<VaultTagData> {
+		if (!this.settings.getAddTopicsAsTags()) {
+			return { tags: [], groupPrefixes: [], compressedContext: '', totalCount: 0 };
+		}
+
+		const tagCounts: Record<string, number> = {};
+
+		// 1. Primary: Query Obsidian MetadataCache getTags()
+		try {
+			if (typeof (this.app.metadataCache as any)?.getTags === 'function') {
+				const appTags = (this.app.metadataCache as any).getTags() || {};
+				for (const [tag, count] of Object.entries(appTags)) {
+					tagCounts[tag] = typeof count === 'number' ? count : 1;
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to read app.metadataCache.getTags():', e);
+		}
+
+		// 2. Secondary: Scan cached markdown files to ensure frontmatter and inline tags are captured
+		try {
+			const markdownFiles = this.app.vault.getMarkdownFiles();
+			for (const file of markdownFiles) {
+				const cache = this.app.metadataCache.getFileCache(file);
+				if (!cache) continue;
+
+				if (cache.frontmatter?.tags) {
+					const fmTags = cache.frontmatter.tags;
+					if (Array.isArray(fmTags)) {
+						for (const t of fmTags) {
+							if (typeof t === 'string') {
+								const clean = t.trim();
+								if (clean) tagCounts[clean] = (tagCounts[clean] || 0) + 1;
+							}
+						}
+					} else if (typeof fmTags === 'string') {
+						const parts = fmTags.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+						for (const p of parts) {
+							tagCounts[p] = (tagCounts[p] || 0) + 1;
+						}
+					}
+				}
+
+				if (cache.tags && Array.isArray(cache.tags)) {
+					for (const t of cache.tags) {
+						if (t?.tag) {
+							tagCounts[t.tag] = (tagCounts[t.tag] || 0) + 1;
+						}
+					}
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to scan file caches for tags:', e);
+		}
+
+		const data = buildVaultTagData(tagCounts, 1000);
+		this.cachedVaultTagData = data;
+		return data;
 	}
 
 	/**

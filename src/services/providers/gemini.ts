@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIModelProvider } from 'src/types';
+import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
+import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
 
 export class GeminiProvider implements AIModelProvider {
     private client: GoogleGenerativeAI;
@@ -75,16 +76,16 @@ export class GeminiProvider implements AIModelProvider {
         }
     }
 
-    async generateTopics(summaryText: string): Promise<string[]> {
+    async generateTopics(summaryText: string, options?: GenerateTopicsOptions): Promise<string[]> {
         try {
             const model = this.client.getGenerativeModel({
                 model: this.model,
                 generationConfig: {
-                    maxOutputTokens: 100,
+                    maxOutputTokens: 200,
                     temperature: 0.2
                 }
             });
-            const prompt = `Based on the following video summary, generate 3 to 7 concise topic tags representing the key subjects. Return ONLY a comma-separated list of tags in lowercase (e.g. artificial-intelligence, physics, productivity). Do not include hashtags (#) or explanation.\n\nSummary:\n${summaryText.slice(0, 4000)}`;
+            const prompt = buildTopicGenerationPrompt(summaryText, options);
             const result = await model.generateContent(prompt);
             const response = await result.response;
             return this.parseTopics(response.text());

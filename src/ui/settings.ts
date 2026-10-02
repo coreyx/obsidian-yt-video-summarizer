@@ -438,7 +438,9 @@ export class SettingsTab extends PluginSettingTab {
         // Semantic Topic tags
         new Setting(containerEl)
             .setName('Generate semantic topic tags')
-            .setDesc('Use AI semantic analysis of the summary to generate relevant topic tags')
+            .setDesc(
+                'Use AI semantic analysis and inference with your configured AI model to infer relevant topic tags and fill in obvious missing tags. Automatically indexes your entire vault\'s existing tag taxonomy into a compressed cache prior to inference to prioritize tag reuse and group under established hierarchies (e.g. ai/music-videos). Note: This is semantic and inferred, adds your vault\'s tag list to the AI context, and may increase the size of the context window and thus increase token usage.'
+            )
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getAddTopicsAsTags())
