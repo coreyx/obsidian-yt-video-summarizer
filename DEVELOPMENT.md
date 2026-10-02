@@ -226,6 +226,7 @@ npm test
 19. Media Extended companion note formatting and bidirectional links.
 20. YouTube description frontmatter block and cross-source tag deduplication.
 21. Creator playlist discovery, frontmatter serialization, and header formatting.
+22. Missing companion note detection and missing description frontmatter upgrade.
 
 ---
 
@@ -325,3 +326,28 @@ This section preserves technical and design questions asked during development f
 * OpenAI deprecated `max_tokens` for newer models in favor of `max_completion_tokens`.
 * Furthermore, reasoning models use completion tokens for internal reasoning steps ("thinking tokens") before outputting visible text. Calling `max_tokens` triggers a hard API error.
 * The plugin uses `max_completion_tokens` by default and includes an automatic fallback to `max_tokens` if an older custom/third-party OpenAI-compatible proxy rejects `max_completion_tokens`.
+
+---
+
+### Q6: How does the plugin detect whether a video summary note is missing a matching Media Extended companion note?
+
+**Context**: User requested a command to "Create Media Extended for any video summary note that doesn't have a matching Media Extended note (detect by presence of # Related and a wikilink to the note]".
+
+**Answer**:
+* In [`hasRelatedMediaExtendedLink()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), the scanner inspects the note's `# Related` markdown heading:
+  1. If `# Related` is absent, the note is marked as missing its companion note.
+  2. If `# Related` is present, it tests whether the section contains a wikilink matching either the expected companion note title (`[[Media Library/Title]]` or `[[Title]]`) or any wikilink targeting the configured Media Extended folder (`[[Media Library/...]]`).
+* If no matching wikilink is found in `# Related`, the note is treated as unlinked. The command generates the companion note with full Media Extended frontmatter and timestamped captions, and inserts the bidirectional wikilink into `# Related`.
+* Self-detection: Companion notes themselves (identified by `mx-uid:` frontmatter or presence inside `Media Library/`) are excluded to avoid circular generation.
+
+---
+
+### Q7: How does the description & tags upgrade command identify candidate notes and safely upgrade them?
+
+**Context**: User requested a command to "Upgrade video summary notes with tags from YouTube Data API & description frontmatter (if they don't have the description property)".
+
+**Answer**:
+* **Candidate Detection**:
+  [`isNoteMissingDescriptionFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) checks whether the note's YAML frontmatter contains a `description:` key. Notes already possessing `description:` (or companion notes in `Media Library/`) are skipped.
+* **Safe Frontmatter Upgrade**:
+  For matching notes, the command queries YouTube metadata (and YouTube Data API v3 if configured), extracts tags from title & description, merges Data API tags, normalizes tags through `deduplicateTags()`, and updates the note via `updateNoteContentWithFrontmatter()`. Existing OCR thumbnail text and custom frontmatter properties are preserved without re-running AI inference or overwriting existing note content.

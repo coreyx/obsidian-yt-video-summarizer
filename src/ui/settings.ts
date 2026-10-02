@@ -366,6 +366,19 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Create missing Media Extended companion notes
+        new Setting(containerEl)
+            .setName('Create missing Media Extended notes')
+            .setDesc('Scan the vault for video summary notes that do not have a matching Media Extended companion note and generate them')
+            .addButton(button =>
+                button
+                    .setButtonText('Create Missing Notes')
+                    .setCta()
+                    .onClick(async () => {
+                        await this.plugin.createMediaExtendedForMissingNotes();
+                    })
+            );
+
         // Semantic Topic tags
         new Setting(containerEl)
             .setName('Generate semantic topic tags')
@@ -468,6 +481,14 @@ export class SettingsTab extends PluginSettingTab {
                     .setButtonText('Upgrade in Folder...')
                     .onClick(() => {
                         this.plugin.promptFolderUpgrade();
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Upgrade Tags & Description')
+                    .setTooltip('Upgrade notes that are missing the description frontmatter property')
+                    .onClick(async () => {
+                        await this.plugin.upgradeNotesWithTagsAndDescription();
                     })
             );
     }

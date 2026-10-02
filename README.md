@@ -202,6 +202,20 @@ If you have notes created with previous versions of the plugin that lack the new
 
 This safely populates the new metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, and `thumbnail_text`) without altering your existing summaries, running LLM inference, or overwriting existing tags.
 
+### Method 6: Create Missing Media Extended Notes
+
+- **Command Palette**: Run `Create Media Extended notes for video summaries without companion note` (`Ctrl/Cmd + P`).
+- **Settings Tab**: Click **Create Missing Notes** under the *Create Media Extended notes* section.
+
+Scans the vault for video summary notes that do not have a matching Media Extended companion note (detected by checking for `# Related` and a wikilink to the companion note), automatically creates the companion note in `Media Library/` (configurable) with timestamped transcripts, and links them bidirectionally.
+
+### Method 7: Upgrade Notes with Tags & Description Frontmatter
+
+- **Command Palette**: Run `Upgrade video summary notes with tags and description frontmatter` (`Ctrl/Cmd + P`).
+- **Settings Tab**: Click **Upgrade Tags & Description** under the *Upgrade previous notes* section.
+
+Identifies video summary notes that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
+
 ## Output Format
 
 The plugin generates structured notes with comprehensive YAML frontmatter and markdown sections:
