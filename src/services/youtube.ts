@@ -2,6 +2,7 @@ import {
 	VIDEO_ID_REGEX,
 } from 'src/constants';
 import {
+	PlaylistInfo,
 	ThumbnailQuality,
 	TranscriptLine,
 	TranscriptResponse,
@@ -143,18 +144,265 @@ export class YouTubeService {
 	}
 
 	/**
-	 * Fetches video metadata (title, author, channel URL, handle, description)
+	 * Fetches video metadata (title, author, channel URL, handle, description, tags)
 	 * without downloading or parsing transcript captions.
 	 *
 	 * @param url - Full YouTube video URL
+	 * @param youtubeApiKey - Optional Google Cloud YouTube Data API v3 key
 	 * @returns Promise containing video metadata
 	 */
-	async fetchVideoMetadata(url: string): Promise<VideoMetadata> {
+	async fetchVideoMetadata(url: string, youtubeApiKey?: string): Promise<VideoMetadata> {
 		const videoId = this.extractMatch(url, VIDEO_ID_REGEX);
 		if (!videoId) throw new Error('Invalid YouTube URL');
 
 		const playerData = await this.fetchPlayerData(videoId);
-		return await this.extractMetadataFromPlayerData(playerData, videoId, url);
+		return await this.extractMetadataFromPlayerData(playerData, videoId, url, youtubeApiKey);
+	}
+
+	/**
+	 * Fetches video metadata (tags, published date, views, likes) using the official YouTube Data API v3 if an API key is provided.
+	 */
+	static async fetchYouTubeDataApiVideoData(videoId: string, apiKey: string): Promise<{
+		tags?: string[];
+		publishedAt?: string;
+		viewCount?: number;
+		likeCount?: number;
+	}> {
+		if (!apiKey || !apiKey.trim()) return {};
+		try {
+			const response = await requestUrl({
+				url: `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey.trim()}`,
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json',
+				},
+			});
+			if (response.status === 200) {
+				const data = JSON.parse(response.text);
+				const item = data.items?.[0];
+				const tags = Array.isArray(item?.snippet?.tags)
+					? item.snippet.tags.filter((t: any) => typeof t === 'string' && t.trim().length > 0)
+					: undefined;
+				const rawDate = item?.snippet?.publishedAt;
+				let publishedAt: string | undefined;
+				if (rawDate) {
+					try {
+						publishedAt = new Date(rawDate).toISOString().split('T')[0];
+					} catch {
+						const m = String(rawDate).match(/^\d{4}-\d{2}-\d{2}/);
+						if (m) publishedAt = m[0];
+					}
+				}
+				const viewCount = item?.statistics?.viewCount ? parseInt(item.statistics.viewCount, 10) : undefined;
+				const likeCount = item?.statistics?.likeCount ? parseInt(item.statistics.likeCount, 10) : undefined;
+				return { tags, publishedAt, viewCount, likeCount };
+			}
+		} catch (error) {
+			console.warn('YouTube Data API video data request failed:', error);
+		}
+		return {};
+	}
+
+	/**
+	 * Fetches video tags using the official YouTube Data API v3 if an API key is provided.
+	 */
+	static async fetchYouTubeDataApiTags(videoId: string, apiKey: string): Promise<string[]> {
+		const data = await YouTubeService.fetchYouTubeDataApiVideoData(videoId, apiKey);
+		return data.tags || [];
+	}
+
+	/**
+	 * Extracts playlist ID from a YouTube URL if present and not a system/radio mix.
+	 */
+	static extractPlaylistId(url: string): string | null {
+		if (!url) return null;
+		try {
+			const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+			if (match) {
+				const id = match[1];
+				if (id.startsWith('RD') || id === 'WL' || id === 'LL') {
+					return null;
+				}
+				return id;
+			}
+		} catch {
+			// ignore
+		}
+		return null;
+	}
+
+	/**
+	 * Extracts playlist index from a YouTube URL if present.
+	 */
+	static extractPlaylistIndex(url: string): number | undefined {
+		if (!url) return undefined;
+		const match = url.match(/[?&]index=(\d+)/);
+		if (match) {
+			const idx = parseInt(match[1], 10);
+			if (!isNaN(idx) && idx > 0) return idx;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Fetches playlist details using the YouTube Data API v3.
+	 */
+	static async fetchPlaylistDetails(playlistId: string, apiKey: string): Promise<{
+		title?: string;
+		itemCount?: number;
+		channelId?: string;
+	}> {
+		if (!apiKey || !apiKey.trim() || !playlistId) return {};
+		try {
+			const response = await requestUrl({
+				url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&id=${playlistId}&key=${apiKey.trim()}`,
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json',
+				},
+			});
+			if (response.status === 200) {
+				const data = JSON.parse(response.text);
+				const item = data.items?.[0];
+				if (item) {
+					return {
+						title: item.snippet?.title,
+						itemCount: item.contentDetails?.itemCount !== undefined ? parseInt(item.contentDetails.itemCount, 10) : undefined,
+						channelId: item.snippet?.channelId,
+					};
+				}
+			}
+		} catch (error) {
+			console.warn(`YouTube Data API playlists request failed for ${playlistId}:`, error);
+		}
+		return {};
+	}
+
+	/**
+	 * Checks if a video belongs to a playlist and gets its 1-based position using YouTube Data API.
+	 */
+	static async fetchVideoPositionInPlaylist(playlistId: string, videoId: string, apiKey: string): Promise<number | undefined> {
+		if (!apiKey || !apiKey.trim() || !playlistId || !videoId) return undefined;
+		try {
+			const response = await requestUrl({
+				url: `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&videoId=${videoId}&maxResults=1&key=${apiKey.trim()}`,
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json',
+				},
+			});
+			if (response.status === 200) {
+				const data = JSON.parse(response.text);
+				const item = data.items?.[0];
+				if (item && item.snippet?.position !== undefined) {
+					return item.snippet.position + 1; // 0-based to 1-based
+				}
+			}
+		} catch (error) {
+			console.warn(`YouTube Data API playlistItems request failed for playlist ${playlistId}, video ${videoId}:`, error);
+		}
+		return undefined;
+	}
+
+	/**
+	 * Discovers if the video belongs to a creator playlist using:
+	 * 1. URL parameters (&list=...)
+	 * 2. Links in video description
+	 * 3. YouTube Data API queries for the channel's playlists
+	 */
+	static async discoverPlaylist(options: {
+		url: string;
+		videoId: string;
+		channelId?: string;
+		description?: string;
+		youtubeApiKey?: string;
+	}): Promise<PlaylistInfo | undefined> {
+		const apiKey = options.youtubeApiKey?.trim();
+
+		// Strategy 1: Check if input URL includes playlist ID
+		const urlPlaylistId = YouTubeService.extractPlaylistId(options.url);
+		const urlIndex = YouTubeService.extractPlaylistIndex(options.url);
+
+		if (urlPlaylistId) {
+			let details: { title?: string; itemCount?: number; channelId?: string } = {};
+			let position = urlIndex;
+
+			if (apiKey) {
+				details = await YouTubeService.fetchPlaylistDetails(urlPlaylistId, apiKey);
+				if (position === undefined) {
+					position = await YouTubeService.fetchVideoPositionInPlaylist(urlPlaylistId, options.videoId, apiKey);
+				}
+			}
+
+			return {
+				id: urlPlaylistId,
+				title: details.title || 'Playlist',
+				url: `https://www.youtube.com/playlist?list=${urlPlaylistId}`,
+				index: position,
+				count: details.itemCount,
+			};
+		}
+
+		// Strategy 2: Check for playlist links in the video description
+		if (options.description) {
+			const descMatch = options.description.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:playlist\?list=|watch\?[^\s"'\)<>]*list=)([a-zA-Z0-9_-]+)/i);
+			if (descMatch) {
+				const descPlaylistId = descMatch[1];
+				if (!descPlaylistId.startsWith('RD') && descPlaylistId !== 'WL' && descPlaylistId !== 'LL') {
+					let details: { title?: string; itemCount?: number; channelId?: string } = {};
+					let position: number | undefined;
+
+					if (apiKey) {
+						details = await YouTubeService.fetchPlaylistDetails(descPlaylistId, apiKey);
+						position = await YouTubeService.fetchVideoPositionInPlaylist(descPlaylistId, options.videoId, apiKey);
+					}
+
+					return {
+						id: descPlaylistId,
+						title: details.title || 'Playlist',
+						url: `https://www.youtube.com/playlist?list=${descPlaylistId}`,
+						index: position,
+						count: details.itemCount,
+					};
+				}
+			}
+		}
+
+		// Strategy 3: Query channel's playlists via YouTube Data API
+		if (apiKey && options.channelId) {
+			try {
+				const response = await requestUrl({
+					url: `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&channelId=${options.channelId}&maxResults=25&key=${apiKey}`,
+					method: 'GET',
+					headers: {
+						'Accept': 'application/json',
+					},
+				});
+
+				if (response.status === 200) {
+					const data = JSON.parse(response.text);
+					const items: any[] = data.items || [];
+
+					// Check candidate playlists for video membership
+					for (const item of items.slice(0, 10)) {
+						const pos = await YouTubeService.fetchVideoPositionInPlaylist(item.id, options.videoId, apiKey);
+						if (typeof pos === 'number') {
+							return {
+								id: item.id,
+								title: item.snippet?.title || 'Playlist',
+								url: `https://www.youtube.com/playlist?list=${item.id}`,
+								index: pos,
+								count: item.contentDetails?.itemCount !== undefined ? parseInt(item.contentDetails.itemCount, 10) : undefined,
+							};
+						}
+					}
+				}
+			} catch (error) {
+				console.warn('YouTube Data API channel playlists lookup failed:', error);
+			}
+		}
+
+		return undefined;
 	}
 
 	/**
@@ -163,7 +411,8 @@ export class YouTubeService {
 	private async extractMetadataFromPlayerData(
 		playerData: any,
 		videoId: string,
-		url: string
+		url: string,
+		youtubeApiKey?: string
 	): Promise<VideoMetadata> {
 		const title = playerData.videoDetails?.title || 'Unknown';
 		const author = playerData.videoDetails?.author || 'Unknown';
@@ -182,7 +431,55 @@ export class YouTubeService {
 			}
 		}
 
-		if (!channelUsername) {
+		let duration = playerData.videoDetails?.lengthSeconds
+			? parseInt(playerData.videoDetails.lengthSeconds, 10)
+			: undefined;
+		let viewCount = playerData.videoDetails?.viewCount
+			? parseInt(playerData.videoDetails.viewCount, 10)
+			: undefined;
+
+		let publishedAt: string | undefined;
+		const rawDate = playerData.microformat?.playerMicroformatRenderer?.publishDate ||
+		                playerData.microformat?.playerMicroformatRenderer?.uploadDate;
+		if (rawDate) {
+			try {
+				publishedAt = new Date(rawDate).toISOString().split('T')[0];
+			} catch {
+				const m = String(rawDate).match(/^\d{4}-\d{2}-\d{2}/);
+				if (m) publishedAt = m[0];
+			}
+		}
+
+		let likeCount: number | undefined;
+
+		let tags: string[] = [];
+		if (Array.isArray(playerData.videoDetails?.keywords)) {
+			tags = playerData.videoDetails.keywords.filter(
+				(k: any) => typeof k === 'string' && k.trim().length > 0
+			);
+		}
+
+		if (youtubeApiKey && youtubeApiKey.trim().length > 0) {
+			try {
+				const apiData = await YouTubeService.fetchYouTubeDataApiVideoData(videoId, youtubeApiKey.trim());
+				if (apiData.tags && apiData.tags.length > 0) {
+					tags = apiData.tags;
+				}
+				if (apiData.publishedAt && !publishedAt) {
+					publishedAt = apiData.publishedAt;
+				}
+				if (typeof apiData.viewCount === 'number' && !viewCount) {
+					viewCount = apiData.viewCount;
+				}
+				if (typeof apiData.likeCount === 'number' && !likeCount) {
+					likeCount = apiData.likeCount;
+				}
+			} catch (e) {
+				console.warn('Could not fetch data via YouTube Data API:', e);
+			}
+		}
+
+		if (!channelUsername || tags.length === 0 || !publishedAt || !likeCount) {
 			try {
 				const pageResponse = await requestUrl({
 					url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -193,26 +490,100 @@ export class YouTubeService {
 				});
 				if (pageResponse.status === 200) {
 					const html = pageResponse.text;
-					const match = html.match(/"canonicalBaseUrl":"\/(@[^"\/]+)"/) ||
-					              html.match(/"ownerProfileUrl":"https?:\/\/(?:www\.)?youtube\.com\/(@[^"\/]+)"/);
-					if (match) {
-						channelUsername = match[1];
-						channelUrl = `https://www.youtube.com/${match[1]}`;
+					if (!channelUsername) {
+						const match = html.match(/"canonicalBaseUrl":"\/(@[^"\/]+)"/) ||
+						              html.match(/"ownerProfileUrl":"https?:\/\/(?:www\.)?youtube\.com\/(@[^"\/]+)"/);
+						if (match) {
+							channelUsername = match[1];
+							channelUrl = `https://www.youtube.com/${match[1]}`;
+						}
+					}
+
+					if (tags.length === 0) {
+						const jsonMatch = html.match(/"keywords":\s*(\[[^\]]+\])/);
+						if (jsonMatch) {
+							try {
+								const parsed = JSON.parse(jsonMatch[1]);
+								if (Array.isArray(parsed)) {
+									tags = parsed.filter((k: any) => typeof k === 'string' && k.trim().length > 0);
+								}
+							} catch {
+								// ignore json parse error
+							}
+						}
+						if (tags.length === 0) {
+							const metaMatch = html.match(/<meta\s+name="keywords"\s+content="([^"]+)"/i);
+							if (metaMatch) {
+								tags = metaMatch[1]
+									.split(',')
+									.map((t) => t.trim())
+									.filter(Boolean);
+							}
+						}
+					}
+
+					if (!publishedAt) {
+						const dateMatch = html.match(/"publishDate":"([^"]+)"/) ||
+						                  html.match(/"uploadDate":"([^"]+)"/) ||
+						                  html.match(/itemprop="datePublished" content="([^"]+)"/);
+						if (dateMatch) {
+							try {
+								publishedAt = new Date(dateMatch[1]).toISOString().split('T')[0];
+							} catch {
+								const m = dateMatch[1].match(/^\d{4}-\d{2}-\d{2}/);
+								if (m) publishedAt = m[0];
+							}
+						}
+					}
+
+					if (likeCount === undefined) {
+						const likeMatch = html.match(/"likeCount":"([^"]+)"/) ||
+						                  html.match(/accessibilityData":\{"label":"([0-9,]+)\s+likes"/i);
+						if (likeMatch) {
+							likeCount = parseInt(likeMatch[1].replace(/,/g, ''), 10);
+						}
+					}
+
+					if (viewCount === undefined) {
+						const viewMatch = html.match(/"viewCount":"([^"]+)"/);
+						if (viewMatch) {
+							viewCount = parseInt(viewMatch[1], 10);
+						}
 					}
 				}
 			} catch (e) {
-				console.warn('Could not fetch channel handle from watch page:', e);
+				console.warn('Could not fetch channel handle or metadata from watch page:', e);
 			}
+		}
+
+		let playlist: PlaylistInfo | undefined;
+		try {
+			playlist = await YouTubeService.discoverPlaylist({
+				url,
+				videoId,
+				channelId,
+				description,
+				youtubeApiKey,
+			});
+		} catch (e) {
+			console.warn('Could not discover playlist:', e);
 		}
 
 		return {
 			url: `https://www.youtube.com/watch?v=${videoId}`,
 			videoId,
+			channelId: channelId || undefined,
 			title: this.decodeHTML(title),
 			author: this.decodeHTML(author),
 			channelUrl,
 			channelUsername: channelUsername || undefined,
 			description: this.decodeHTML(description, true),
+			tags: tags.length > 0 ? tags : undefined,
+			duration,
+			publishedAt,
+			viewCount,
+			likeCount,
+			playlist,
 		};
 	}
 
@@ -224,12 +595,14 @@ export class YouTubeService {
 	 * 
 	 * @param url - Full YouTube video URL
 	 * @param langCode - Language code for caption track (default: 'en')
+	 * @param youtubeApiKey - Optional Google Cloud YouTube Data API v3 key
 	 * @returns Promise containing video metadata and transcript
 	 * @throws Error if transcript cannot be fetched or processed
 	 */
 	async fetchTranscript(
 		url: string,
-		langCode = 'en'
+		langCode = 'en',
+		youtubeApiKey?: string
 	): Promise<TranscriptResponse> {
 		try {
 			// Extract video ID from URL
@@ -240,7 +613,7 @@ export class YouTubeService {
 
 			// Step 1: Fetch player data and video metadata
 			const playerData = await this.fetchPlayerData(videoId);
-			const metadata = await this.extractMetadataFromPlayerData(playerData, videoId, url);
+			const metadata = await this.extractMetadataFromPlayerData(playerData, videoId, url, youtubeApiKey);
 
 			// Step 2: Get caption tracks
 			const captionsData = playerData.captions?.playerCaptionsTracklistRenderer;

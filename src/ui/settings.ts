@@ -293,6 +293,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Add description to frontmatter
+        new Setting(containerEl)
+            .setName('Add description to frontmatter')
+            .setDesc('Include the full YouTube video description in the YAML frontmatter (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getAddDescriptionToFrontmatter())
+                    .onChange(async (value) => {
+                        await this.settings.updateAddDescriptionToFrontmatter(value);
+                    })
+            );
+
         // Include transcript in summary
         new Setting(containerEl)
             .setName('Include transcript in summary note')
@@ -329,6 +341,31 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Create Media Extended notes
+        new Setting(containerEl)
+            .setName('Create Media Extended notes')
+            .setDesc('Automatically create a separate companion note formatted for the Media Extended plugin for each ingested video (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getCreateMediaExtendedNotes())
+                    .onChange(async (value) => {
+                        await this.settings.updateCreateMediaExtendedNotes(value);
+                    })
+            );
+
+        // Media Extended notes folder
+        new Setting(containerEl)
+            .setName('Media Extended notes folder')
+            .setDesc('Vault folder where separate Media Extended companion notes will be created (defaults to "Media Library" in the vault root)')
+            .addText(text =>
+                text
+                    .setPlaceholder('Media Library')
+                    .setValue(this.settings.getMediaExtendedFolder())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedFolder(value.trim() || 'Media Library');
+                    })
+            );
+
         // Semantic Topic tags
         new Setting(containerEl)
             .setName('Generate semantic topic tags')
@@ -350,6 +387,43 @@ export class SettingsTab extends PluginSettingTab {
                     .setValue(this.settings.getDetectTagsInDescriptionAndTitle())
                     .onChange(async (value) => {
                         await this.settings.updateDetectTagsInDescriptionAndTitle(value);
+                    })
+            );
+
+        // Extract tags from YouTube Data API
+        new Setting(containerEl)
+            .setName('Extract tags from YouTube Data API')
+            .setDesc('Extract the complete set of creator video tags/keywords from YouTube metadata and apply them as Obsidian tags (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getExtractYouTubeDataApiTags())
+                    .onChange(async (value) => {
+                        await this.settings.updateExtractYouTubeDataApiTags(value);
+                    })
+            );
+
+        // YouTube Data API key (optional)
+        new Setting(containerEl)
+            .setName('YouTube Data API key (optional)')
+            .setDesc('Optional Google Cloud YouTube Data API v3 key. If omitted, tags are extracted automatically from YouTube player metadata with no key required.')
+            .addText(text =>
+                text
+                    .setPlaceholder('AIzaSy...')
+                    .setValue(this.settings.getYoutubeApiKey())
+                    .onChange(async (value) => {
+                        await this.settings.updateYoutubeApiKey(value.trim());
+                    })
+            );
+
+        // Discover playlist from creator
+        new Setting(containerEl)
+            .setName('Discover playlist from creator')
+            .setDesc('Detect if the video is part of a playlist from the creator (via YouTube Data API, URL parameters, or video description) and inject playlist metadata into the frontmatter and note body (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getDiscoverPlaylist())
+                    .onChange(async (value) => {
+                        await this.settings.updateDiscoverPlaylist(value);
                     })
             );
 

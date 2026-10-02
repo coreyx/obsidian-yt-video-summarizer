@@ -51,6 +51,12 @@ export interface StoredSettings {
 	dumpTranscriptInSummary?: boolean;
 	linkTranscriptTimestamps?: boolean;
 	mediaExtendedTimestamps?: boolean;
+	extractYouTubeDataApiTags?: boolean;
+	youtubeApiKey?: string;
+	createMediaExtendedNotes?: boolean;
+	mediaExtendedFolder?: string;
+	addDescriptionToFrontmatter?: boolean;
+	discoverPlaylist?: boolean;
 }
 
 /** Represents the plugin settings and provides methods to manage them */
@@ -141,6 +147,24 @@ export interface PluginSettings {
 	getMediaExtendedTimestamps(): boolean;
 	updateMediaExtendedTimestamps(value: boolean): void;
 
+	getExtractYouTubeDataApiTags(): boolean;
+	updateExtractYouTubeDataApiTags(value: boolean): void;
+
+	getYoutubeApiKey(): string;
+	updateYoutubeApiKey(value: string): void;
+
+	getCreateMediaExtendedNotes(): boolean;
+	updateCreateMediaExtendedNotes(value: boolean): void;
+
+	getMediaExtendedFolder(): string;
+	updateMediaExtendedFolder(value: string): void;
+
+	getAddDescriptionToFrontmatter(): boolean;
+	updateAddDescriptionToFrontmatter(value: boolean): void;
+
+	getDiscoverPlaylist(): boolean;
+	updateDiscoverPlaylist(value: boolean): void;
+
 	/**
 	 * Validates a model ID.
 	 * Correct format is "ProviderName:ModelName". Check that provider and model exist.
@@ -151,15 +175,31 @@ export interface PluginSettings {
 	validateModelId(modelId: string): boolean;
 }
 
+/** Playlist metadata */
+export interface PlaylistInfo {
+	id: string;
+	title: string;
+	url: string;
+	index?: number;
+	count?: number;
+}
+
 /** Video metadata without captions or transcripts */
 export interface VideoMetadata {
 	url: string;
 	videoId: string;
+	channelId?: string;
 	title: string;
 	author: string;
 	channelUrl: string;
 	channelUsername?: string;
 	description?: string;
+	tags?: string[];
+	duration?: number;
+	publishedAt?: string;
+	viewCount?: number;
+	likeCount?: number;
+	playlist?: PlaylistInfo;
 }
 
 /** Represents a single line of video transcript with timing information */
@@ -173,12 +213,19 @@ export interface TranscriptLine {
 export interface TranscriptResponse {
 	url: string;
 	videoId: string;
+	channelId?: string;
 	title: string;
 	author: string;
 	channelUrl: string;
 	channelUsername?: string;
 	description?: string;
+	tags?: string[];
+	duration?: number;
+	publishedAt?: string;
+	viewCount?: number;
+	likeCount?: number;
 	lines: TranscriptLine[];
+	playlist?: PlaylistInfo;
 }
 
 /** Available thumbnail quality options with dimensions */

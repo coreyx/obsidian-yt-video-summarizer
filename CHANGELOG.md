@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-02
+
+### Added
+- **Creator Playlist Discovery**: Automatically detects whether a video belongs to a creator playlist (via URL parameters, video description links, or YouTube Data API channel lookup). Serializes playlist metadata (`playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, `playlist_count`) into YAML frontmatter and adds an interactive, clickable playlist badge in the note header (`📋 [Playlist: Title (X/Y)](url)`).
+- **YouTube Data API Tags & Smart Deduplication**: Ingests complete creator video tags/keywords from the YouTube Data API v3 and InnerTube metadata into Obsidian tags. Features robust tag deduplication that reconciles hashtag variations across title, description, and API metadata (e.g. collapsing `#RickAstley` to `rick-astley`).
+- **Separate Media Extended Companion Notes**: Automatically generates standalone companion notes in a configurable vault folder (defaults to `Media Library`) formatted specifically for the Media Extended plugin with `mx-uid`, video URL, duration, cover embed, and timestamped playback transcript.
+- **Bidirectional Note Linking**: Automatically establishes bidirectional wikilinks between the AI summary note and its Media Extended companion note under a `# Related` section.
+- **YouTube Description in Frontmatter**: Ingests the full YouTube video description into YAML frontmatter (`description: |-`) by default with configurable toggle.
+
+---
+
 ## [1.7.0] - 2026-10-01
 
 ### Added
