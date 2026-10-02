@@ -2873,8 +2873,8 @@ ${groupPrefixesStr}
 Important rules:
 - Always prefer to reuse a tag that already exists instead of creating a new one. Only create new tags when necessary if semantic meaning of the desired tag does not already exist in the cached tag list.
 - Use kebab case for any new tags you create (lowercase words separated by hyphens).
-- Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level (e.g. "ai/music-videos" instead of "ai-music-videos").
-- Return ONLY a comma-separated list of tags in lowercase (e.g. ai/music-videos, typescript, productivity). Do not include hashtags (#) or explanation.
+- Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level (e.g. "ai/machine-learning" instead of "ai-machine-learning").
+- Return ONLY a comma-separated list of tags in lowercase (e.g. ai/machine-learning, typescript, productivity). Do not include hashtags (#) or explanation.
 
 ${titleStr}Summary:
 ${summaryText.slice(0, 4000)}`;
@@ -2925,13 +2925,13 @@ function deduplicateTagsUpdatedHelper(tags) {
 
 // 28.1: extractGroupPrefixesHelper tests
 const mockTagsWithPrefixes = [
-	'ai/music-videos',
+	'ai/machine-learning',
 	'ai/llm',
 	'ai/audio',
 	'dev/frontend/react',
 	'productivity',
 	'obsidian',
-	'machine-learning'
+	'data-science'
 ];
 const extractedPrefixes = extractGroupPrefixesHelper(mockTagsWithPrefixes);
 assert.deepStrictEqual(extractedPrefixes, ['ai/', 'dev/', 'dev/frontend/']);
@@ -2941,7 +2941,7 @@ assert.deepStrictEqual(extractGroupPrefixesHelper([]), []);
 // 28.2: buildVaultTagDataHelper tests with frequency sorting and sanitization
 const rawVaultTagRecord = {
 	'#productivity': 25,
-	'#ai/music-videos': 12,
+	'#ai/machine-learning': 12,
 	'#ai/llm': 18,
 	'#ai': 30,
 	'#dev/frontend/react': 5,
@@ -2957,7 +2957,7 @@ assert.strictEqual(vaultTagData.totalCount, 6);
 assert.strictEqual(vaultTagData.tags[0], 'ai');
 assert.strictEqual(vaultTagData.tags[1], 'productivity');
 assert.strictEqual(vaultTagData.tags[2], 'ai/llm');
-assert.strictEqual(vaultTagData.tags[3], 'ai/music-videos');
+assert.strictEqual(vaultTagData.tags[3], 'ai/machine-learning');
 assert.strictEqual(vaultTagData.tags[4], 'dev/backend');
 assert.strictEqual(vaultTagData.tags[5], 'dev/frontend/react');
 
@@ -2966,7 +2966,7 @@ assert(vaultTagData.groupPrefixes.includes('ai/'));
 assert(vaultTagData.groupPrefixes.includes('dev/'));
 
 // Check compressed context string
-assert(vaultTagData.compressedContext.includes('ai, productivity, ai/llm, ai/music-videos'));
+assert(vaultTagData.compressedContext.includes('ai, productivity, ai/llm, ai/machine-learning'));
 
 // Empty vault tags check
 const emptyVaultData = buildVaultTagDataHelper({});
@@ -2974,10 +2974,10 @@ assert.strictEqual(emptyVaultData.totalCount, 0);
 assert.strictEqual(emptyVaultData.compressedContext, '(none yet - feel free to create initial tags)');
 
 // 28.3: buildTopicGenerationPromptHelper tests
-const test28SampleSummary = 'This tutorial demonstrates how to generate music videos using open source AI models and ComfyUI.';
+const test28SampleSummary = 'This tutorial demonstrates how to train machine learning models using PyTorch and open source tools.';
 const test28PromptOutput = buildTopicGenerationPromptHelper(test28SampleSummary, {
-	title: 'Creating AI Music Videos with ComfyUI',
-	existingTags: ['youtube-video', 'comfyui'],
+	title: 'Training Machine Learning Models with PyTorch',
+	existingTags: ['youtube-video', 'pytorch'],
 	vaultTags: vaultTagData.tags,
 	groupPrefixes: vaultTagData.groupPrefixes,
 	compressedContext: vaultTagData.compressedContext,
@@ -2988,10 +2988,10 @@ assert(test28PromptOutput.includes('1. What topic(s) does this video belong to?'
 assert(test28PromptOutput.includes('2. Is there any obvious tag that is missing in the existing set of tags?'));
 
 // Prompt must include the existing tags identified for the video
-assert(test28PromptOutput.includes('Existing tags already identified for this video:\nyoutube-video, comfyui'));
+assert(test28PromptOutput.includes('Existing tags already identified for this video:\nyoutube-video, pytorch'));
 
 // Prompt must include cached vault tags
-assert(test28PromptOutput.includes('Existing vault tags (cached tag list from whole vault):\nai, productivity, ai/llm, ai/music-videos'));
+assert(test28PromptOutput.includes('Existing vault tags (cached tag list from whole vault):\nai, productivity, ai/llm, ai/machine-learning'));
 
 // Prompt must include established group prefixes
 assert(test28PromptOutput.includes('Established group prefixes in vault:\nai/, dev/, dev/frontend/'));
@@ -3000,19 +3000,19 @@ assert(test28PromptOutput.includes('Established group prefixes in vault:\nai/, d
 assert(test28PromptOutput.includes('Always prefer to reuse a tag that already exists instead of creating a new one.'));
 assert(test28PromptOutput.includes('Use kebab case for any new tags you create'));
 assert(test28PromptOutput.includes('Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level'));
-assert(test28PromptOutput.includes('ai/music-videos" instead of "ai-music-videos'));
+assert(test28PromptOutput.includes('ai/machine-learning" instead of "ai-machine-learning'));
 
 // Prompt must include title and summary
-assert(test28PromptOutput.includes('Video Title: Creating AI Music Videos with ComfyUI'));
+assert(test28PromptOutput.includes('Video Title: Training Machine Learning Models with PyTorch'));
 assert(test28PromptOutput.includes(test28SampleSummary));
 
 // 28.4: Deduplication preference for grouped tags over flat tags
-// ai/music-videos should be preferred over ai-music-videos regardless of order
-const testTagsOrder1 = deduplicateTagsUpdatedHelper(['ai-music-videos', 'ai/music-videos']);
-assert.deepStrictEqual(testTagsOrder1, ['ai/music-videos']);
+// ai/machine-learning should be preferred over ai-machine-learning regardless of order
+const testTagsOrder1 = deduplicateTagsUpdatedHelper(['ai-machine-learning', 'ai/machine-learning']);
+assert.deepStrictEqual(testTagsOrder1, ['ai/machine-learning']);
 
-const testTagsOrder2 = deduplicateTagsUpdatedHelper(['ai/music-videos', 'ai-music-videos']);
-assert.deepStrictEqual(testTagsOrder2, ['ai/music-videos']);
+const testTagsOrder2 = deduplicateTagsUpdatedHelper(['ai/machine-learning', 'ai-machine-learning']);
+assert.deepStrictEqual(testTagsOrder2, ['ai/machine-learning']);
 
 // Other hyphenated tags should still collapse run-together words
 const testHyphenCollapse = deduplicateTagsUpdatedHelper(['rickastley', 'rick-astley']);

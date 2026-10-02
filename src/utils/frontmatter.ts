@@ -518,7 +518,7 @@ export function deduplicateTags(tags: string[]): string[] {
 	}
 
 	// Second pass: collapse tags that only differ by hyphens/slashes, e.g. "rick-astley" vs "rickastley"
-	// We prefer hierarchical tags with '/' (e.g. "ai/music-videos" over "ai-music-videos"),
+	// We prefer hierarchical tags with '/' (e.g. "ai/machine-learning" over "ai-machine-learning"),
 	// followed by versions with hyphens/separators (e.g. "rick-astley") over run-together words ("rickastley")
 	const normalizedMap = new Map<string, string>();
 	for (const tag of uniqueTags) {

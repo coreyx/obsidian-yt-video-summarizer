@@ -4,7 +4,7 @@ import { GenerateTopicsOptions, VaultTagData } from '../types';
 /**
  * Detects established group prefixes from a list of tags.
  * For example:
- * - 'ai/music-videos' -> 'ai/'
+ * - 'ai/machine-learning' -> 'ai/'
  * - 'dev/frontend/react' -> 'dev/', 'dev/frontend/'
  */
 export function extractGroupPrefixes(tags: string[]): string[] {
@@ -97,7 +97,7 @@ export function buildVaultTagData(
  * Enforces:
  * - Reusing existing tags from the cached vault tag list over creating new ones.
  * - Kebab-case for any new tags.
- * - Grouping under established prefixes (e.g. ai/music-videos instead of ai-music-videos).
+ * - Grouping under established prefixes (e.g. ai/machine-learning instead of ai-machine-learning).
  */
 export function buildTopicGenerationPrompt(summaryText: string, options?: GenerateTopicsOptions): string {
 	const existingTags = (options?.existingTags || []).filter(t => t && typeof t === 'string' && t.trim().length > 0);
@@ -132,8 +132,8 @@ ${groupPrefixesStr}
 Important rules:
 - Always prefer to reuse a tag that already exists instead of creating a new one. Only create new tags when necessary if semantic meaning of the desired tag does not already exist in the cached tag list.
 - Use kebab case for any new tags you create (lowercase words separated by hyphens).
-- Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level (e.g. "ai/music-videos" instead of "ai-music-videos").
-- Return ONLY a comma-separated list of tags in lowercase (e.g. ai/music-videos, typescript, productivity). Do not include hashtags (#) or explanation.
+- Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level (e.g. "ai/machine-learning" instead of "ai-machine-learning").
+- Return ONLY a comma-separated list of tags in lowercase (e.g. ai/machine-learning, typescript, productivity). Do not include hashtags (#) or explanation.
 
 ${titleStr}Summary:
 ${summaryText.slice(0, 4000)}`;
