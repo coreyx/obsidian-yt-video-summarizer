@@ -1,47 +1,32 @@
-# Release Notes - YouTube Video Summarizer v1.8.0
+# Release Notes - YouTube Video Summarizer v1.9.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.8.0 introduces creator playlist discovery, YouTube Data API tag ingestion, dedicated Media Extended companion notes with bidirectional linking, and frontmatter video descriptions:
+YouTube Video Summarizer v1.9.0 introduces two new dedicated vault commands for companion note creation and metadata upgrading, along with comprehensive developer documentation:
 
-* 📋 **Creator Playlist Discovery**: Automatically detects whether an ingested video belongs to a creator playlist using URL parameters (`&list=`), video description links, or channel Data API lookups. Injects playlist title, URL, ID, index position, and item count into frontmatter and adds an interactive badge in the note header (`📋 [Playlist: Title (X/Y)](url)`).
-* 🏷️ **YouTube Data API Tags & Smart Deduplication**: Ingests complete video tags/keywords from the YouTube Data API v3 and metadata. Intelligently deduplicates tags across title, description, and API metadata, reconciling kebab-case, case differences, and run-together hashtags.
-* 🎬 **Media Extended Companion Notes**: Automatically generates separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a dedicated vault folder (defaults to `Media Library/`), complete with `mx-uid`, cover embed, duration, and timestamped transcripts.
-* 🔗 **Bidirectional Companion Note Linking**: Automatically links AI summary notes and Media Extended companion notes to each other using wikilinks in a `# Related` section.
-* 📝 **Video Description in Frontmatter**: Ingests full YouTube video descriptions into YAML frontmatter (`description: |-`) by default with a configurable toggle.
+* 🎬 **Create Missing Media Extended Notes Command**: New command scans your vault for any video summary notes that do not currently have a companion note linked under `# Related`, generates the Media Extended companion notes in your configured folder, and links them bidirectionally.
+* 🏷️ **Upgrade Notes with Tags & Description Frontmatter Command**: New command scans your vault for video summary notes that lack the `description` frontmatter property, fetches complete creator tags from YouTube Data API v3 and the full video description, and safely merges them into frontmatter without running AI inference.
+* 📚 **Complete Developer Documentation**: New [`DEVELOPMENT.md`](DEVELOPMENT.md) provides full architecture overviews, subsystem deep dives, testing strategy, and an active Developer Q&A log preserving technical design rationale.
 
 ---
 
-## What's Changed in v1.8.0
+## What's Changed in v1.9.0
 
-### 📋 Creator Playlist Discovery
-* Discovers series/playlist metadata automatically from:
-  1. Input video URLs containing `&list=PLAYLIST_ID` and `&index=N` (ignoring system mixes like `RD...`, `WL`, and `LL`).
-  2. Series playlist links posted by creators in the video description.
-  3. YouTube Data API queries for the channel's playlists and video membership positions.
-* Injects structured playlist metadata into YAML frontmatter:
-  - `playlist_title`: Title of the series/playlist.
-  - `playlist_url`: Direct URL to the playlist.
-  - `playlist_id`: YouTube playlist identifier.
-  - `playlist_index`: 1-based index position of this video in the playlist.
-  - `playlist_count`: Total number of videos in the playlist.
-* Renders a clickable playlist badge in the note body header:
-  `👤 [Author](authorUrl)  🔗 [Watch video](videoUrl)  📋 [Playlist: Series Title (3/12)](playlistUrl)`
-* Fully supported in **Summarize video**, **Get transcript**, and batch **Upgrade previous notes**.
+### 🎬 Create Missing Media Extended Notes
+* **Command Palette**: Run `Create Media Extended notes for video summaries without companion note` (`Ctrl/Cmd + P`).
+* **Settings Tab**: Click **Create Missing Notes** under the *Create Media Extended notes* section.
+* Detection rule: Inspects markdown notes containing YouTube URLs outside of `Media Library/` and verifies whether `# Related` contains a wikilink to the companion note (`[[Media Library/Title]]` or `[[Title]]`).
+* Creates the companion note with full Media Extended frontmatter (`mx-uid`, duration, cover embed, etc.) and timestamped transcript, and appends the bidirectional link to `# Related`.
 
-### 🏷️ YouTube Data API Tags & Smart Deduplication
-* Ingests full creator tags/keywords from YouTube Data API v3 and InnerTube metadata into Obsidian tags.
-* Enhanced tag deduplication collapses duplicate tags across title, description, and Data API, normalizing `#RickAstley` to `rick-astley` without redundant tags.
-* Configurable setting: **Extract tags from YouTube Data API** and optional **YouTube Data API key**.
+### 🏷️ Upgrade Notes with Tags & Description Frontmatter
+* **Command Palette**: Run `Upgrade video summary notes with tags and description frontmatter` (`Ctrl/Cmd + P`).
+* **Settings Tab**: Click **Upgrade Tags & Description** under the *Upgrade previous notes* section.
+* Detection rule: Automatically finds all video summary notes whose frontmatter lacks the `description:` property.
+* Ingests full creator tags/keywords from YouTube Data API v3 and the complete video description into YAML frontmatter (`description: |-`) with tag deduplication, preserving existing summaries and notes.
 
-### 🎬 Media Extended Companion Notes & Bidirectional Linking
-* When **Create Media Extended notes** is enabled (on by default), ingesting a video creates a companion note in `Media Library/` (configurable).
-* Includes Media Extended frontmatter: `mx-uid`, `video`, `title`, `description`, `duration`, `creator`, `published_at`, `view_count`, `like_count`, `cover`, and `aspect_ratio`.
-* Automatically establishes two-way wikilinks between the AI summary note and the Media Extended note under `# Related`.
-
-### 📝 Video Description in YAML Frontmatter
-* Full YouTube video description is saved in frontmatter under `description: |-`.
-* Configurable in plugin settings under **Add description to frontmatter** (enabled by default).
+### 📚 Developer Documentation & Q&A Log
+* Added [`DEVELOPMENT.md`](DEVELOPMENT.md) documenting plugin architecture, InnerTube ingestion, AI model retirement, playlist discovery heuristics, and tag deduplication.
+* Includes an ongoing Developer Q&A log covering `mx-uid` origins, YouTube Data API reverse lookup strategies, mix filtering, and OpenAI token handling.
 
 ---
 

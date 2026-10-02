@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-02
+
+### Added
+- **Command: Create Missing Media Extended Companion Notes**: Added `Create Media Extended notes for video summaries without companion note` command in the Command Palette and a corresponding action button in the plugin settings. Scans the vault for video summary notes lacking a companion note (detected by absence of `# Related` and companion wikilink), creates the Media Extended companion notes in your configured folder, and links them bidirectionally.
+- **Command: Upgrade Notes with Tags & Description Frontmatter**: Added `Upgrade video summary notes with tags and description frontmatter` command in the Command Palette and plugin settings. Automatically detects video summary notes that lack the `description` frontmatter property, fetches complete creator tags from YouTube Data API v3 and the full video description, and safely merges them into frontmatter without touching summaries or running AI models.
+- **Developer Documentation**: Added comprehensive [`DEVELOPMENT.md`](DEVELOPMENT.md) detailing architecture, subsystems, testing strategy, release process, and a Developer Q&A log preserving technical design decisions (including `mx-uid` origins, playlist reverse lookup strategy, system playlist filtering, and tag deduplication).
+
+---
+
 ## [1.8.0] - 2026-10-02
 
 ### Added
