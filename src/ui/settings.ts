@@ -132,7 +132,12 @@ export class SettingsTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Active Model')
-            .setDesc('Select which model to use for generating summaries')
+            .setDesc('Select which model to use for generating summaries. Built-in models (Gemini, OpenAI, Anthropic) and OpenAI-compatible local/remote servers (LM Studio, Ollama, OpenRouter, vLLM) appear here.')
+            .addExtraButton(button => {
+                button
+                    .setIcon('help-circle')
+                    .setTooltip('To use an OpenAI-compatible server (e.g. LM Studio, Ollama, OpenRouter, vLLM), click "Detect & Connect" under LM Studio below, or click "Add Provider" at the bottom with Provider Type set to OpenAI. Once configured, your models will appear in this dropdown.');
+            })
             .addDropdown(dropdown => {
                 const options: Record<string, string> = {};
                 availableModels.forEach(model => {
@@ -149,6 +154,38 @@ export class SettingsTab extends PluginSettingTab {
                     });
 
             });
+
+        // LM Studio One-Click Detection Setting
+        new Setting(containerEl)
+            .setName('LM Studio (Local LLM)')
+            .setDesc('Auto-detect and connect to a running local LM Studio server (default: http://localhost:1234/v1). Automatically discovers loaded models and sets active model.')
+            .addText(text =>
+                text
+                    .setPlaceholder('http://localhost:1234/v1')
+                    .setValue(this.settings.getLmStudioUrl())
+                    .onChange(async (value) => {
+                        await this.settings.updateLmStudioUrl(value.trim());
+                    })
+            )
+            .addButton(button =>
+                button
+                    .setButtonText('Detect & Connect')
+                    .setCta()
+                    .onClick(async () => {
+                        button.setDisabled(true);
+                        button.setButtonText('Detecting...');
+                        try {
+                            const success = await this.plugin.detectAndConnectLMStudio(this.settings.getLmStudioUrl());
+                            if (success) {
+                                this.openedProviderName = 'LM Studio';
+                                this.reload();
+                            }
+                        } finally {
+                            button.setDisabled(false);
+                            button.setButtonText('Detect & Connect');
+                        }
+                    })
+            );
 
         // Provider Accordions Container
         const accordionsContainer = containerEl.createDiv({ cls: 'yt-summarizer-settings__provider-accordions' });

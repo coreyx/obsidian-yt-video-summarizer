@@ -58,6 +58,7 @@ export interface StoredSettings {
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
 	scanFolders?: string;
+	lmStudioUrl?: string;
 }
 
 
@@ -170,6 +171,10 @@ export interface PluginSettings {
 	getScanFolders(): string;
 	updateScanFolders(value: string): Promise<void>;
 	getScanFolderList(): string[];
+
+	getLmStudioUrl(): string;
+	updateLmStudioUrl(value: string): Promise<void>;
+	syncLMStudioProvider(url: string, models: Array<{ id: string; displayName?: string; isLoaded?: boolean }>): Promise<{ provider: StoredProvider; modelCount: number; activeModelId: string | null }>;
 
 	/**
 	 * Validates a model ID.

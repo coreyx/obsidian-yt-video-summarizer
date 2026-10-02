@@ -25,11 +25,13 @@ import {
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
     DEFAULT_SCAN_FOLDERS,
+    DEFAULT_LM_STUDIO_URL,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
 } from "src/defaults";
 import { parseFolderList } from "src/utils/frontmatter";
+import { normalizeOpenAIBaseUrl } from "src/services/lmStudio";
 
 
 /** Manages plugin settings and provides methods to interact with them */
@@ -65,6 +67,7 @@ export class SettingsManager implements PluginSettings {
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
             scanFolders: DEFAULT_SCAN_FOLDERS,
+            lmStudioUrl: DEFAULT_LM_STUDIO_URL,
         };
     }
 
@@ -106,6 +109,7 @@ export class SettingsManager implements PluginSettings {
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
+                lmStudioUrl: rawSettings.lmStudioUrl ?? this.settings.lmStudioUrl,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -149,6 +153,7 @@ export class SettingsManager implements PluginSettings {
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
+                lmStudioUrl: rawSettings.lmStudioUrl ?? this.settings.lmStudioUrl,
             };
 
             await this.saveData();
@@ -532,6 +537,61 @@ export class SettingsManager implements PluginSettings {
     async updateScanFolders(value: string): Promise<void> {
         this.settings.scanFolders = value;
         await this.saveData();
+    }
+
+    getLmStudioUrl(): string {
+        return this.settings.lmStudioUrl ?? DEFAULT_LM_STUDIO_URL;
+    }
+
+    async updateLmStudioUrl(value: string): Promise<void> {
+        this.settings.lmStudioUrl = value;
+        await this.saveData();
+    }
+
+    async syncLMStudioProvider(url: string, models: Array<{ id: string; displayName?: string; isLoaded?: boolean }>): Promise<{ provider: StoredProvider; modelCount: number; activeModelId: string | null }> {
+        const normalizedUrl = normalizeOpenAIBaseUrl(url);
+        let provider = this.settings.providers.find(p => p.name.toLowerCase() === 'lm studio');
+
+        const storedModels: StoredModel[] = models.map(m => ({
+            name: m.id,
+            displayName: m.displayName || m.id,
+            pricing: 'Local LLM (LM Studio)'
+        }));
+
+        if (!provider) {
+            provider = {
+                name: 'LM Studio',
+                type: 'openai',
+                isBuiltIn: false,
+                apiKey: 'not-needed',
+                url: normalizedUrl,
+                models: storedModels
+            };
+            this.settings.providers.push(provider);
+        } else {
+            provider.url = normalizedUrl;
+            if (!provider.apiKey) {
+                provider.apiKey = 'not-needed';
+            }
+            provider.type = 'openai';
+            if (storedModels.length > 0) {
+                provider.models = storedModels;
+            }
+        }
+
+        let newActiveModelId: string | null = null;
+        if (models.length > 0) {
+            const preferredModel = models.find(m => m.isLoaded) || models[0];
+            newActiveModelId = this.makeModelId(provider.name, preferredModel.id);
+            this.settings.selectedModelId = newActiveModelId;
+        }
+
+        await this.saveData();
+        return {
+            provider,
+            modelCount: storedModels.length,
+            activeModelId: newActiveModelId
+        };
     }
 
 

@@ -277,17 +277,37 @@ export class SettingsUIComponents {
             modelsList.appendChild(modelItem);
         });
 
-        // Add Model button
-        const addModelButton = new Setting(modelsSection)
-            .addButton(button =>
+        // Add Model / Refresh buttons
+        const isLMStudio = provider.name.toLowerCase() === 'lm studio';
+        const modelActions = new Setting(modelsSection);
+
+        if (isLMStudio) {
+            modelActions.addButton(button =>
                 button
-                    .setButtonText('Add Model')
-                    .setCta()
-                    .onClick(() => {
-                        handlers.handleAddModelClick(provider);
+                    .setButtonText('Refresh from LM Studio')
+                    .setTooltip('Re-query local LM Studio server to discover newly loaded models')
+                    .onClick(async () => {
+                        button.setDisabled(true);
+                        button.setButtonText('Refreshing...');
+                        try {
+                            await handlers.handleDetectLMStudio(provider.url);
+                        } finally {
+                            button.setDisabled(false);
+                            button.setButtonText('Refresh from LM Studio');
+                        }
                     })
             );
-        addModelButton.settingEl.addClass('yt-summarizer-settings__add-button');
+        }
+
+        modelActions.addButton(button =>
+            button
+                .setButtonText('Add Model')
+                .setCta()
+                .onClick(() => {
+                    handlers.handleAddModelClick(provider);
+                })
+        );
+        modelActions.settingEl.addClass('yt-summarizer-settings__add-button');
 
         container.appendChild(accordion);
         return accordion;

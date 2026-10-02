@@ -137,12 +137,13 @@ npm install
 
 ### 2. AI Provider Engine & Model Retirement
 
-* **Files**: `src/services/providers/`, `src/defaults.ts`
+* **Files**: `src/services/providers/`, `src/services/lmStudio.ts`, `src/defaults.ts`
 * **Provider Implementations**:
   - **Gemini**: `@google/generative-ai` with support for multimodal image OCR on thumbnails and topic tag generation.
   - **OpenAI**: `openai` SDK using `max_completion_tokens` (instead of deprecated `max_tokens`) to ensure compatibility with modern reasoning models (`o1`, `o3-mini`, `o4-mini`).
   - **Anthropic**: `@anthropic-ai/sdk` with system prompt separation.
-  - **Custom**: Any OpenAI-compatible endpoint with user-defined base URLs.
+  - **OpenAI-Compatible & Local Providers**: Any OpenAI-compatible server (LM Studio, Ollama, LocalAI, vLLM, OpenRouter, Groq). Base URLs are automatically normalized via [`normalizeOpenAIBaseUrl()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) (appending `/v1` if omitted and trimming trailing slashes). Empty API keys fall back to `'not-needed'` to satisfy client SDK constructors for local offline servers.
+  - **LM Studio Local Auto-Discovery**: [`detectLMStudioServer()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) queries `GET /v1/models` across dual-stack candidate addresses (`localhost:1234` and `127.0.0.1:1234`), parses loaded and available models, registers the provider, and updates the active model with zero manual configuration.
 * **Automatic Retirement Migration**:
   When providers deprecate or shut down models, lists in `src/defaults.ts` (`RETIRED_GEMINI_MODELS`, `RETIRED_OPENAI_MODELS`, `RETIRED_ANTHROPIC_MODELS`) automatically prune obsolete entries from user settings on startup and re-point the active selection to supported models.
 
@@ -229,6 +230,7 @@ npm test
 22. Missing companion note detection and missing description frontmatter upgrade.
 23. Folder parsing, folder filtering, and folder-scoped discovery.
 24. Summary prompt Media Extended checkbox and per-run override resolution.
+25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
 
 ---
 
@@ -417,6 +419,37 @@ This section preserves technical and design questions asked during development f
    - When the user submits the modal, the local boolean value is passed to the submission callback.
    - In [`summarizeVideo()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) and [`retrieveTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts), the method checks `createMediaExtendedOverride !== undefined ? createMediaExtendedOverride : this.settings.getCreateMediaExtendedNotes()`.
    - If an override is provided for that run, it controls whether `createMediaExtendedCompanionNote()` is called, while leaving the global configuration intact for future runs.
+
+---
+
+### Q11: How does the OpenAI-compatible Active Model architecture work, and how does the LM Studio auto-detection connect and discover local models?
+
+**Context**: User requested:
+- Documenting the OpenAI-compatible setting for Active Model to instruct users how to configure an OpenAI API compatible server instead of built-in frontier models.
+- Implementing an LM Studio setting that automatically detects a local LM Studio instance (`http://localhost:1234/v1` or `http://127.0.0.1:1234/v1`) and connects to it, discovering loaded models and setting the active model (similar to Cline).
+
+**Answer**:
+1. **OpenAI-Compatible Architecture & Active Model Selection**:
+   - The plugin abstracts all AI interactions behind the [`AIModelProvider`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/types.ts) interface.
+   - For custom providers, selecting Provider Type **`OpenAI`** instantiates [`OpenAIProvider`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/providers/openai.ts) with the custom `baseURL`.
+   - **Credential Fallback**: The official `openai` JS SDK throws an error during constructor initialization if `apiKey` is an empty string. Since local offline servers (LM Studio, Ollama, LocalAI, vLLM) do not require authentication by default, [`OpenAIProvider`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/providers/openai.ts) defaults to `'not-needed'` whenever the user provides an empty API key.
+   - **Base URL Normalization**: [`normalizeOpenAIBaseUrl()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) automatically prefixes missing protocols, strips trailing slashes, and appends `/v1` if omitted, preventing common user errors when entering server addresses.
+   - **Parameter Compatibility**: While modern OpenAI models use `max_completion_tokens`, some custom or legacy servers reject this parameter. [`OpenAIProvider`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/providers/openai.ts) catches parameter rejection errors and seamlessly falls back to `max_tokens`.
+   - **Connection Testing Resilience**: Many local servers implement `GET /v1/models` (`client.models.list()`) but return 404 on `GET /v1/models/{model}` (`client.models.retrieve()`). [`testConnection()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/providers/openai.ts) falls back to `client.models.list()` to avoid false negative connection failures.
+   - **Active Model Integration**: Once added, any model under a custom provider appears in the unified **Active Model** dropdown at the top of the AI Providers settings tab (`Provider / Display Name`) and is used for all summary tasks.
+
+2. **LM Studio One-Click Auto-Detection & Connection**:
+   - **Discovery Pipeline**: Implemented in [`detectLMStudioServer()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts).
+     - Tests the target URL with dual-stack candidate resolution (`localhost:1234` and `127.0.0.1:1234`) using Obsidian's `requestUrl` (bypassing Electron CORS restrictions) with `fetch` fallback.
+     - Fetches `GET /v1/models` and parses model entries via [`parseLMStudioModels()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts).
+     - Identifies loaded models (`state === 'loaded'`) and sorts them to the top of the candidate list.
+   - **Settings Synchronization**: Implemented in [`syncLMStudioProvider()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/settingsManager.ts).
+     - Automatically registers or updates the "LM Studio" provider in user settings (`type: 'openai'`, `apiKey: 'not-needed'`, `url: detectedUrl`).
+     - Populates all discovered models and sets the **Active Model** to the detected loaded model.
+   - **Multi-Point UI Access**:
+     - **Settings Tab**: A dedicated "LM Studio (Local LLM)" card with a **Detect & Connect** button.
+     - **Provider Accordion**: A **Refresh from LM Studio** button inside the LM Studio card to quickly re-sync newly loaded models after switching weights in LM Studio.
+     - **Command Palette**: A dedicated command `Detect and connect local LM Studio instance` for keyboard-driven local model switching.
 
 
 

@@ -2151,6 +2151,165 @@ assert.strictEqual(permanentSetting, false); // permanent setting untouched!
 
 console.log('✓ Summary prompt Media Extended checkbox override resolution passed');
 
+// Test 25: OpenAI-compatible URL normalization, LM Studio model parsing & provider sync
+console.log('Testing OpenAI-compatible URL normalization and LM Studio model parsing...');
+
+function testNormalizeOpenAIBaseUrl(rawUrl) {
+	let clean = (rawUrl || '').trim();
+	if (!clean) {
+		return 'http://localhost:1234/v1';
+	}
+	if (!/^https?:\/\//i.test(clean)) {
+		clean = `http://${clean}`;
+	}
+	clean = clean.replace(/\/+$/, '');
+	if (!/\/v\d+([a-z0-9_-]+)?$/i.test(clean)) {
+		clean = `${clean}/v1`;
+	}
+	return clean;
+}
+
+function testParseLMStudioModels(responseData) {
+	if (!responseData) return [];
+	const rawList = Array.isArray(responseData)
+		? responseData
+		: Array.isArray(responseData.data)
+			? responseData.data
+			: [];
+	const models = [];
+	for (const item of rawList) {
+		if (!item) continue;
+		const id = typeof item === 'string' ? item : item.id || item.name;
+		if (!id || typeof id !== 'string') continue;
+		const isLoaded = item.state === 'loaded' || item.loaded === true;
+		const displayName = item.displayName || item.name || id;
+		models.push({
+			id: id.trim(),
+			displayName: String(displayName).trim(),
+			isLoaded
+		});
+	}
+	models.sort((a, b) => {
+		if (a.isLoaded && !b.isLoaded) return -1;
+		if (!a.isLoaded && b.isLoaded) return 1;
+		return a.displayName.localeCompare(b.displayName);
+	});
+	return models;
+}
+
+function testSyncLMStudioProvider(settings, url, models) {
+	const normalizedUrl = testNormalizeOpenAIBaseUrl(url);
+	let provider = settings.providers.find((p) => p.name.toLowerCase() === 'lm studio');
+	const storedModels = models.map((m) => ({
+		name: m.id,
+		displayName: m.displayName || m.id,
+		pricing: 'Local LLM (LM Studio)'
+	}));
+
+	if (!provider) {
+		provider = {
+			name: 'LM Studio',
+			type: 'openai',
+			isBuiltIn: false,
+			apiKey: 'not-needed',
+			url: normalizedUrl,
+			models: storedModels
+		};
+		settings.providers.push(provider);
+	} else {
+		provider.url = normalizedUrl;
+		if (!provider.apiKey) {
+			provider.apiKey = 'not-needed';
+		}
+		provider.type = 'openai';
+		if (storedModels.length > 0) {
+			provider.models = storedModels;
+		}
+	}
+
+	let newActiveModelId = null;
+	if (models.length > 0) {
+		const preferredModel = models.find((m) => m.isLoaded) || models[0];
+		newActiveModelId = `${provider.name}:${preferredModel.id}`;
+		settings.selectedModelId = newActiveModelId;
+	}
+
+	return { provider, modelCount: storedModels.length, activeModelId: newActiveModelId };
+}
+
+// 25.1: URL normalization tests
+assert.strictEqual(testNormalizeOpenAIBaseUrl(''), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('localhost:1234'), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234'), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/'), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/v1'), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/v1/'), 'http://localhost:1234/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1');
+assert.strictEqual(testNormalizeOpenAIBaseUrl('https://api.groq.com/openai/v1/'), 'https://api.groq.com/openai/v1');
+
+// 25.2: Model parsing tests
+const mockLMStudioResp = {
+	object: 'list',
+	data: [
+		{ id: 'mistral-7b-instruct', state: 'unloaded' },
+		{ id: 'qwen2.5-coder-7b-instruct', state: 'loaded', type: 'llm' },
+		{ id: 'llama-3.2-3b-instruct', state: 'unloaded' }
+	]
+};
+const parsedModels = testParseLMStudioModels(mockLMStudioResp);
+assert.strictEqual(parsedModels.length, 3);
+// Loaded model must be sorted first
+assert.strictEqual(parsedModels[0].id, 'qwen2.5-coder-7b-instruct');
+assert.strictEqual(parsedModels[0].isLoaded, true);
+assert.strictEqual(parsedModels[1].id, 'llama-3.2-3b-instruct');
+assert.strictEqual(parsedModels[2].id, 'mistral-7b-instruct');
+
+// Standard OpenAI format without state
+const mockOpenAIList = {
+	data: [{ id: 'model-b' }, { id: 'model-a' }]
+};
+const parsedOpenAI = testParseLMStudioModels(mockOpenAIList);
+assert.strictEqual(parsedOpenAI.length, 2);
+assert.strictEqual(parsedOpenAI[0].id, 'model-a'); // sorted alphabetically when neither loaded
+assert.strictEqual(parsedOpenAI[1].id, 'model-b');
+
+// Empty and invalid handling
+assert.deepStrictEqual(testParseLMStudioModels(null), []);
+assert.deepStrictEqual(testParseLMStudioModels({ data: [] }), []);
+assert.deepStrictEqual(testParseLMStudioModels({ data: [{ id: '' }, null, 123] }), []);
+
+// 25.3: Sync LM Studio provider into settings
+const testSettings = {
+	providers: [
+		{ name: 'Gemini', type: 'gemini', models: [{ name: 'gemini-3.8-flash' }] }
+	],
+	selectedModelId: 'Gemini:gemini-3.8-flash'
+};
+
+// Initial sync adds "LM Studio" and sets active model to loaded model
+const syncResult = testSyncLMStudioProvider(testSettings, 'http://localhost:1234', parsedModels);
+assert.strictEqual(syncResult.modelCount, 3);
+assert.strictEqual(syncResult.activeModelId, 'LM Studio:qwen2.5-coder-7b-instruct');
+assert.strictEqual(testSettings.selectedModelId, 'LM Studio:qwen2.5-coder-7b-instruct');
+assert.strictEqual(testSettings.providers.length, 2);
+assert.strictEqual(testSettings.providers[1].name, 'LM Studio');
+assert.strictEqual(testSettings.providers[1].url, 'http://localhost:1234/v1');
+assert.strictEqual(testSettings.providers[1].apiKey, 'not-needed');
+
+// Re-syncing updates models without duplicating provider
+const updatedResp = {
+	data: [{ id: 'deepseek-r1-distill-qwen-7b', state: 'loaded' }]
+};
+const updatedModels = testParseLMStudioModels(updatedResp);
+const resyncResult = testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', updatedModels);
+assert.strictEqual(testSettings.providers.length, 2); // still 2 providers
+assert.strictEqual(resyncResult.modelCount, 1);
+assert.strictEqual(testSettings.providers[1].url, 'http://127.0.0.1:1234/v1');
+assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
+
+console.log('✓ OpenAI-compatible URL normalization and LM Studio model parsing passed');
+
 console.log('\nAll tests passed successfully!');
 
 
