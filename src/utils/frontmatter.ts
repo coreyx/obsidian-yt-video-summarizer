@@ -9,7 +9,13 @@ export interface FrontmatterData {
 	video_url: string;
 	thumbnail: string;
 	thumbnail_text: string;
+	description?: string;
 	tags?: string[];
+	playlist_title?: string;
+	playlist_url?: string;
+	playlist_id?: string;
+	playlist_index?: number;
+	playlist_count?: number;
 }
 
 export interface FrontmatterOptions {
@@ -29,9 +35,37 @@ export function buildFrontmatter(data: FrontmatterData): string {
 	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
 	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
 
+	if (data.playlist_title) {
+		lines.push(`playlist_title: ${JSON.stringify(data.playlist_title)}`);
+	}
+	if (data.playlist_url) {
+		lines.push(`playlist_url: ${JSON.stringify(data.playlist_url)}`);
+	}
+	if (data.playlist_id) {
+		lines.push(`playlist_id: ${JSON.stringify(data.playlist_id)}`);
+	}
+	if (typeof data.playlist_index === 'number') {
+		lines.push(`playlist_index: ${data.playlist_index}`);
+	}
+	if (typeof data.playlist_count === 'number') {
+		lines.push(`playlist_count: ${data.playlist_count}`);
+	}
+
+	if (data.description !== undefined && data.description !== null) {
+		if (data.description.trim()) {
+			lines.push('description: |-');
+			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+			for (const dLine of descLines) {
+				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+			}
+		} else {
+			lines.push('description: ""');
+		}
+	}
+
 	if (data.tags && data.tags.length > 0) {
 		lines.push('tags:');
-		for (const tag of data.tags) {
+		for (const tag of deduplicateTags(data.tags)) {
 			lines.push(`  - ${tag}`);
 		}
 	}
@@ -63,11 +97,49 @@ export function mergeFrontmatter(
 		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
 	};
 
+	if (data.playlist_title) {
+		targetKeys['playlist_title'] = `playlist_title: ${JSON.stringify(data.playlist_title)}`;
+	}
+	if (data.playlist_url) {
+		targetKeys['playlist_url'] = `playlist_url: ${JSON.stringify(data.playlist_url)}`;
+	}
+	if (data.playlist_id) {
+		targetKeys['playlist_id'] = `playlist_id: ${JSON.stringify(data.playlist_id)}`;
+	}
+	if (typeof data.playlist_index === 'number') {
+		targetKeys['playlist_index'] = `playlist_index: ${data.playlist_index}`;
+	}
+	if (typeof data.playlist_count === 'number') {
+		targetKeys['playlist_count'] = `playlist_count: ${data.playlist_count}`;
+	}
+
 	let inTagsBlock = false;
+	let inDescBlock = false;
 	const existingTags: string[] = [];
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+
+		if (inDescBlock) {
+			if (/^\s+/.test(line) || line.trim() === '') {
+				if (data.description !== undefined) {
+					continue;
+				}
+			} else {
+				inDescBlock = false;
+			}
+		}
+
+		if (inTagsBlock) {
+			const itemMatch = line.match(/^\s*-\s+(.*)$/);
+			if (itemMatch) {
+				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
+				continue;
+			} else if (line.trim().length > 0) {
+				inTagsBlock = false;
+			}
+		}
+
 		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
 
 		if (keyMatch) {
@@ -75,6 +147,7 @@ export function mergeFrontmatter(
 
 			if (key === 'tags') {
 				inTagsBlock = true;
+				inDescBlock = false;
 				updatedKeys.add('tags');
 				const inlineVal = keyMatch[2].trim();
 				if (inlineVal.startsWith('[') && inlineVal.endsWith(']')) {
@@ -92,20 +165,30 @@ export function mergeFrontmatter(
 				inTagsBlock = false;
 			}
 
+			if (key === 'description') {
+				updatedKeys.add('description');
+				if (data.description !== undefined) {
+					inDescBlock = true;
+					if (data.description.trim()) {
+						newLines.push('description: |-');
+						const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+						for (const dLine of descLines) {
+							newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+						}
+					} else {
+						newLines.push('description: ""');
+					}
+					continue;
+				} else {
+					newLines.push(line);
+					continue;
+				}
+			}
+
 			if (key in targetKeys) {
 				newLines.push(targetKeys[key]);
 				updatedKeys.add(key);
 				continue;
-			}
-		}
-
-		if (inTagsBlock) {
-			const itemMatch = line.match(/^\s*-\s+(.*)$/);
-			if (itemMatch) {
-				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
-				continue;
-			} else if (line.trim().length > 0) {
-				inTagsBlock = false;
 			}
 		}
 
@@ -119,20 +202,31 @@ export function mergeFrontmatter(
 		}
 	}
 
+	// Add description if it was provided and not in original frontmatter
+	if (data.description !== undefined && !updatedKeys.has('description')) {
+		if (data.description.trim()) {
+			newLines.push('description: |-');
+			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+			for (const dLine of descLines) {
+				newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+			}
+		} else {
+			newLines.push('description: ""');
+		}
+	}
+
 	// Handle tags
 	if (options?.excludeTags) {
 		// When excluding tags during upgrades, preserve any existing tags
 		if (existingTags.length > 0) {
 			newLines.push('tags:');
-			for (const tag of existingTags.map(sanitizeTag).filter(Boolean)) {
+			for (const tag of deduplicateTags(existingTags)) {
 				newLines.push(`  - ${tag}`);
 			}
 		}
 	} else {
-		// Normal mode: merge existing tags with new tags
-		const combinedTags = Array.from(
-			new Set([...existingTags, ...(data.tags || [])])
-		).map(sanitizeTag).filter(Boolean);
+		// Normal mode: merge existing tags with new tags and deduplicate
+		const combinedTags = deduplicateTags([...existingTags, ...(data.tags || [])]);
 
 		if (combinedTags.length > 0) {
 			newLines.push('tags:');
@@ -316,6 +410,53 @@ export function sanitizeTag(tag: string): string {
 }
 
 /**
+ * Sanitizes and deduplicates a list of tag candidates.
+ * Strips '#' and special characters, converts to lowercase kebab-case,
+ * and collapses duplicates (including case variations and hyphenated vs non-hyphenated variants).
+ */
+export function deduplicateTags(tags: string[]): string[] {
+	if (!tags || tags.length === 0) return [];
+
+	const sanitizedList: string[] = [];
+	for (const raw of tags) {
+		if (typeof raw !== 'string') continue;
+		const sanitized = sanitizeTag(raw);
+		if (sanitized && sanitized.length > 0) {
+			sanitizedList.push(sanitized);
+		}
+	}
+
+	// First pass: exact matches after sanitization
+	const seen = new Set<string>();
+	const uniqueTags: string[] = [];
+	for (const tag of sanitizedList) {
+		if (!seen.has(tag)) {
+			seen.add(tag);
+			uniqueTags.push(tag);
+		}
+	}
+
+	// Second pass: collapse tags that only differ by hyphens, e.g. "rick-astley" vs "rickastley"
+	// We prefer the version with hyphens/separators (e.g. "rick-astley") over run-together words ("rickastley")
+	const normalizedMap = new Map<string, string>();
+	for (const tag of uniqueTags) {
+		const key = tag.replace(/[\-\/]/g, '');
+		const existing = normalizedMap.get(key);
+		if (!existing) {
+			normalizedMap.set(key, tag);
+		} else {
+			const existingHyphenCount = (existing.match(/[\-\/]/g) || []).length;
+			const currentHyphenCount = (tag.match(/[\-\/]/g) || []).length;
+			if (currentHyphenCount > existingHyphenCount) {
+				normalizedMap.set(key, tag);
+			}
+		}
+	}
+
+	return Array.from(normalizedMap.values());
+}
+
+/**
  * Strips Obsidian [[wikilinks]] from terms in the "Technical terms" section,
  * keeping the terms themselves (e.g. - **[[Term]]**: ... becomes - **Term**: ...).
  */
@@ -404,5 +545,125 @@ export function formatTranscript(
 			return `- ${timestampPart} ${text}`;
 		})
 		.join('\n');
+}
+
+export interface MediaExtendedMetadata {
+	mxUid?: string;
+	videoId: string;
+	title: string;
+	description?: string;
+	duration?: number;
+	creator: string;
+	publishedAt?: string;
+	viewCount?: number;
+	likeCount?: number;
+	cover?: string;
+	aspectRatio?: string;
+}
+
+/**
+ * Generates a 24-character random lowercase alphanumeric UID matching Media Extended's format.
+ */
+export function generateMxUid(): string {
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	let id = '';
+	for (let i = 0; i < 24; i++) {
+		id += chars.charAt(Math.floor(Math.random() * chars.length));
+	}
+	return id;
+}
+
+/**
+ * Builds YAML frontmatter specifically formatted for the Media Extended Obsidian plugin.
+ */
+export function buildMediaExtendedFrontmatter(data: MediaExtendedMetadata): string {
+	const mxUid = data.mxUid || generateMxUid();
+	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
+	const cover = data.cover || `"[[mx-cover-youtube_${data.videoId}.jpg]]"`;
+	const aspectRatio = data.aspectRatio || '427 / 240';
+
+	const lines: string[] = ['---'];
+	lines.push(`mx-uid: ${mxUid}`);
+	lines.push(`video: ${videoUrl}`);
+	if (data.title.includes(':') || data.title.includes('"') || data.title.includes("'") || data.title.includes('#')) {
+		lines.push(`title: ${JSON.stringify(data.title)}`);
+	} else {
+		lines.push(`title: ${data.title}`);
+	}
+
+	if (data.description && data.description.trim()) {
+		lines.push('description: |-');
+		const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+		for (const dLine of descLines) {
+			lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+		}
+	} else {
+		lines.push('description: ""');
+	}
+
+	if (typeof data.duration === 'number') {
+		lines.push(`duration: ${Math.round(data.duration)}`);
+	}
+	lines.push(`creator: ${data.creator}`);
+	if (data.publishedAt) {
+		lines.push(`published_at: ${data.publishedAt}`);
+	}
+	if (typeof data.viewCount === 'number') {
+		lines.push(`view_count: ${data.viewCount}`);
+	}
+	if (typeof data.likeCount === 'number') {
+		lines.push(`like_count: ${data.likeCount}`);
+	}
+	lines.push(`cover: ${cover.startsWith('"') ? cover : `"${cover}"`}`);
+	lines.push(`aspect_ratio: ${aspectRatio}`);
+	lines.push('---');
+
+	return lines.join('\n');
+}
+
+/**
+ * Appends or merges a wikilink into the "# Related" section of a markdown document.
+ * If the section does not exist, it appends it to the end of the document.
+ */
+export function addRelatedLink(content: string, linkTarget: string): string {
+	const trimmed = content.trimEnd();
+	const wikilink = `[[${linkTarget}]]`;
+	const linkLine = `- ${wikilink}`;
+
+	if (trimmed.includes(wikilink)) {
+		return content;
+	}
+
+	const relatedHeaderRegex = /(^|\r?\n)(#{1,6}\s+Related[^\r\n]*)(\r?\n[\s\S]*?)?(?=(?:\r?\n#{1,6}\s+|$))/i;
+	const match = trimmed.match(relatedHeaderRegex);
+
+	if (match) {
+		const fullMatch = match[0];
+		const header = match[2];
+		const body = match[3] || '';
+		
+		const updatedBody = body.trimEnd() ? `${body.trimEnd()}\n${linkLine}` : `\n${linkLine}`;
+		const replacement = `${match[1]}${header}${updatedBody}`;
+		return trimmed.replace(fullMatch, () => replacement);
+	}
+
+	return `${trimmed}\n\n# Related\n${linkLine}\n`;
+}
+
+/**
+ * Builds the complete text for a Media Extended note, combining frontmatter,
+ * optional timestamped transcript, and the # Related link back to the original summary note.
+ */
+export function buildMediaExtendedNote(
+	data: MediaExtendedMetadata,
+	transcriptText?: string,
+	relatedNoteLink?: string
+): string {
+	const fm = buildMediaExtendedFrontmatter(data);
+	let body = transcriptText ? transcriptText.trim() : '';
+	if (relatedNoteLink) {
+		body = addRelatedLink(body, relatedNoteLink);
+	}
+	return `${fm}\n\n${body.trim()}\n`;
 }
 

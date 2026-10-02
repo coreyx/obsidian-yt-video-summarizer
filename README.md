@@ -13,13 +13,14 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
 -   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, etc.).
--   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, and `tags`.
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `description`, and `tags`.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Optionally archives the creator's complete video description, timestamps, and external links directly in the note body.
--   🏷️ **Semantic Topic & Hashtag Tagging**: Combines AI semantic analysis with hashtags found in the title and description to tag notes in YAML frontmatter or inline.
+-   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
 -   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
 -   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable YouTube timestamps and Media Extended links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`), with zero AI token cost.
+-   🎬 **Media Extended Companion Notes**: Automatically creates separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a configurable folder (defaults to `Media Library`) with bidirectional wikilinks in a `# Related` section.
 -   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
 -   ⚙️ **Fully Customizable**: Tweak prompts, tokens, temperature, and toggle individual metadata fields to fit your workflow.
 
@@ -127,15 +128,27 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Include Video Description**: Archives the complete YouTube video description, including external links, creator notes, and timestamps, under a `## Description` section in the note body.
 
+**Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
+
 **Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note. Disabled by default.
 
 **Link Transcript Timestamps to YouTube**: Formats transcript timestamps as clickable YouTube links that open the video directly at that exact second (e.g. `[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
 
 **Format Timestamps for Media Extended**: Formats transcript timestamp links with Media Extended fragments (`#t=mm:ss.ms`, e.g. `[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`) for seamless playback integration with the Media Extended plugin. Requires timestamp linking to be enabled. Enabled by default.
 
+**Create Media Extended Notes**: Automatically creates a separate companion note formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin whenever a YouTube video is ingested. Enabled by default.
+
+**Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
+
 **Generate Semantic Topic Tags**: Uses AI semantic analysis of the generated summary to produce relevant topic tags.
 
 **Detect Tags in Video Title and Description**: Extracts creator hashtags (`#tag`) directly from the YouTube title and description and adds them to your tags.
+
+**Extract Tags from YouTube Data API**: Extracts the complete set of creator video tags/keywords from YouTube metadata / Data API and applies them as Obsidian tags. Enabled by default.
+
+**YouTube Data API Key (Optional)**: Optional Google Cloud YouTube Data API v3 key. When omitted, tags are extracted automatically from YouTube player metadata with no key required.
+
+**Discover Playlist from Creator**: Automatically discovers if the video belongs to a creator playlist (via URL parameters, video description links, or YouTube Data API channel lookup) and records playlist metadata (`playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, `playlist_count`) in the YAML frontmatter and note body. Enabled by default.
 
 **Add Tags to Frontmatter**: Inserts tags into the YAML frontmatter `tags:` property.
 
@@ -202,6 +215,13 @@ channel_url: "https://www.youtube.com/@channel"
 video_url: "https://www.youtube.com/watch?v=VIDEO_ID"
 thumbnail: "https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg"
 thumbnail_text: "TEXT EXTRACTED FROM THUMBNAIL"
+playlist_title: "Series Playlist Title"
+playlist_url: "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+playlist_id: "PLAYLIST_ID"
+playlist_index: 3
+playlist_count: 12
+description: |-
+  Full video description and timestamps...
 tags:
   - topic-one
   - topic-two
@@ -209,7 +229,7 @@ tags:
 
 ![Video thumbnail](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)
 
-👤 [Channel Name](channel-url)  🔗 [Watch video](video-url)
+👤 [Channel Name](channel-url)  🔗 [Watch video](video-url)  📋 [Playlist: Series Playlist Title (3/12)](playlist-url)
 
 ## Summary
 [Summary of the video content...]
@@ -226,6 +246,36 @@ tags:
 
 ## Description
 [Original YouTube video description and external links...]
+
+# Related
+- [[Media Library/Video Title]]
+```
+
+### Media Extended Companion Note Format
+
+When **Create Media Extended notes** is enabled (on by default), a companion note is automatically generated in `Media Library/` (configurable) with bidirectional linking:
+
+```markdown
+---
+mx-uid: vcxchy79gecb4s69v25oxq9s
+video: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+title: "Video Title"
+description: |-
+  Complete video description...
+duration: 214
+creator: Channel Name
+published_at: 2009-10-25
+view_count: 1818745023
+like_count: 19404514
+cover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"
+aspect_ratio: 427 / 240
+---
+
+- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) Transcript line with Media Extended playback link
+- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Next transcript line
+
+# Related
+- [[Original Summary Note]]
 ```
 
 The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, and the video description section can each be toggled on or off in the plugin settings.

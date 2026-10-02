@@ -18,6 +18,12 @@ import {
     DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
     DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
     DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
+    DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS,
+    DEFAULT_YOUTUBE_API_KEY,
+    DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
+    DEFAULT_MEDIA_EXTENDED_FOLDER,
+    DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
+    DEFAULT_DISCOVER_PLAYLIST,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
@@ -49,6 +55,12 @@ export class SettingsManager implements PluginSettings {
             dumpTranscriptInSummary: DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
             linkTranscriptTimestamps: DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
             mediaExtendedTimestamps: DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
+            extractYouTubeDataApiTags: DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS,
+            youtubeApiKey: DEFAULT_YOUTUBE_API_KEY,
+            createMediaExtendedNotes: DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
+            mediaExtendedFolder: DEFAULT_MEDIA_EXTENDED_FOLDER,
+            addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
+            discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
         };
     }
 
@@ -83,6 +95,12 @@ export class SettingsManager implements PluginSettings {
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
                 linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
                 mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
+                extractYouTubeDataApiTags: rawSettings.extractYouTubeDataApiTags ?? this.settings.extractYouTubeDataApiTags,
+                youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
+                createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
+                mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
+                addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
+                discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
             };
 
             // If a top-level/legacy key was supplied and Gemini provider has no key yet, populate it
@@ -119,6 +137,12 @@ export class SettingsManager implements PluginSettings {
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
                 linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
                 mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
+                extractYouTubeDataApiTags: rawSettings.extractYouTubeDataApiTags ?? this.settings.extractYouTubeDataApiTags,
+                youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
+                createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
+                mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
+                addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
+                discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
             };
 
             await this.saveData();
@@ -434,6 +458,60 @@ export class SettingsManager implements PluginSettings {
 
     updateMediaExtendedTimestamps(value: boolean): void {
         this.settings.mediaExtendedTimestamps = value;
+        this.saveData();
+    }
+
+    getExtractYouTubeDataApiTags(): boolean {
+        return this.settings.extractYouTubeDataApiTags ?? DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS;
+    }
+
+    updateExtractYouTubeDataApiTags(value: boolean): void {
+        this.settings.extractYouTubeDataApiTags = value;
+        this.saveData();
+    }
+
+    getYoutubeApiKey(): string {
+        return this.settings.youtubeApiKey ?? DEFAULT_YOUTUBE_API_KEY;
+    }
+
+    updateYoutubeApiKey(value: string): void {
+        this.settings.youtubeApiKey = value;
+        this.saveData();
+    }
+
+    getCreateMediaExtendedNotes(): boolean {
+        return this.settings.createMediaExtendedNotes ?? DEFAULT_CREATE_MEDIA_EXTENDED_NOTES;
+    }
+
+    updateCreateMediaExtendedNotes(value: boolean): void {
+        this.settings.createMediaExtendedNotes = value;
+        this.saveData();
+    }
+
+    getMediaExtendedFolder(): string {
+        return this.settings.mediaExtendedFolder ?? DEFAULT_MEDIA_EXTENDED_FOLDER;
+    }
+
+    updateMediaExtendedFolder(value: string): void {
+        this.settings.mediaExtendedFolder = value;
+        this.saveData();
+    }
+
+    getAddDescriptionToFrontmatter(): boolean {
+        return this.settings.addDescriptionToFrontmatter ?? DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER;
+    }
+
+    updateAddDescriptionToFrontmatter(value: boolean): void {
+        this.settings.addDescriptionToFrontmatter = value;
+        this.saveData();
+    }
+
+    getDiscoverPlaylist(): boolean {
+        return this.settings.discoverPlaylist ?? DEFAULT_DISCOVER_PLAYLIST;
+    }
+
+    updateDiscoverPlaylist(value: boolean): void {
+        this.settings.discoverPlaylist = value;
         this.saveData();
     }
 

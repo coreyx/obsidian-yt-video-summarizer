@@ -1,32 +1,47 @@
-# Release Notes - YouTube Video Summarizer v1.7.0
+# Release Notes - YouTube Video Summarizer v1.8.0
 
 ## Highlights
 
-YouTube Video Summarizer v1.7.0 brings powerful new transcript retrieval capabilities and native media player integration:
+YouTube Video Summarizer v1.8.0 introduces creator playlist discovery, YouTube Data API tag ingestion, dedicated Media Extended companion notes with bidirectional linking, and frontmatter video descriptions:
 
-* 📜 **Direct Video Transcript Retrieval**: New dedicated `Get YouTube video transcript` command in the Command Palette extracts full video transcripts with metadata, thumbnail, tags, and frontmatter without using AI or consuming API tokens.
-* 📑 **Transcript Dump in Summary Mode**: Optional setting (`Include transcript in summary note`) to append the full transcript under a `## Transcript` section when generating AI summaries (disabled by default).
-* ⏱️ **Clickable YouTube Timestamp Links**: Timestamps are formatted as clickable links that jump directly to that point in the YouTube video (`[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
-* 🎬 **Media Extended Player Integration**: Seamless compatibility with the [Media Extended](https://github.com/aidenlx/media-extended) plugin using fragment timestamps (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`). Clicking timestamps directly seeks within Obsidian's embedded Media Extended video player. Enabled by default.
+* 📋 **Creator Playlist Discovery**: Automatically detects whether an ingested video belongs to a creator playlist using URL parameters (`&list=`), video description links, or channel Data API lookups. Injects playlist title, URL, ID, index position, and item count into frontmatter and adds an interactive badge in the note header (`📋 [Playlist: Title (X/Y)](url)`).
+* 🏷️ **YouTube Data API Tags & Smart Deduplication**: Ingests complete video tags/keywords from the YouTube Data API v3 and metadata. Intelligently deduplicates tags across title, description, and API metadata, reconciling kebab-case, case differences, and run-together hashtags.
+* 🎬 **Media Extended Companion Notes**: Automatically generates separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a dedicated vault folder (defaults to `Media Library/`), complete with `mx-uid`, cover embed, duration, and timestamped transcripts.
+* 🔗 **Bidirectional Companion Note Linking**: Automatically links AI summary notes and Media Extended companion notes to each other using wikilinks in a `# Related` section.
+* 📝 **Video Description in Frontmatter**: Ingests full YouTube video descriptions into YAML frontmatter (`description: |-`) by default with a configurable toggle.
 
 ---
 
-## What's Changed in v1.7.0
+## What's Changed in v1.8.0
 
-### 📜 Direct Transcript Retrieval (Zero AI Tokens)
-* Retrieve complete transcripts directly via the Command Palette command **Get YouTube video transcript**.
-* Works by prompting for a YouTube URL, using an active note URL, or selecting a URL in text.
-* Inserts complete metadata: note title, thumbnail embed, creator links, tags, and YAML frontmatter.
+### 📋 Creator Playlist Discovery
+* Discovers series/playlist metadata automatically from:
+  1. Input video URLs containing `&list=PLAYLIST_ID` and `&index=N` (ignoring system mixes like `RD...`, `WL`, and `LL`).
+  2. Series playlist links posted by creators in the video description.
+  3. YouTube Data API queries for the channel's playlists and video membership positions.
+* Injects structured playlist metadata into YAML frontmatter:
+  - `playlist_title`: Title of the series/playlist.
+  - `playlist_url`: Direct URL to the playlist.
+  - `playlist_id`: YouTube playlist identifier.
+  - `playlist_index`: 1-based index position of this video in the playlist.
+  - `playlist_count`: Total number of videos in the playlist.
+* Renders a clickable playlist badge in the note body header:
+  `👤 [Author](authorUrl)  🔗 [Watch video](videoUrl)  📋 [Playlist: Series Title (3/12)](playlistUrl)`
+* Fully supported in **Summarize video**, **Get transcript**, and batch **Upgrade previous notes**.
 
-### 📑 Include Transcript in Summary Notes
-* You can now choose to archive the raw video transcript alongside the AI summary note.
-* Located under **Settings > Include transcript in summary note** (disabled by default).
+### 🏷️ YouTube Data API Tags & Smart Deduplication
+* Ingests full creator tags/keywords from YouTube Data API v3 and InnerTube metadata into Obsidian tags.
+* Enhanced tag deduplication collapses duplicate tags across title, description, and Data API, normalizing `#RickAstley` to `rick-astley` without redundant tags.
+* Configurable setting: **Extract tags from YouTube Data API** and optional **YouTube Data API key**.
 
-### 🎬 Media Extended Plugin Playback Links
-* Timestamp links are generated with exact millisecond playback fragments matching Media Extended's format:
-  `[01:05](https://www.youtube.com/watch?v=VIDEO_ID&t=66#t=01:05.61)`
-* Works with videos of any length (both `mm:ss` and `hh:mm:ss`).
-* Fully configurable in plugin settings via **Link transcript timestamps to YouTube** and **Format timestamps for Media Extended**.
+### 🎬 Media Extended Companion Notes & Bidirectional Linking
+* When **Create Media Extended notes** is enabled (on by default), ingesting a video creates a companion note in `Media Library/` (configurable).
+* Includes Media Extended frontmatter: `mx-uid`, `video`, `title`, `description`, `duration`, `creator`, `published_at`, `view_count`, `like_count`, `cover`, and `aspect_ratio`.
+* Automatically establishes two-way wikilinks between the AI summary note and the Media Extended note under `# Related`.
+
+### 📝 Video Description in YAML Frontmatter
+* Full YouTube video description is saved in frontmatter under `description: |-`.
+* Configurable in plugin settings under **Add description to frontmatter** (enabled by default).
 
 ---
 

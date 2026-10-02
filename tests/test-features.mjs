@@ -1027,7 +1027,842 @@ assert.strictEqual(summaryWithDump.includes('## Transcript'), true);
 assert.strictEqual(summaryWithDump.includes('- [01:05]('), true);
 console.log('✓ Transcript formatting and timestamp links passed');
 
+// Test 18: YouTube Data API and metadata tags extraction
+console.log('Testing YouTube Data API and metadata tags extraction...');
+
+function extractTagsFromDataApiResponse(jsonText) {
+	try {
+		const data = JSON.parse(jsonText);
+		const tags = data.items?.[0]?.snippet?.tags;
+		if (Array.isArray(tags)) {
+			return tags.filter((t) => typeof t === 'string' && t.trim().length > 0);
+		}
+	} catch {
+		// ignore
+	}
+	return [];
+}
+
+function extractTagsFromPlayerDataKeywords(playerData) {
+	if (Array.isArray(playerData?.videoDetails?.keywords)) {
+		return playerData.videoDetails.keywords.filter(
+			(k) => typeof k === 'string' && k.trim().length > 0
+		);
+	}
+	return [];
+}
+
+function extractTagsFromHtmlFallback(html) {
+	const jsonMatch = html.match(/"keywords":\s*(\[[^\]]+\])/);
+	if (jsonMatch) {
+		try {
+			const parsed = JSON.parse(jsonMatch[1]);
+			if (Array.isArray(parsed)) {
+				return parsed.filter((k) => typeof k === 'string' && k.trim().length > 0);
+			}
+		} catch {
+			// ignore
+		}
+	}
+	const metaMatch = html.match(/<meta\s+name="keywords"\s+content="([^"]+)"/i);
+	if (metaMatch) {
+		return metaMatch[1].split(',').map((t) => t.trim()).filter(Boolean);
+	}
+	return [];
+}
+
+function mergeAllVideoTags(transcriptTitle, transcriptDesc, transcriptTags, topicTags, extractYtTags, detectHashtags) {
+	const detectedTags = detectHashtags
+		? Array.from(new Set([
+				...extractTagsFromText(transcriptTitle),
+				...extractTagsFromText(transcriptDesc || ''),
+		  ]))
+		: [];
+
+	const ytDataApiTags = (extractYtTags && transcriptTags)
+		? transcriptTags
+		: [];
+
+	return Array.from(
+		new Set(
+			[...detectedTags, ...ytDataApiTags, ...(topicTags || [])]
+				.map(sanitizeTag)
+				.filter(Boolean)
+		)
+	);
+}
+
+// Case 1: Parsing Data API v3 JSON response
+const mockDataApiResponse = JSON.stringify({
+	items: [{
+		id: 'dQw4w9WgXcQ',
+		snippet: {
+			title: 'Never Gonna Give You Up',
+			tags: ['Rick Astley', 'Never Gonna Give You Up', '80s Music', 'Rickroll']
+		}
+	}]
+});
+const parsedApiTags = extractTagsFromDataApiResponse(mockDataApiResponse);
+assert.deepStrictEqual(parsedApiTags, ['Rick Astley', 'Never Gonna Give You Up', '80s Music', 'Rickroll']);
+
+// Case 2: Parsing InnerTube player data keywords
+const mockPlayerData = {
+	videoDetails: {
+		keywords: ['Obsidian', 'Note Taking', 'PKM', 'Productivity Tools']
+	}
+};
+const parsedKeywords = extractTagsFromPlayerDataKeywords(mockPlayerData);
+assert.deepStrictEqual(parsedKeywords, ['Obsidian', 'Note Taking', 'PKM', 'Productivity Tools']);
+
+// Case 3: Parsing HTML fallback (JSON or meta tag)
+const mockHtmlWithJson = '<html><head><script>var ytInitialPlayerResponse = {"videoDetails":{"keywords":["Markdown","Knowledge Base"]}};</script></head></html>';
+assert.deepStrictEqual(extractTagsFromHtmlFallback(mockHtmlWithJson), ['Markdown', 'Knowledge Base']);
+
+const mockHtmlWithMeta = '<html><head><meta name="keywords" content="Zettelkasten, Second Brain, Workflow"></head></html>';
+assert.deepStrictEqual(extractTagsFromHtmlFallback(mockHtmlWithMeta), ['Zettelkasten', 'Second Brain', 'Workflow']);
+
+// Case 4: Merging with title/description hashtags and topic tags (on by default)
+const sampleTitle = 'Mastering Obsidian in 2026 #Obsidian #Productivity';
+const sampleDesc = 'Here are my top tips! Check out #SecondBrain and #PKM.\nSubscribe!';
+const sampleYtTags = ['Obsidian App', 'Note Taking', 'Second Brain', 'PKM', 'Knowledge Management'];
+const sampleTopics = ['digital-notes', 'productivity'];
+
+const mergedEnabled = mergeAllVideoTags(sampleTitle, sampleDesc, sampleYtTags, sampleTopics, true, true);
+// Should contain hashtags from title/desc
+assert.strictEqual(mergedEnabled.includes('obsidian'), true);
+assert.strictEqual(mergedEnabled.includes('productivity'), true);
+assert.strictEqual(mergedEnabled.includes('secondbrain'), true);
+assert.strictEqual(mergedEnabled.includes('pkm'), true);
+// Should contain YouTube Data API tags sanitized
+assert.strictEqual(mergedEnabled.includes('obsidian-app'), true);
+assert.strictEqual(mergedEnabled.includes('note-taking'), true);
+assert.strictEqual(mergedEnabled.includes('second-brain'), true);
+assert.strictEqual(mergedEnabled.includes('knowledge-management'), true);
+// Should contain topic tags
+assert.strictEqual(mergedEnabled.includes('digital-notes'), true);
+
+// Case 5: When YouTube Data API tags toggle is disabled
+const mergedDisabled = mergeAllVideoTags(sampleTitle, sampleDesc, sampleYtTags, sampleTopics, false, true);
+// Title/desc and topic tags should be present
+assert.strictEqual(mergedDisabled.includes('obsidian'), true);
+assert.strictEqual(mergedDisabled.includes('secondbrain'), true);
+assert.strictEqual(mergedDisabled.includes('digital-notes'), true);
+// YouTube Data API tags should NOT be present
+assert.strictEqual(mergedDisabled.includes('obsidian-app'), false);
+assert.strictEqual(mergedDisabled.includes('note-taking'), false);
+assert.strictEqual(mergedDisabled.includes('knowledge-management'), false);
+
+// Case 6: De-duplication test
+const tagsWithDuplicates = mergeAllVideoTags('Video #AI', 'More #machine-learning', ['AI', 'Machine Learning', 'ai'], ['AI'], true, true);
+assert.deepStrictEqual(tagsWithDuplicates, ['ai', 'machine-learning']);
+
+console.log('✓ YouTube Data API and metadata tags extraction passed');
+
+// Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
+console.log('Testing Media Extended companion notes and bidirectional linking...');
+
+function generateMxUidHelper() {
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	let id = '';
+	for (let i = 0; i < 24; i++) {
+		id += chars.charAt(Math.floor(Math.random() * chars.length));
+	}
+	return id;
+}
+
+function buildMediaExtendedFrontmatterHelper(data) {
+	const mxUid = data.mxUid || generateMxUidHelper();
+	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
+	const cover = data.cover || `"[[mx-cover-youtube_${data.videoId}.jpg]]"`;
+	const aspectRatio = data.aspectRatio || '427 / 240';
+
+	const lines = ['---'];
+	lines.push(`mx-uid: ${mxUid}`);
+	lines.push(`video: ${videoUrl}`);
+	if (data.title.includes(':') || data.title.includes('"') || data.title.includes("'") || data.title.includes('#')) {
+		lines.push(`title: ${JSON.stringify(data.title)}`);
+	} else {
+		lines.push(`title: ${data.title}`);
+	}
+
+	if (data.description && data.description.trim()) {
+		lines.push('description: |-');
+		const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+		for (const dLine of descLines) {
+			lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+		}
+	} else {
+		lines.push('description: ""');
+	}
+
+	if (typeof data.duration === 'number') {
+		lines.push(`duration: ${Math.round(data.duration)}`);
+	}
+	lines.push(`creator: ${data.creator}`);
+	if (data.publishedAt) {
+		lines.push(`published_at: ${data.publishedAt}`);
+	}
+	if (typeof data.viewCount === 'number') {
+		lines.push(`view_count: ${data.viewCount}`);
+	}
+	if (typeof data.likeCount === 'number') {
+		lines.push(`like_count: ${data.likeCount}`);
+	}
+	lines.push(`cover: ${cover.startsWith('"') ? cover : `"${cover}"`}`);
+	lines.push(`aspect_ratio: ${aspectRatio}`);
+	lines.push('---');
+
+	return lines.join('\n');
+}
+
+function addRelatedLinkHelper(content, linkTarget) {
+	const trimmed = content.trimEnd();
+	const wikilink = `[[${linkTarget}]]`;
+	const linkLine = `- ${wikilink}`;
+
+	if (trimmed.includes(wikilink)) {
+		return content;
+	}
+
+	const relatedHeaderRegex = /(^|\r?\n)(#{1,6}\s+Related[^\r\n]*)(\r?\n[\s\S]*?)?(?=(?:\r?\n#{1,6}\s+|$))/i;
+	const match = trimmed.match(relatedHeaderRegex);
+
+	if (match) {
+		const fullMatch = match[0];
+		const header = match[2];
+		const body = match[3] || '';
+		
+		const updatedBody = body.trimEnd() ? `${body.trimEnd()}\n${linkLine}` : `\n${linkLine}`;
+		const replacement = `${match[1]}${header}${updatedBody}`;
+		return trimmed.replace(fullMatch, () => replacement);
+	}
+
+	return `${trimmed}\n\n# Related\n${linkLine}\n`;
+}
+
+function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink) {
+	const fm = buildMediaExtendedFrontmatterHelper(data);
+	let body = transcriptText ? transcriptText.trim() : '';
+	if (relatedNoteLink) {
+		body = addRelatedLinkHelper(body, relatedNoteLink);
+	}
+	return `${fm}\n\n${body.trim()}\n`;
+}
+
+// Case 1: generateMxUid test
+const uid1 = generateMxUidHelper();
+const uid2 = generateMxUidHelper();
+assert.strictEqual(uid1.length, 24);
+assert.match(uid1, /^[a-z0-9]{24}$/);
+assert.notStrictEqual(uid1, uid2);
+
+// Case 2: Matching sample frontmatter format
+const sampleRickAstleyData = {
+	mxUid: 'vcxchy79gecb4s69v25oxq9s',
+	videoId: 'dQw4w9WgXcQ',
+	title: 'Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)',
+	description: 'The official video for “Never Gonna Give You Up” by Rick Astley.\n\nNever: The Autobiography 📚 OUT NOW!',
+	duration: 214,
+	creator: 'Rick Astley',
+	publishedAt: '2009-10-25',
+	viewCount: 1818745023,
+	likeCount: 19404514,
+	cover: '[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]',
+	aspectRatio: '427 / 240',
+};
+
+const sampleFm = buildMediaExtendedFrontmatterHelper(sampleRickAstleyData);
+assert(sampleFm.includes('mx-uid: vcxchy79gecb4s69v25oxq9s'));
+assert(sampleFm.includes('video: https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+assert(sampleFm.includes('title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)'));
+assert(sampleFm.includes('description: |-\n  The official video for “Never Gonna Give You Up” by Rick Astley.\n\n  Never: The Autobiography 📚 OUT NOW!'));
+assert(sampleFm.includes('duration: 214'));
+assert(sampleFm.includes('creator: Rick Astley'));
+assert(sampleFm.includes('published_at: 2009-10-25'));
+assert(sampleFm.includes('view_count: 1818745023'));
+assert(sampleFm.includes('like_count: 19404514'));
+assert(sampleFm.includes('cover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"'));
+assert(sampleFm.includes('aspect_ratio: 427 / 240'));
+
+// Case 3: Title with special characters is properly quoted
+const specialTitleData = {
+	videoId: 'xyz789',
+	title: 'Guide: How to use Obsidian with AI',
+	creator: 'Tech Channel',
+};
+const specialFm = buildMediaExtendedFrontmatterHelper(specialTitleData);
+assert(specialFm.includes('title: "Guide: How to use Obsidian with AI"'));
+
+// Case 4: addRelatedLink helper when no # Related section exists
+const noteWithoutRelated = '# Summary\n\nThis is a summary of the video.';
+const linkedNote = addRelatedLinkHelper(noteWithoutRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
+assert(linkedNote.includes('# Related\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
+
+// Case 5: addRelatedLink helper when # Related already exists
+const noteWithRelated = '# Summary\n\nNotes.\n\n# Related\n- [[Existing Link]]';
+const linkedNote2 = addRelatedLinkHelper(noteWithRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
+assert(linkedNote2.includes('# Related\n- [[Existing Link]]\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
+
+// Case 6: addRelatedLink helper does not duplicate links
+const linkedNote3 = addRelatedLinkHelper(linkedNote2, 'Media Library/Rick Astley - Never Gonna Give You Up');
+assert.strictEqual(linkedNote2, linkedNote3);
+
+// Case 7: addRelatedLink helper handles note names with dollar signs ($100, $$)
+const dollarLinked = addRelatedLinkHelper('# Summary', 'Media Library/$100 AI Budget');
+assert(dollarLinked.includes('- [[Media Library/$100 AI Budget]]'));
+
+// Case 8: buildMediaExtendedNote helper complete note creation
+const sampleLines = [
+	{ text: 'First line', duration: 2, offset: 65610 },
+	{ text: 'Second line', duration: 3, offset: 122650 }
+];
+const formattedSampleLines = formatTranscriptHelper(sampleLines, 'dQw4w9WgXcQ', { linkTimestamps: true, mediaExtended: true });
+const fullMediaExtendedNote = buildMediaExtendedNoteHelper(
+	sampleRickAstleyData,
+	formattedSampleLines,
+	'Rick Astley - Never Gonna Give You Up'
+);
+assert(fullMediaExtendedNote.startsWith('---\nmx-uid: vcxchy79gecb4s69v25oxq9s'));
+assert(fullMediaExtendedNote.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First line'));
+assert(fullMediaExtendedNote.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second line'));
+assert(fullMediaExtendedNote.includes('# Related\n- [[Rick Astley - Never Gonna Give You Up]]'));
+
+// Case 9: Bidirectional link simulation
+// Summary note links to Media Library/Title
+const summaryBody = '# Summary\n\nKey takeaways from the video.';
+const summaryWithRelated = addRelatedLinkHelper(summaryBody, 'Media Library/Rick Astley - Never Gonna Give You Up');
+assert(summaryWithRelated.includes('- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
+
+// Media Extended companion note links back to original summary note
+assert(fullMediaExtendedNote.includes('- [[Rick Astley - Never Gonna Give You Up]]'));
+
+console.log('✓ Media Extended companion notes and bidirectional linking passed');
+
+// Test 20: YouTube description in frontmatter, Data API tags injection, and tag deduplication
+console.log('Testing YouTube description in frontmatter and tag deduplication...');
+
+function deduplicateTagsHelper(tags) {
+	if (!tags || tags.length === 0) return [];
+
+	const sanitizedList = [];
+	for (const raw of tags) {
+		if (typeof raw !== 'string') continue;
+		const sanitized = sanitizeTag(raw);
+		if (sanitized && sanitized.length > 0) {
+			sanitizedList.push(sanitized);
+		}
+	}
+
+	const seen = new Set();
+	const uniqueTags = [];
+	for (const tag of sanitizedList) {
+		if (!seen.has(tag)) {
+			seen.add(tag);
+			uniqueTags.push(tag);
+		}
+	}
+
+	const normalizedMap = new Map();
+	for (const tag of uniqueTags) {
+		const key = tag.replace(/[\-\/]/g, '');
+		const existing = normalizedMap.get(key);
+		if (!existing) {
+			normalizedMap.set(key, tag);
+		} else {
+			const existingHyphenCount = (existing.match(/[\-\/]/g) || []).length;
+			const currentHyphenCount = (tag.match(/[\-\/]/g) || []).length;
+			if (currentHyphenCount > existingHyphenCount) {
+				normalizedMap.set(key, tag);
+			}
+		}
+	}
+
+	return Array.from(normalizedMap.values());
+}
+
+function buildFrontmatterWithDesc(data) {
+	const lines = ['---'];
+	lines.push(`title: ${JSON.stringify(data.title)}`);
+	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
+	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
+	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
+	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
+	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
+	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
+
+	if (data.description !== undefined && data.description !== null) {
+		if (data.description.trim()) {
+			lines.push('description: |-');
+			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+			for (const dLine of descLines) {
+				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+			}
+		} else {
+			lines.push('description: ""');
+		}
+	}
+
+	if (data.tags && data.tags.length > 0) {
+		lines.push('tags:');
+		for (const tag of deduplicateTagsHelper(data.tags)) {
+			lines.push(`  - ${tag}`);
+		}
+	}
+
+	lines.push('---');
+	return lines.join('\n');
+}
+
+function mergeFrontmatterWithDesc(rawYaml, data, options) {
+	const lines = rawYaml.split(/\r?\n/);
+	const updatedKeys = new Set();
+	const newLines = [];
+
+	const targetKeys = {
+		title: `title: ${JSON.stringify(data.title)}`,
+		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
+		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
+		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
+		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
+		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
+		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
+	};
+
+	let inTagsBlock = false;
+	let inDescBlock = false;
+	const existingTags = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
+		if (inDescBlock) {
+			if (/^\s+/.test(line) || line.trim() === '') {
+				if (data.description !== undefined) {
+					continue;
+				}
+			} else {
+				inDescBlock = false;
+			}
+		}
+
+		if (inTagsBlock) {
+			const itemMatch = line.match(/^\s*-\s+(.*)$/);
+			if (itemMatch) {
+				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
+				continue;
+			} else if (line.trim().length > 0) {
+				inTagsBlock = false;
+			}
+		}
+
+		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
+
+		if (keyMatch) {
+			const key = keyMatch[1];
+
+			if (key === 'tags') {
+				inTagsBlock = true;
+				inDescBlock = false;
+				updatedKeys.add('tags');
+				const inlineVal = keyMatch[2].trim();
+				if (inlineVal.startsWith('[') && inlineVal.endsWith(']')) {
+					const parsed = inlineVal
+						.slice(1, -1)
+						.split(',')
+						.map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+						.filter(Boolean);
+					existingTags.push(...parsed);
+				} else if (inlineVal) {
+					existingTags.push(inlineVal.replace(/^['"]|['"]$/g, '').trim());
+				}
+				continue;
+			} else {
+				inTagsBlock = false;
+			}
+
+			if (key === 'description') {
+				updatedKeys.add('description');
+				if (data.description !== undefined) {
+					inDescBlock = true;
+					if (data.description.trim()) {
+						newLines.push('description: |-');
+						const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+						for (const dLine of descLines) {
+							newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+						}
+					} else {
+						newLines.push('description: ""');
+					}
+					continue;
+				} else {
+					newLines.push(line);
+					continue;
+				}
+			}
+
+			if (key in targetKeys) {
+				newLines.push(targetKeys[key]);
+				updatedKeys.add(key);
+				continue;
+			}
+		}
+
+		newLines.push(line);
+	}
+
+	for (const [key, line] of Object.entries(targetKeys)) {
+		if (!updatedKeys.has(key)) {
+			newLines.push(line);
+		}
+	}
+
+	if (data.description !== undefined && !updatedKeys.has('description')) {
+		if (data.description.trim()) {
+			newLines.push('description: |-');
+			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+			for (const dLine of descLines) {
+				newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+			}
+		} else {
+			newLines.push('description: ""');
+		}
+	}
+
+	if (options?.excludeTags) {
+		if (existingTags.length > 0) {
+			newLines.push('tags:');
+			for (const tag of deduplicateTagsHelper(existingTags)) {
+				newLines.push(`  - ${tag}`);
+			}
+		}
+	} else {
+		const combinedTags = deduplicateTagsHelper([...existingTags, ...(data.tags || [])]);
+		if (combinedTags.length > 0) {
+			newLines.push('tags:');
+			for (const tag of combinedTags) {
+				newLines.push(`  - ${tag}`);
+			}
+		}
+	}
+
+	return newLines.join('\n').trim();
+}
+
+// Case 1: Deduplication of tags between title, description, and Data API
+const test20TitleTags = extractTagsFromText('Deep Dive: #Obsidian & #Productivity for Developers #AI');
+const test20DescTags = extractTagsFromText('Check out #productivity, #Obsidian, and #machine-learning in 2026!');
+const test20DataApiTags = ['Obsidian', 'AI', 'Machine Learning', 'Productivity', 'Note Taking', 'obsidian'];
+
+const test20CombinedRawTags = [...test20TitleTags, ...test20DescTags, ...test20DataApiTags];
+const test20Deduplicated = deduplicateTagsHelper(test20CombinedRawTags);
+
+// Ensure no duplicate 'obsidian', 'productivity', 'ai', 'machine-learning'
+assert.strictEqual(test20Deduplicated.filter(t => t === 'obsidian').length, 1);
+assert.strictEqual(test20Deduplicated.filter(t => t === 'productivity').length, 1);
+assert.strictEqual(test20Deduplicated.filter(t => t === 'ai').length, 1);
+assert.strictEqual(test20Deduplicated.filter(t => t === 'machine-learning').length, 1);
+assert.strictEqual(test20Deduplicated.includes('note-taking'), true);
+
+// Case 2: Deduplication collapsing run-together hashtag vs hyphenated Data API tag
+// e.g. #RickAstley in title/desc vs "Rick Astley" in Data API
+const hashtagAndApi = deduplicateTagsHelper(['#RickAstley', 'Rick Astley', '#NeverGonnaGiveYouUp', 'Never Gonna Give You Up']);
+assert.strictEqual(hashtagAndApi.includes('rick-astley'), true);
+assert.strictEqual(hashtagAndApi.includes('rickastley'), false);
+assert.strictEqual(hashtagAndApi.includes('never-gonna-give-you-up'), true);
+assert.strictEqual(hashtagAndApi.includes('nevergonnagiveyouup'), false);
+
+// Case 3: buildFrontmatter with description (multi-line)
+const dataWithDesc = {
+	title: 'Test Title',
+	channel_name: 'Test Channel',
+	channel_username: '@test',
+	channel_url: 'https://youtube.com/@test',
+	video_url: 'https://youtube.com/watch?v=123',
+	thumbnail: 'https://img.youtube.com/thumb.jpg',
+	thumbnail_text: 'OCR text',
+	description: 'Line 1 of description\nLine 2 of description with https://link.com\n\nEnjoy the video!',
+	tags: ['#AI', 'ai', 'Obsidian', '#Obsidian']
+};
+
+const builtWithDesc = buildFrontmatterWithDesc(dataWithDesc);
+assert(builtWithDesc.includes('description: |-\n  Line 1 of description\n  Line 2 of description with https://link.com\n\n  Enjoy the video!'));
+// Tags should be deduplicated inside frontmatter
+assert(builtWithDesc.includes('tags:\n  - ai\n  - obsidian'));
+assert(!builtWithDesc.includes('- ai\n  - ai'));
+
+// Case 4: buildFrontmatter without description (undefined)
+const dataWithoutDesc = { ...dataWithDesc, description: undefined };
+const builtWithoutDesc = buildFrontmatterWithDesc(dataWithoutDesc);
+assert(!builtWithoutDesc.includes('description:'));
+
+// Case 5: mergeFrontmatter adding description and Data API tags to note without them
+const oldNoteYaml = `aliases:
+  - My Note
+tags:
+  - personal-notes
+title: "Old Title"`;
+
+const mergedWithDescAndTags = mergeFrontmatterWithDesc(oldNoteYaml, dataWithDesc);
+assert(mergedWithDescAndTags.includes('description: |-\n  Line 1 of description'));
+assert(mergedWithDescAndTags.includes('tags:\n  - personal-notes\n  - ai\n  - obsidian'));
+
+// Case 6: mergeFrontmatter replacing existing multi-line description
+const noteWithOldDesc = `title: "Old"
+description: |-
+  Old line 1
+  Old line 2
+tags:
+  - old-tag`;
+
+const mergedReplacedDesc = mergeFrontmatterWithDesc(noteWithOldDesc, dataWithDesc);
+assert(mergedReplacedDesc.includes('Line 1 of description'));
+assert(!mergedReplacedDesc.includes('Old line 1'));
+assert(!mergedReplacedDesc.includes('Old line 2'));
+assert(mergedReplacedDesc.includes('tags:\n  - old-tag\n  - ai\n  - obsidian'));
+
+console.log('✓ YouTube description in frontmatter and tag deduplication passed');
+
+// Test 21: Creator playlist discovery, frontmatter serialization, and body formatting
+console.log('Testing creator playlist discovery, frontmatter, and body formatting...');
+
+// Helper functions mirroring YouTubeService and frontmatter methods
+function extractPlaylistIdHelper(url) {
+	if (!url) return null;
+	try {
+		const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+		if (match) {
+			const id = match[1];
+			if (id.startsWith('RD') || id === 'WL' || id === 'LL') {
+				return null;
+			}
+			return id;
+		}
+	} catch {}
+	return null;
+}
+
+function extractPlaylistIndexHelper(url) {
+	if (!url) return undefined;
+	const match = url.match(/[?&]index=(\d+)/);
+	if (match) {
+		const idx = parseInt(match[1], 10);
+		if (!isNaN(idx) && idx > 0) return idx;
+	}
+	return undefined;
+}
+
+function extractPlaylistFromDescHelper(desc) {
+	if (!desc) return null;
+	const match = desc.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:playlist\?list=|watch\?[^\s"'\)<>]*list=)([a-zA-Z0-9_-]+)/i);
+	if (match) {
+		const id = match[1];
+		if (!id.startsWith('RD') && id !== 'WL' && id !== 'LL') {
+			return id;
+		}
+	}
+	return null;
+}
+
+function buildFrontmatterWithPlaylist(data) {
+	const lines = ['---'];
+	lines.push(`title: ${JSON.stringify(data.title)}`);
+	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
+	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
+	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
+	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
+	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
+	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
+
+	if (data.playlist_title) {
+		lines.push(`playlist_title: ${JSON.stringify(data.playlist_title)}`);
+	}
+	if (data.playlist_url) {
+		lines.push(`playlist_url: ${JSON.stringify(data.playlist_url)}`);
+	}
+	if (data.playlist_id) {
+		lines.push(`playlist_id: ${JSON.stringify(data.playlist_id)}`);
+	}
+	if (typeof data.playlist_index === 'number') {
+		lines.push(`playlist_index: ${data.playlist_index}`);
+	}
+	if (typeof data.playlist_count === 'number') {
+		lines.push(`playlist_count: ${data.playlist_count}`);
+	}
+
+	if (data.description !== undefined && data.description !== null) {
+		if (data.description.trim()) {
+			lines.push('description: |-');
+			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+			for (const dLine of descLines) {
+				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
+			}
+		} else {
+			lines.push('description: ""');
+		}
+	}
+
+	if (data.tags && data.tags.length > 0) {
+		lines.push('tags:');
+		for (const tag of deduplicateTagsHelper(data.tags)) {
+			lines.push(`  - ${tag}`);
+		}
+	}
+
+	lines.push('---');
+	return lines.join('\n');
+}
+
+function mergeFrontmatterWithPlaylist(rawYaml, data) {
+	const lines = rawYaml.split(/\r?\n/);
+	const updatedKeys = new Set();
+	const newLines = [];
+
+	const targetKeys = {
+		title: `title: ${JSON.stringify(data.title)}`,
+		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
+		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
+		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
+		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
+		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
+		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
+	};
+
+	if (data.playlist_title) {
+		targetKeys['playlist_title'] = `playlist_title: ${JSON.stringify(data.playlist_title)}`;
+	}
+	if (data.playlist_url) {
+		targetKeys['playlist_url'] = `playlist_url: ${JSON.stringify(data.playlist_url)}`;
+	}
+	if (data.playlist_id) {
+		targetKeys['playlist_id'] = `playlist_id: ${JSON.stringify(data.playlist_id)}`;
+	}
+	if (typeof data.playlist_index === 'number') {
+		targetKeys['playlist_index'] = `playlist_index: ${data.playlist_index}`;
+	}
+	if (typeof data.playlist_count === 'number') {
+		targetKeys['playlist_count'] = `playlist_count: ${data.playlist_count}`;
+	}
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
+		if (keyMatch) {
+			const key = keyMatch[1];
+			if (key in targetKeys) {
+				newLines.push(targetKeys[key]);
+				updatedKeys.add(key);
+				continue;
+			}
+		}
+		newLines.push(line);
+	}
+
+	for (const [key, line] of Object.entries(targetKeys)) {
+		if (!updatedKeys.has(key)) {
+			newLines.push(line);
+		}
+	}
+
+	return newLines.join('\n').trim();
+}
+
+function formatMetaLine(author, channelUrl, videoUrl, playlist, discoverPlaylist = true) {
+	let line = `👤 [${author}](${channelUrl})  🔗 [Watch video](${videoUrl})`;
+	if (discoverPlaylist && playlist) {
+		let pLabel = playlist.title || 'Playlist';
+		if (typeof playlist.index === 'number' && typeof playlist.count === 'number') {
+			pLabel += ` (${playlist.index}/${playlist.count})`;
+		} else if (typeof playlist.index === 'number') {
+			pLabel += ` (#${playlist.index})`;
+		}
+		line += `  📋 [Playlist: ${pLabel}](${playlist.url})`;
+	}
+	return line;
+}
+
+// Case 1: Extract playlist ID & index from video URL
+const urlWithPlaylist = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s&index=4';
+assert.strictEqual(extractPlaylistIdHelper(urlWithPlaylist), 'PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s');
+assert.strictEqual(extractPlaylistIndexHelper(urlWithPlaylist), 4);
+
+// Case 2: Ignore YouTube Mixes and system playlists
+assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ'), null);
+assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=WL'), null);
+assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=LL'), null);
+
+// Case 3: Extract playlist link from description
+const descWithPlaylist = 'Check out the complete series here:\nhttps://www.youtube.com/playlist?list=PLabc1234567890xyz\nSubscribe!';
+assert.strictEqual(extractPlaylistFromDescHelper(descWithPlaylist), 'PLabc1234567890xyz');
+
+// Case 4: buildFrontmatter with playlist fields
+const dataWithPlaylist = {
+	title: 'Building Modern Obsidian Plugins',
+	channel_name: 'DevChannel',
+	channel_username: '@devchannel',
+	channel_url: 'https://youtube.com/@devchannel',
+	video_url: 'https://youtube.com/watch?v=123',
+	thumbnail: 'https://img.youtube.com/vi/123/maxresdefault.jpg',
+	thumbnail_text: 'EPISODE 3',
+	playlist_title: 'Obsidian Plugin Tutorial Series',
+	playlist_url: 'https://www.youtube.com/playlist?list=PLabc1234567890xyz',
+	playlist_id: 'PLabc1234567890xyz',
+	playlist_index: 3,
+	playlist_count: 12,
+	tags: ['obsidian', 'plugins']
+};
+
+const builtPlaylistYaml = buildFrontmatterWithPlaylist(dataWithPlaylist);
+assert(builtPlaylistYaml.includes('playlist_title: "Obsidian Plugin Tutorial Series"'));
+assert(builtPlaylistYaml.includes('playlist_url: "https://www.youtube.com/playlist?list=PLabc1234567890xyz"'));
+assert(builtPlaylistYaml.includes('playlist_id: "PLabc1234567890xyz"'));
+assert(builtPlaylistYaml.includes('playlist_index: 3'));
+assert(builtPlaylistYaml.includes('playlist_count: 12'));
+
+// Case 5: mergeFrontmatter adds playlist fields to existing note
+const existingNoteNoPlaylist = `title: "Building Modern Obsidian Plugins"
+channel_name: "DevChannel"
+video_url: "https://youtube.com/watch?v=123"`;
+
+const mergedPlaylistYaml = mergeFrontmatterWithPlaylist(existingNoteNoPlaylist, dataWithPlaylist);
+assert(mergedPlaylistYaml.includes('playlist_title: "Obsidian Plugin Tutorial Series"'));
+assert(mergedPlaylistYaml.includes('playlist_url: "https://www.youtube.com/playlist?list=PLabc1234567890xyz"'));
+assert(mergedPlaylistYaml.includes('playlist_id: "PLabc1234567890xyz"'));
+assert(mergedPlaylistYaml.includes('playlist_index: 3'));
+assert(mergedPlaylistYaml.includes('playlist_count: 12'));
+
+// Case 6: Note body metadata line formatting with playlist
+const playlistObj = {
+	title: 'Obsidian Plugin Tutorial Series',
+	url: 'https://www.youtube.com/playlist?list=PLabc1234567890xyz',
+	index: 3,
+	count: 12,
+};
+const formattedLineWithCount = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', playlistObj, true);
+assert.strictEqual(
+	formattedLineWithCount,
+	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)  📋 [Playlist: Obsidian Plugin Tutorial Series (3/12)](https://www.youtube.com/playlist?list=PLabc1234567890xyz)'
+);
+
+// Without count:
+const formattedLineWithoutCount = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', { ...playlistObj, count: undefined }, true);
+assert.strictEqual(
+	formattedLineWithoutCount,
+	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)  📋 [Playlist: Obsidian Plugin Tutorial Series (#3)](https://www.youtube.com/playlist?list=PLabc1234567890xyz)'
+);
+
+// When feature is disabled:
+const formattedLineDisabled = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', playlistObj, false);
+assert.strictEqual(
+	formattedLineDisabled,
+	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)'
+);
+
+console.log('✓ Creator playlist discovery, frontmatter, and body formatting passed');
+
 console.log('\nAll tests passed successfully!');
+
+
+
 
 
 

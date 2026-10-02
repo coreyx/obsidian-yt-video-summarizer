@@ -11,13 +11,17 @@ import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
 import { AIModelProvider } from './types';
 import {
+	addRelatedLink,
 	applyFrontmatter,
 	buildFrontmatter,
+	buildMediaExtendedNote,
+	deduplicateTags,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
 	formatTranscript,
 	FrontmatterData,
 	isNoteMissingFrontmatter,
+	MediaExtendedMetadata,
 	sanitizeFileName,
 	sanitizeTag,
 	stripWikilinksFromTechnicalTerms,
@@ -273,7 +277,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice('Fetching video transcript...');
 			let transcript: TranscriptResponse;
 			try {
-				transcript = await this.youtubeService.fetchTranscript(url);
+				transcript = await this.youtubeService.fetchTranscript(
+					url,
+					'en',
+					this.settings.getYoutubeApiKey()
+				);
 			} catch (error) {
 				new Notice(`Error: ${error.message}`);
 				return;
@@ -318,12 +326,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				summary = stripWikilinksFromTechnicalTerms(summary);
 			}
 
-			// Step 4: Extract tags from title & description and/or generate topic tags
+			// Step 4: Extract tags from title & description, YouTube Data API/metadata, and/or generate topic tags
 			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-				? Array.from(new Set([
+				? [
 						...extractTagsFromText(transcript.title),
 						...extractTagsFromText(transcript.description || ''),
-				  ]))
+				  ]
+				: [];
+
+			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
+				? transcript.tags
 				: [];
 
 			let topicTags: string[] = [];
@@ -335,9 +347,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			const allTags = Array.from(new Set([...detectedTags, ...topicTags]))
-				.map(sanitizeTag)
-				.filter(Boolean);
+			const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags, ...topicTags]);
 
 			// Step 5: Optionally rename the note based on the sanitized video title
 			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
@@ -351,7 +361,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const frontmatterTags = addTagsToFrontmatter ? allTags : undefined;
 
 			// Step 7: Create the summary content for the body
-			const bodyContent = this.generateSummary(
+			let bodyContent = this.generateSummary(
 				transcript,
 				thumbnailUrl,
 				url,
@@ -362,7 +372,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				this.settings.getDumpTranscriptInSummary()
 			);
 
+			// Step 7.5: Optionally create Media Extended companion note and link bidirectionally
+			if (this.settings.getCreateMediaExtendedNotes()) {
+				try {
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
+					if (mediaNote) {
+						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
+						bodyContent = addRelatedLink(bodyContent, mediaLink);
+					}
+				} catch (e) {
+					console.error('Failed to create Media Extended companion note:', e);
+				}
+			}
+
 			// Step 8: Apply frontmatter and insert body content
+			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
 			const fmData: FrontmatterData = {
 				title: transcript.title,
 				channel_name: transcript.author,
@@ -371,7 +396,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				video_url: url,
 				thumbnail: thumbnailUrl,
 				thumbnail_text: thumbnailText,
+				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
 				tags: frontmatterTags,
+				playlist_title: playlist?.title,
+				playlist_url: playlist?.url,
+				playlist_id: playlist?.id,
+				playlist_index: playlist?.index,
+				playlist_count: playlist?.count,
 			};
 
 			const isEditorEmpty = editor.getValue().trim() === '';
@@ -423,6 +454,103 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
+	 * Ensures that a directory path exists in the Obsidian vault, creating nested folders if necessary.
+	 */
+	private async ensureFolderExists(folderPath: string): Promise<void> {
+		const normalized = folderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+		if (!normalized) return;
+		const parts = normalized.split('/');
+		let currentPath = '';
+		for (const part of parts) {
+			currentPath = currentPath ? `${currentPath}/${part}` : part;
+			const fileOrFolder = this.app.vault.getAbstractFileByPath(currentPath);
+			if (!fileOrFolder) {
+				try {
+					await this.app.vault.createFolder(currentPath);
+				} catch (e) {
+					// Ignore folder creation errors if folder was created concurrently
+				}
+			}
+		}
+	}
+
+	/**
+	 * Creates or updates a separate Media Extended companion note in the configured folder
+	 * and links it back to the original summary/transcript note.
+	 */
+	private async createMediaExtendedCompanionNote(
+		transcript: TranscriptResponse,
+		originalFile?: TFile | null
+	): Promise<TFile | null> {
+		const folderPath = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		await this.ensureFolderExists(folderPath);
+
+		const sanitizedTitle = sanitizeFileName(transcript.title);
+		const targetPath = `${folderPath}/${sanitizedTitle}.md`;
+
+		if (originalFile && originalFile.path === targetPath) {
+			return originalFile;
+		}
+
+		let existingMxUid: string | undefined;
+		const existingAbstract = this.app.vault.getAbstractFileByPath(targetPath);
+		let existingFile: TFile | null = null;
+		if (existingAbstract instanceof TFile) {
+			existingFile = existingAbstract;
+			try {
+				const existingContent = await this.app.vault.read(existingFile);
+				const uidMatch = existingContent.match(/^mx-uid:\s*([a-z0-9]+)/m);
+				if (uidMatch) {
+					existingMxUid = uidMatch[1];
+				}
+			} catch (e) {
+				console.warn('Could not read existing Media Extended file content:', e);
+			}
+		}
+
+		const metadata: MediaExtendedMetadata = {
+			mxUid: existingMxUid,
+			videoId: transcript.videoId,
+			title: transcript.title,
+			description: transcript.description,
+			duration: transcript.duration,
+			creator: transcript.author,
+			publishedAt: transcript.publishedAt,
+			viewCount: transcript.viewCount,
+			likeCount: transcript.likeCount,
+		};
+
+		let formattedTranscript = '';
+		if (transcript.lines && transcript.lines.length > 0) {
+			formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
+				linkTimestamps: true,
+				mediaExtended: true,
+			});
+		}
+
+		let originalNoteLink: string | undefined;
+		if (originalFile) {
+			originalNoteLink = originalFile.parent && originalFile.parent.path !== '/' && originalFile.parent.path !== ''
+				? `${originalFile.parent.path}/${originalFile.basename}`
+				: originalFile.basename;
+		}
+
+		const noteContent = buildMediaExtendedNote(metadata, formattedTranscript, originalNoteLink);
+
+		try {
+			if (existingFile) {
+				await this.app.vault.modify(existingFile, noteContent);
+				return existingFile;
+			} else {
+				return await this.app.vault.create(targetPath, noteContent);
+			}
+		} catch (e) {
+			console.error('Failed to create or update Media Extended companion note:', e);
+			return null;
+		}
+	}
+
+	/**
 	 * Upgrades the currently active note by fetching missing YouTube metadata
 	 * and updating frontmatter without re-running summary inference or generating tags.
 	 */
@@ -444,7 +572,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			this.isProcessing = true;
 			new Notice('Upgrading note with YouTube metadata...');
 
-			const metadata = await this.youtubeService.fetchVideoMetadata(url);
+			const metadata = await this.youtubeService.fetchVideoMetadata(
+				url,
+				this.settings.getYoutubeApiKey()
+			);
 			const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
 
 			let thumbnailText = '';
@@ -462,6 +593,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
+			// Extract tags from title & description and/or YouTube Data API if enabled
+			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+				? [
+						...extractTagsFromText(metadata.title),
+						...extractTagsFromText(metadata.description || ''),
+				  ]
+				: [];
+
+			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
+				? metadata.tags
+				: [];
+
+			const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
+
+			const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
 			const fmData: FrontmatterData = {
 				title: metadata.title,
 				channel_name: metadata.author,
@@ -470,9 +616,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				video_url: metadata.url,
 				thumbnail: thumbnailUrl,
 				thumbnail_text: thumbnailText,
+				description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
+				tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
+				playlist_title: playlist?.title,
+				playlist_url: playlist?.url,
+				playlist_id: playlist?.id,
+				playlist_index: playlist?.index,
+				playlist_count: playlist?.count,
 			};
 
-			applyFrontmatter(editor, fmData, { excludeTags: true });
+			applyFrontmatter(editor, fmData);
 			new Notice('Note frontmatter upgraded successfully!');
 		} catch (error) {
 			new Notice(`Failed to upgrade note: ${error.message}`);
@@ -523,7 +676,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
 				try {
-					const metadata = await this.youtubeService.fetchVideoMetadata(url);
+					const metadata = await this.youtubeService.fetchVideoMetadata(
+						url,
+						this.settings.getYoutubeApiKey()
+					);
 					const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
 
 					let thumbnailText = '';
@@ -541,6 +697,21 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						}
 					}
 
+					// Extract tags from title & description and/or YouTube Data API if enabled
+					const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+						? [
+								...extractTagsFromText(metadata.title),
+								...extractTagsFromText(metadata.description || ''),
+						  ]
+						: [];
+
+					const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
+						? metadata.tags
+						: [];
+
+					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
+
+					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
 					const fmData: FrontmatterData = {
 						title: metadata.title,
 						channel_name: metadata.author,
@@ -549,12 +720,17 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						video_url: metadata.url,
 						thumbnail: thumbnailUrl,
 						thumbnail_text: thumbnailText,
+						description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
+						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
+						playlist_title: playlist?.title,
+						playlist_url: playlist?.url,
+						playlist_id: playlist?.id,
+						playlist_index: playlist?.index,
+						playlist_count: playlist?.count,
 					};
 
 					const currentContent = await this.app.vault.read(file);
-					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, {
-						excludeTags: true,
-					});
+					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
 					await this.app.vault.modify(file, updatedContent);
 					successCount++;
 				} catch (error) {
@@ -646,7 +822,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			let transcript: TranscriptResponse;
 			try {
-				transcript = await this.youtubeService.fetchTranscript(url);
+				transcript = await this.youtubeService.fetchTranscript(
+					url,
+					'en',
+					this.settings.getYoutubeApiKey()
+				);
 			} catch (error) {
 				new Notice(`Error: ${error.message}`);
 				return;
@@ -654,15 +834,19 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			const thumbnailUrl = YouTubeService.getThumbnailUrl(transcript.videoId);
 
-			// Extract tags from title & description if enabled
+			// Extract tags from title & description and/or YouTube Data API metadata if enabled
 			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-				? Array.from(new Set([
+				? [
 						...extractTagsFromText(transcript.title),
 						...extractTagsFromText(transcript.description || ''),
-				  ]))
+				  ]
 				: [];
 
-			const allTags = detectedTags.map(sanitizeTag).filter(Boolean);
+			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
+				? transcript.tags
+				: [];
+
+			const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
 
 			// Optionally rename note based on video title
 			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
@@ -680,9 +864,18 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				mediaExtended: this.settings.getMediaExtendedTimestamps(),
 			});
 
-			const metaLines = [
-				`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
-			];
+			let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
+			if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
+				const p = transcript.playlist;
+				let pLabel = p.title || 'Playlist';
+				if (typeof p.index === 'number' && typeof p.count === 'number') {
+					pLabel += ` (${p.index}/${p.count})`;
+				} else if (typeof p.index === 'number') {
+					pLabel += ` (#${p.index})`;
+				}
+				metaLine += `  📋 [Playlist: ${pLabel}](${p.url})`;
+			}
+			const metaLines = [metaLine];
 			if (inlineTags && inlineTags.length > 0) {
 				metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
 			}
@@ -701,8 +894,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				bodyParts.push(`## Description\n\n${transcript.description.trim()}`);
 			}
 
-			const bodyContent = bodyParts.join('\n\n');
+			let bodyContent = bodyParts.join('\n\n');
 
+			if (this.settings.getCreateMediaExtendedNotes()) {
+				try {
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
+					if (mediaNote) {
+						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
+						bodyContent = addRelatedLink(bodyContent, mediaLink);
+					}
+				} catch (e) {
+					console.error('Failed to create Media Extended companion note:', e);
+				}
+			}
+
+			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
 			const fmData: FrontmatterData = {
 				title: transcript.title,
 				channel_name: transcript.author,
@@ -711,7 +918,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				video_url: url,
 				thumbnail: thumbnailUrl,
 				thumbnail_text: '',
+				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
 				tags: frontmatterTags,
+				playlist_title: playlist?.title,
+				playlist_url: playlist?.url,
+				playlist_id: playlist?.id,
+				playlist_index: playlist?.index,
+				playlist_count: playlist?.count,
 			};
 
 			const isEditorEmpty = editor.getValue().trim() === '';
@@ -746,9 +959,18 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		includeTitle = false,
 		dumpTranscript = false
 	): string {
-		const metaLines = [
-			`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
-		];
+		let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
+		if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
+			const p = transcript.playlist;
+			let pLabel = p.title || 'Playlist';
+			if (typeof p.index === 'number' && typeof p.count === 'number') {
+				pLabel += ` (${p.index}/${p.count})`;
+			} else if (typeof p.index === 'number') {
+				pLabel += ` (#${p.index})`;
+			}
+			metaLine += `  📋 [Playlist: ${pLabel}](${p.url})`;
+		}
+		const metaLines = [metaLine];
 
 		if (inlineTags && inlineTags.length > 0) {
 			metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
