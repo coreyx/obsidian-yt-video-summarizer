@@ -193,7 +193,7 @@ export interface PluginSettings {
 /** Playlist metadata */
 export interface PlaylistInfo {
 	id: string;
-	title: string;
+	title?: string;
 	url: string;
 	index?: number;
 	count?: number;
@@ -293,4 +293,27 @@ export interface TranscriptRequest {
 export interface VideoData {
 	title: string;
 	transcriptRequests: TranscriptRequest[];
+}
+
+/** Result of an individual note processed in a batch operation */
+export interface BatchItemResult {
+	filePath: string;
+	fileName: string;
+	url?: string;
+	status: 'success' | 'skipped' | 'error';
+	message: string;
+	timestamp?: number;
+}
+
+/** Complete report of a batch operation execution */
+export interface BatchOperationReport {
+	operationName: string;
+	scope: string;
+	startTime: number;
+	endTime?: number;
+	total: number;
+	succeeded: number;
+	skipped: number;
+	failed: number;
+	items: BatchItemResult[];
 }

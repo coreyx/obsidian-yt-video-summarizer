@@ -352,3 +352,198 @@ If your plugin does not need CSS, delete this file.
 	margin-top: var(--size-4-6);
 	margin-bottom: var(--size-4-3);
 }
+
+/* Batch Operations & Reporting */
+.yt-summarizer-batch-modal {
+	min-width: 600px;
+	max-width: 800px;
+}
+
+.yt-summarizer-batch-modal__header {
+	margin-bottom: var(--size-4-2);
+}
+
+.yt-summarizer-batch-modal__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-bottom: var(--size-4-4);
+}
+
+.yt-summarizer-batch-metrics {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
+}
+
+.yt-summarizer-batch-metric-card {
+	padding: var(--size-4-2) var(--size-4-3);
+	border-radius: var(--radius-m);
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	text-align: center;
+}
+
+.yt-summarizer-batch-metric-number {
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-bold);
+	line-height: 1.2;
+}
+
+.yt-summarizer-batch-metric-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.yt-summarizer-batch-metric--total .yt-summarizer-batch-metric-number {
+	color: var(--text-normal);
+}
+
+.yt-summarizer-batch-metric--success .yt-summarizer-batch-metric-number {
+	color: var(--text-success, #4caf50);
+}
+
+.yt-summarizer-batch-metric--skipped .yt-summarizer-batch-metric-number {
+	color: var(--text-warning, #ff9800);
+}
+
+.yt-summarizer-batch-metric--error .yt-summarizer-batch-metric-number {
+	color: var(--text-error, #f44336);
+}
+
+.yt-summarizer-batch-filter-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-2);
+}
+
+.yt-summarizer-batch-filter-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+}
+
+.yt-summarizer-batch-filter-btn {
+	padding: var(--size-4-1) var(--size-4-3);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.yt-summarizer-batch-filter-btn:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.yt-summarizer-batch-filter-btn.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.yt-summarizer-batch-items-container {
+	max-height: 380px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+}
+
+.yt-summarizer-batch-items-empty {
+	padding: var(--size-4-6);
+	text-align: center;
+	color: var(--text-muted);
+}
+
+.yt-summarizer-batch-item-row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yt-summarizer-batch-item-row:last-child {
+	border-bottom: none;
+}
+
+.yt-summarizer-batch-badge {
+	display: inline-block;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	padding: 2px 8px;
+	border-radius: 9999px;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.yt-summarizer-batch-badge--success {
+	background-color: rgba(76, 175, 80, 0.15);
+	color: var(--text-success, #4caf50);
+}
+
+.yt-summarizer-batch-badge--skipped {
+	background-color: rgba(255, 152, 0, 0.15);
+	color: var(--text-warning, #ff9800);
+}
+
+.yt-summarizer-batch-badge--error {
+	background-color: rgba(244, 67, 54, 0.15);
+	color: var(--text-error, #f44336);
+}
+
+.yt-summarizer-batch-item-content {
+	flex: 1;
+	min-width: 0;
+}
+
+.yt-summarizer-batch-item-title-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: 2px;
+}
+
+.yt-summarizer-batch-item-link {
+	font-weight: var(--font-medium);
+	color: var(--text-accent);
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yt-summarizer-batch-item-link:hover {
+	text-decoration: underline;
+}
+
+.yt-summarizer-batch-item-external-link {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	text-decoration: none;
+}
+
+.yt-summarizer-batch-item-external-link:hover {
+	text-decoration: underline;
+}
+
+.yt-summarizer-batch-item-message {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	word-break: break-word;
+}
+
+.yt-summarizer-batch-item-message.is-error {
+	color: var(--text-error, #f44336);
+	font-weight: var(--font-medium);
+}

@@ -591,6 +591,36 @@ export class SettingsTab extends PluginSettingTab {
                         await this.plugin.upgradeNotesWithPlaylistInVault();
                     })
             );
+
+        // Last batch operation status & logs
+        const lastReport = this.plugin.getLastBatchReport();
+        const durationText = lastReport && lastReport.endTime
+            ? `${((lastReport.endTime - lastReport.startTime) / 1000).toFixed(1)}s`
+            : '0.0s';
+        const reportSetting = new Setting(containerEl)
+            .setName('Batch operation status & logs')
+            .setDesc(
+                lastReport
+                    ? `${lastReport.operationName} (${lastReport.scope}) • ${lastReport.succeeded} succeeded, ${lastReport.skipped} skipped, ${lastReport.failed} failed (${durationText})`
+                    : 'No batch operation has been executed yet in this session.'
+            );
+
+        if (lastReport) {
+            reportSetting.addButton(button =>
+                button
+                    .setButtonText('View Last Report & Logs')
+                    .setCta()
+                    .onClick(() => {
+                        this.plugin.showLastBatchReport();
+                    })
+            );
+        } else {
+            reportSetting.addButton(button =>
+                button
+                    .setButtonText('No Report Available')
+                    .setDisabled(true)
+            );
+        }
     }
 
 
