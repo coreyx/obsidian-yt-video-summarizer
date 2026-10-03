@@ -1,16 +1,18 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
+import { MediaExtendedRunOptions } from '../../types';
+import { renderMediaExtendedRunOptions } from '../components/MediaExtendedRunOptions';
 
 export class CustomPromptModal extends Modal {
 	private prompt = '';
-	private createMediaExtended: boolean;
+	private mediaExtendedOptions: MediaExtendedRunOptions;
 
 	constructor(
 		app: App,
-		private onSubmit: (prompt: string, createMediaExtended: boolean) => void,
-		initialCreateMediaExtended = true
+		private onSubmit: (prompt: string, mediaExtendedOptions: MediaExtendedRunOptions) => void,
+		initialMediaExtendedOptions: MediaExtendedRunOptions
 	) {
 		super(app);
-		this.createMediaExtended = initialCreateMediaExtended;
+		this.mediaExtendedOptions = { ...initialMediaExtendedOptions };
 	}
 
 	onOpen() {
@@ -29,16 +31,7 @@ export class CustomPromptModal extends Modal {
 					.onChange((value) => (this.prompt = value))
 			);
 
-		new Setting(contentEl)
-			.setName('Create Media Extended note')
-			.setDesc('Create a separate companion note for Media Extended for this video (does not change permanent setting)')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.createMediaExtended)
-					.onChange((value) => {
-						this.createMediaExtended = value;
-					})
-			);
+		renderMediaExtendedRunOptions(contentEl, this.mediaExtendedOptions);
 
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -51,7 +44,7 @@ export class CustomPromptModal extends Modal {
 							new Notice('Please enter prompt instructions');
 							return;
 						}
-						this.onSubmit(trimmed, this.createMediaExtended);
+						this.onSubmit(trimmed, { ...this.mediaExtendedOptions });
 						this.close();
 					})
 			)

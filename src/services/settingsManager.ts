@@ -16,13 +16,12 @@ import {
     DEFAULT_INCLUDE_TITLE_IN_BODY,
     DEFAULT_LINK_TECHNICAL_TERMS,
     DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
-    DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
-    DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
     DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS,
     DEFAULT_YOUTUBE_API_KEY,
     DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
     DEFAULT_MEDIA_EXTENDED_FOLDER,
     DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
+    DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT,
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
     DEFAULT_SCAN_FOLDERS,
@@ -59,13 +58,12 @@ export class SettingsManager implements PluginSettings {
             includeTitleInBody: DEFAULT_INCLUDE_TITLE_IN_BODY,
             linkTechnicalTerms: DEFAULT_LINK_TECHNICAL_TERMS,
             dumpTranscriptInSummary: DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
-            linkTranscriptTimestamps: DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS,
-            mediaExtendedTimestamps: DEFAULT_MEDIA_EXTENDED_TIMESTAMPS,
             extractYouTubeDataApiTags: DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS,
             youtubeApiKey: DEFAULT_YOUTUBE_API_KEY,
             createMediaExtendedNotes: DEFAULT_CREATE_MEDIA_EXTENDED_NOTES,
             mediaExtendedFolder: DEFAULT_MEDIA_EXTENDED_FOLDER,
             mediaExtendedIncludeDescription: DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
+            mediaExtendedIncludeTranscript: DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT,
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
             scanFolders: DEFAULT_SCAN_FOLDERS,
@@ -102,13 +100,12 @@ export class SettingsManager implements PluginSettings {
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
-                linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
-                mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
                 extractYouTubeDataApiTags: rawSettings.extractYouTubeDataApiTags ?? this.settings.extractYouTubeDataApiTags,
                 youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
                 createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
                 mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
+                mediaExtendedIncludeTranscript: rawSettings.mediaExtendedIncludeTranscript ?? this.settings.mediaExtendedIncludeTranscript,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -147,13 +144,12 @@ export class SettingsManager implements PluginSettings {
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
-                linkTranscriptTimestamps: rawSettings.linkTranscriptTimestamps ?? this.settings.linkTranscriptTimestamps,
-                mediaExtendedTimestamps: rawSettings.mediaExtendedTimestamps ?? this.settings.mediaExtendedTimestamps,
                 extractYouTubeDataApiTags: rawSettings.extractYouTubeDataApiTags ?? this.settings.extractYouTubeDataApiTags,
                 youtubeApiKey: rawSettings.youtubeApiKey ?? this.settings.youtubeApiKey,
                 createMediaExtendedNotes: rawSettings.createMediaExtendedNotes ?? this.settings.createMediaExtendedNotes,
                 mediaExtendedFolder: rawSettings.mediaExtendedFolder ?? this.settings.mediaExtendedFolder,
                 mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
+                mediaExtendedIncludeTranscript: rawSettings.mediaExtendedIncludeTranscript ?? this.settings.mediaExtendedIncludeTranscript,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -458,24 +454,6 @@ export class SettingsManager implements PluginSettings {
         this.saveData();
     }
 
-    getLinkTranscriptTimestamps(): boolean {
-        return this.settings.linkTranscriptTimestamps ?? DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS;
-    }
-
-    updateLinkTranscriptTimestamps(value: boolean): void {
-        this.settings.linkTranscriptTimestamps = value;
-        this.saveData();
-    }
-
-    getMediaExtendedTimestamps(): boolean {
-        return this.settings.mediaExtendedTimestamps ?? DEFAULT_MEDIA_EXTENDED_TIMESTAMPS;
-    }
-
-    updateMediaExtendedTimestamps(value: boolean): void {
-        this.settings.mediaExtendedTimestamps = value;
-        this.saveData();
-    }
-
     getExtractYouTubeDataApiTags(): boolean {
         return this.settings.extractYouTubeDataApiTags ?? DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS;
     }
@@ -518,6 +496,15 @@ export class SettingsManager implements PluginSettings {
 
     updateMediaExtendedIncludeDescription(value: boolean): void {
         this.settings.mediaExtendedIncludeDescription = value;
+        this.saveData();
+    }
+
+    getMediaExtendedIncludeTranscript(): boolean {
+        return this.settings.mediaExtendedIncludeTranscript ?? DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT;
+    }
+
+    updateMediaExtendedIncludeTranscript(value: boolean): void {
+        this.settings.mediaExtendedIncludeTranscript = value;
         this.saveData();
     }
 

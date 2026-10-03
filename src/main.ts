@@ -1,5 +1,5 @@
 import { arrayBufferToBase64, Editor, MarkdownView, Notice, Plugin, TFile, TFolder } from 'obsidian';
-import { BatchItemResult, BatchOperationReport, PluginSettings, TranscriptResponse } from './types';
+import { BatchItemResult, BatchOperationReport, MediaExtendedRunOptions, PluginSettings, TranscriptResponse } from './types';
 
 import { SettingsTab } from './ui/settings';
 import { YouTubeService } from './services/youtube';
@@ -18,6 +18,7 @@ import {
 	applyFrontmatter,
 	buildFrontmatter,
 	buildMediaExtendedNote,
+	convertTimestampsToLinks,
 	deduplicateTags,
 	extractPlaylistIdFromFrontmatter,
 	extractTagsFromText,
@@ -180,10 +181,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					} else {
 						new YouTubeURLModal(
 							this.app,
-							async (url, createMediaExtended) => {
-								await this.summarizeVideo(url, editor, view, undefined, createMediaExtended);
+							async (url, mediaExtendedOptions) => {
+								await this.summarizeVideo(url, editor, view, undefined, mediaExtendedOptions);
 							},
-							this.settings.getCreateMediaExtendedNotes(),
+							this.getDefaultMediaExtendedRunOptions(),
 							true
 						).open();
 					}
@@ -207,26 +208,26 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					) {
 						new CustomPromptModal(
 							this.app,
-							async (customPrompt, createMediaExtended) => {
-								await this.summarizeVideo(selectedText, editor, view, customPrompt, createMediaExtended);
+							async (customPrompt, mediaExtendedOptions) => {
+								await this.summarizeVideo(selectedText, editor, view, customPrompt, mediaExtendedOptions);
 							},
-							this.settings.getCreateMediaExtendedNotes()
+							this.getDefaultMediaExtendedRunOptions()
 						).open();
 					} else if (selectedText) {
 						new Notice('Selected text is not a valid YouTube URL');
 					} else {
 						new YouTubeURLModal(
 							this.app,
-							async (url, urlMediaExtended) => {
+							async (url, urlMediaExtendedOptions) => {
 								new CustomPromptModal(
 									this.app,
-									async (customPrompt, promptMediaExtended) => {
-										await this.summarizeVideo(url, editor, view, customPrompt, promptMediaExtended);
+									async (customPrompt, promptMediaExtendedOptions) => {
+										await this.summarizeVideo(url, editor, view, customPrompt, promptMediaExtendedOptions);
 									},
-									urlMediaExtended
+									urlMediaExtendedOptions
 								).open();
 							},
-							this.settings.getCreateMediaExtendedNotes(),
+							this.getDefaultMediaExtendedRunOptions(),
 							true
 						).open();
 					}
@@ -258,10 +259,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						} else {
 							new YouTubeURLModal(
 								this.app,
-								async (url, createMediaExtended) => {
-									await this.retrieveTranscript(url, editor, view, createMediaExtended);
+								async (url, mediaExtendedOptions) => {
+									await this.retrieveTranscript(url, editor, view, mediaExtendedOptions);
 								},
-								this.settings.getCreateMediaExtendedNotes(),
+								this.getDefaultMediaExtendedRunOptions(),
 								true
 							).open();
 						}
@@ -434,6 +435,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		new BatchReportModal(this.app, this.lastBatchReport).open();
 	}
 
+	/**
+	 * Builds the per-run Media Extended options from the permanent settings.
+	 */
+	private getDefaultMediaExtendedRunOptions(): MediaExtendedRunOptions {
+		return {
+			createNote: this.settings.getCreateMediaExtendedNotes(),
+			includeDescription: this.settings.getMediaExtendedIncludeDescription(),
+			includeTranscript: this.settings.getMediaExtendedIncludeTranscript(),
+		};
+	}
 
 	/**
 	 * Summarizes the YouTube video for the given URL and updates the markdown view with the summary.
@@ -441,6 +452,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * @param editor - The editor instance where the content will be inserted.
 	 * @param view - The active markdown view.
 	 * @param customPrompt - Optional custom prompt instructions.
+	 * @param mediaExtendedOptions - Optional per-run Media Extended options (defaults to permanent settings).
 	 * @returns {Promise<void>} A promise that resolves when the video is summarized.
 	 */
 	private async summarizeVideo(
@@ -448,7 +460,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		editor: Editor,
 		view?: MarkdownView,
 		customPrompt?: string,
-		createMediaExtendedOverride?: boolean
+		mediaExtendedOptions: MediaExtendedRunOptions = this.getDefaultMediaExtendedRunOptions()
 	): Promise<void> {
 
 		// Check if a video is already being processed
@@ -587,14 +599,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			);
 
 			// Step 7.5: Optionally create Media Extended companion note and link bidirectionally
-			const shouldCreateMediaExtended = createMediaExtendedOverride !== undefined
-				? createMediaExtendedOverride
-				: this.settings.getCreateMediaExtendedNotes();
-
-			if (shouldCreateMediaExtended) {
+			if (mediaExtendedOptions.createNote) {
 
 				try {
-					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file, mediaExtendedOptions);
 					if (mediaNote) {
 						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
@@ -763,11 +771,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	/**
 	 * Creates or updates a separate Media Extended companion note in the configured folder
 	 * and links it back to the original summary/transcript note.
+	 * Description/transcript inclusion defaults to the permanent settings unless overridden for this run.
 	 */
 	private async createMediaExtendedCompanionNote(
 		transcript: TranscriptResponse,
-		originalFile?: TFile | null
+		originalFile?: TFile | null,
+		runOptions?: Pick<MediaExtendedRunOptions, 'includeDescription' | 'includeTranscript'>
 	): Promise<TFile | null> {
+		const includeDescription = runOptions?.includeDescription ?? this.settings.getMediaExtendedIncludeDescription();
+		const includeTranscript = runOptions?.includeTranscript ?? this.settings.getMediaExtendedIncludeTranscript();
+
 		const folderPath = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 		await this.ensureFolderExists(folderPath);
 
@@ -807,10 +820,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		};
 
 		let formattedTranscript = '';
-		if (transcript.lines && transcript.lines.length > 0) {
+		if (includeTranscript && transcript.lines && transcript.lines.length > 0) {
 			formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
-				linkTimestamps: true,
-				mediaExtended: true,
+				format: 'mediaExtended',
 			});
 		}
 
@@ -822,7 +834,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		}
 
 		const noteContent = buildMediaExtendedNote(metadata, formattedTranscript, originalNoteLink, {
-			includeDescription: this.settings.getMediaExtendedIncludeDescription(),
+			includeDescription,
 		});
 
 		try {
@@ -1847,13 +1859,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 	/**
 	 * Retrieves the transcript for a YouTube video without generating an AI summary.
-	 * Formats timestamps with optional YouTube links and Media Extended playback links.
+	 * Transcript and description timestamps are linked to the video in standard YouTube format.
 	 */
 	public async retrieveTranscript(
 		url: string,
 		editor: Editor,
 		view?: MarkdownView,
-		createMediaExtendedOverride?: boolean
+		mediaExtendedOptions: MediaExtendedRunOptions = this.getDefaultMediaExtendedRunOptions()
 	): Promise<void> {
 
 		if (this.isProcessing) {
@@ -1905,8 +1917,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			// Format transcript
 			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
-				linkTimestamps: this.settings.getLinkTranscriptTimestamps(),
-				mediaExtended: this.settings.getMediaExtendedTimestamps(),
+				format: 'youtube',
 			});
 
 			let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
@@ -1936,19 +1947,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			);
 
 			if (this.settings.getIncludeVideoDescription() && transcript.description && transcript.description.trim()) {
-				bodyParts.push(`## Description\n\n${transcript.description.trim()}`);
+				const formattedDescription = convertTimestampsToLinks(transcript.description.trim(), transcript.videoId, 'youtube');
+				bodyParts.push(`## Description\n\n${formattedDescription}`);
 			}
 
 			let bodyContent = bodyParts.join('\n\n');
 
-			const shouldCreateMediaExtended = createMediaExtendedOverride !== undefined
-				? createMediaExtendedOverride
-				: this.settings.getCreateMediaExtendedNotes();
-
-			if (shouldCreateMediaExtended) {
+			if (mediaExtendedOptions.createNote) {
 
 				try {
-					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file);
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file, mediaExtendedOptions);
 					if (mediaNote) {
 						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
@@ -2031,22 +2039,23 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			summaryParts.push(`# ${transcript.title}`);
 		}
 
+		// Link any timestamps the AI included to the video in standard YouTube format
 		summaryParts.push(
 			`![Thumbnail](${thumbnailUrl})`,
 			metaLines.join('\n\n'),
-			summaryText
+			convertTimestampsToLinks(summaryText, transcript.videoId, 'youtube')
 		);
 
 		if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
 			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
-				linkTimestamps: this.settings.getLinkTranscriptTimestamps(),
-				mediaExtended: this.settings.getMediaExtendedTimestamps(),
+				format: 'youtube',
 			});
 			summaryParts.push(`## Transcript\n\n${formattedTranscript}`);
 		}
 
 		if (includeDescription && transcript.description && transcript.description.trim()) {
-			summaryParts.push(`## Description\n\n${transcript.description.trim()}`);
+			const formattedDescription = convertTimestampsToLinks(transcript.description.trim(), transcript.videoId, 'youtube');
+			summaryParts.push(`## Description\n\n${formattedDescription}`);
 		}
 
 		return summaryParts.join('\n\n');

@@ -364,7 +364,7 @@ Note: Include all sections. If there are no technical terms, omit that section e
 export const DEFAULT_MAX_TOKENS = 10000;
 export const DEFAULT_TEMPERATURE = 1;
 
-export const DEFAULT_INCLUDE_VIDEO_DESCRIPTION = true;
+export const DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false;
 export const DEFAULT_ADD_TOPICS_AS_TAGS = true;
 export const DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE = true;
 export const DEFAULT_ADD_TAGS_TO_FRONTMATTER = true;
@@ -373,13 +373,12 @@ export const DEFAULT_SET_NOTE_TITLE_FROM_VIDEO = true;
 export const DEFAULT_INCLUDE_TITLE_IN_BODY = false;
 export const DEFAULT_LINK_TECHNICAL_TERMS = true;
 export const DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false;
-export const DEFAULT_LINK_TRANSCRIPT_TIMESTAMPS = true;
-export const DEFAULT_MEDIA_EXTENDED_TIMESTAMPS = true;
 export const DEFAULT_EXTRACT_YOUTUBE_DATA_API_TAGS = true;
 export const DEFAULT_YOUTUBE_API_KEY = '';
 export const DEFAULT_CREATE_MEDIA_EXTENDED_NOTES = true;
 export const DEFAULT_MEDIA_EXTENDED_FOLDER = 'Media Library';
 export const DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true;
+export const DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true;
 export const DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER = true;
 export const DEFAULT_DISCOVER_PLAYLIST = true;
 export const DEFAULT_SCAN_FOLDERS = '';

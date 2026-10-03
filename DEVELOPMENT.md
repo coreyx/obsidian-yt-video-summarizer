@@ -171,7 +171,7 @@ npm install
 * **Section Headings & Description Integration**:
   - Companion notes organize content under explicit markdown headings:
     - `# Description`: Contains the creator's video description with all chapter timestamps (`0:00`, `01:23`, `[01:23]`, `1:05:30`) automatically parsed and converted into clickable Media Extended playback links (`[HH:MM:SS](https://...&t=SECONDS#t=HH:MM:SS.00)`) via [`convertDescriptionTimestampsToMediaExtended()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
-    - `# Transcript`: Contains the timestamped transcript with Media Extended playback URLs.
+    - `# Transcript`: Contains the timestamped transcript with Media Extended playback URLs (omitted when *Include transcript in Media Extended note* is off for the run).
     - `# Related`: Contains the bidirectional wikilink back to the original summary note (`- [[Summary Note]]`).
   - **Clean Spacing**: Every heading (`# Description`, `# Transcript`, `# Related`) is followed by an empty line (`\n\n`) before content begins.
 * **Bidirectional Linking**:
@@ -253,6 +253,7 @@ npm test
 24. Summary prompt Media Extended checkbox and per-run override resolution.
 25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
 26. Media Extended note description, timestamp conversion, section headings, and empty line formatting.
+    - 26b. Summary note YouTube timestamp links (description, transcript, AI summary), code/wikilink protection, per-run Media Extended description/transcript options, and body defaults.
 27. Playlist frontmatter detection, YouTube Data API playlist upgrading, candidate filtering, and tag preservation.
 28. Vault tag caching, compression, group prefix detection, AI topic tagging prompt, and grouped tag deduplication.
 
@@ -436,13 +437,13 @@ This section preserves technical and design questions asked during development f
 
 **Answer**:
 1. **State Inheritance without Mutation**:
-   - Both [`YouTubeURLModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/youtube-url.ts) and [`CustomPromptModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/CustomPromptModal.ts) accept an `initialCreateMediaExtended: boolean` constructor argument.
-   - When the modal is instantiated, this parameter is initialized from `this.settings.getCreateMediaExtendedNotes()`, pre-populating the modal's toggle to reflect the user's permanent default preference.
-   - Toggling the checkbox in the modal only modifies a local instance property (`this.createMediaExtended`) on the modal itself. It does **not** call `this.settings.updateCreateMediaExtendedNotes()` or mutate `settings.json`.
+   - Both [`YouTubeURLModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/youtube-url.ts) and [`CustomPromptModal`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/CustomPromptModal.ts) accept an `initialMediaExtendedOptions: MediaExtendedRunOptions` constructor argument (`{ createNote, includeDescription, includeTranscript }`), see Q16.
+   - When the modal is instantiated, this is built by `getDefaultMediaExtendedRunOptions()` from the permanent settings, pre-populating the modal's toggles to reflect the user's default preferences.
+   - The modal copies the object, and toggling only modifies that local copy. It does **not** call any `this.settings.update*()` method or mutate `settings.json`.
 2. **Per-Run Execution Override**:
-   - When the user submits the modal, the local boolean value is passed to the submission callback.
-   - In [`summarizeVideo()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) and [`retrieveTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts), the method checks `createMediaExtendedOverride !== undefined ? createMediaExtendedOverride : this.settings.getCreateMediaExtendedNotes()`.
-   - If an override is provided for that run, it controls whether `createMediaExtendedCompanionNote()` is called, while leaving the global configuration intact for future runs.
+   - When the user submits the modal, a copy of the options is passed to the submission callback.
+   - [`summarizeVideo()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) and [`retrieveTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) take a `mediaExtendedOptions` parameter that defaults to `getDefaultMediaExtendedRunOptions()` (e.g. when a URL is selected in the editor and no modal is shown).
+   - `mediaExtendedOptions.createNote` controls whether `createMediaExtendedCompanionNote()` is called, and the description/transcript flags are forwarded to it, while leaving the global configuration intact for future runs.
 
 ---
 
@@ -496,15 +497,16 @@ This section preserves technical and design questions asked during development f
    - When generating companion notes in [`createMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts), the option `{ includeDescription: this.settings.getMediaExtendedIncludeDescription() }` is passed to [`buildMediaExtendedNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts).
 
 2. **Description Timestamp Parsing & Conversion Pipeline**:
-   - Implemented in [`convertDescriptionTimestampsToMediaExtended()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts):
+   - Implemented in [`convertTimestampsToLinks()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) (wrapped by `convertDescriptionTimestampsToMediaExtended()`); the same pipeline emits standard YouTube links for summary notes (see Q16):
      - **Timestamp Pattern**: Matches 2-part (`M:SS`, `MM:SS`) and 3-part (`H:MM:SS`, `HH:MM:SS`) timestamps where seconds are strictly `[0-5]\d`.
      - **Token Protection Steps**:
-       1. Detects and converts existing markdown links where the link text is a timestamp (`[01:23](...)`), updating the target URL to Media Extended format `https://www.youtube.com/watch?v=VIDEO_ID&t=SECONDS#t=MM:SS.00` and replacing with a temporary protected token (`@@@ME_PROTECTED_TOKEN_N@@@`).
+       0. Protects fenced code blocks, inline code, and wikilinks.
+       1. Detects and converts existing markdown links where the link text is a timestamp (`[01:23](...)`), updating the target URL to the requested format (Media Extended: `https://www.youtube.com/watch?v=VIDEO_ID&t=SECONDS#t=MM:SS.00`) and replacing with a temporary protected token (`@@@TS_PROTECTED_TOKEN_N@@@`).
        2. Protects any other existing markdown links (`[text](url)`) to avoid corrupting link labels or target URLs.
        3. Protects raw URLs (`https://...` or `http://...`) so digits or port numbers inside URLs are never touched.
        4. Detects bracketed timestamps (`[01:23]`), converting them cleanly into `[01:23](url)` without generating double brackets (`[[01:23](url)]`).
-       5. Detects standalone timestamps guarded by lookbehind (`(?<=^|[\s(>•-])`) and lookahead (`(?=$|[\s):.,!?-])(?!\\s*(?:am|pm)\\b)`). This safely matches timestamps after bullets, dashes, colons, or parentheses while rejecting times of day (e.g. `10:00 AM`) and aspect ratios (e.g. `16:9`).
-       6. Restores all protected tokens.
+       5. Detects standalone timestamps guarded by lookbehind (`(?<=^|[\s(>•*-])`) and lookahead (`(?=$|[\s):.,!?*-])(?!\\s*(?:am|pm)\\b)`). This safely matches timestamps after bullets, dashes, colons, or parentheses while rejecting times of day (e.g. `10:00 AM`) and aspect ratios (e.g. `16:9`).
+       6. Restores all protected tokens, newest first, so tokens nested inside later tokens (e.g. inline code inside link text) are restored too.
 
 3. **Heading Organization & Empty Line Formatting**:
    - In [`buildMediaExtendedNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), companion note content is organized under explicit markdown headings:
@@ -668,5 +670,25 @@ This section preserves technical and design questions asked during development f
    - **Command Palette**: `View last batch operation report & logs` (`view-last-batch-report`) provides immediate access to the last run's diagnostic modal.
    - **Settings Tab**: A dedicated card in [`src/ui/settings.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/settings.ts) shows the summary of the last batch operation and provides a *View Last Report & Logs* button.
 
+---
 
+### Q16: How are timestamp formats split between video summary notes and Media Extended notes, and how do the per-run description/transcript toggles work?
 
+**Context**: User requested:
+- Per-run toggles in the video summary popup to include/exclude the description and transcript in the Media Extended note (without changing permanent settings).
+- Every timestamp in the Video Summary note (description, transcript, or otherwise) linked to the original YouTube video in standard YouTube format, including raw description timestamps.
+- Every timestamp in the Media Extended note in Media Extended format.
+- Defaults: description and transcript **off** in the summary note body, **on** in the Media Extended note.
+
+**Answer**:
+1. **Fixed Format per Note Type**:
+   - [`buildTimestampUrl(videoId, offsetMs, format)`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) is the single URL builder. `'youtube'` → `https://www.youtube.com/watch?v=ID&t=65s` (seconds floored so the link never starts after the displayed label); `'mediaExtended'` → `https://www.youtube.com/watch?v=ID&t=66#t=01:05.61` (unchanged from earlier releases).
+   - [`formatTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) always links every line and takes `{ format }` (default `'youtube'`). Summary notes and the transcript-only command use `'youtube'`; companion notes use `'mediaExtended'`.
+   - [`generateSummary()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) and [`retrieveTranscript()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) run the `## Description` section through `convertTimestampsToLinks(..., 'youtube')`. `generateSummary()` also runs the AI summary text through it, so any timestamps the model emits are linked; code, inline code, and `[[wikilinks]]` are protected.
+   - The `Link transcript timestamps to YouTube` and `Format timestamps for Media Extended` settings were removed because they could produce unlinked or Media Extended–formatted timestamps in summary notes. Stale keys in `data.json` are ignored and dropped on next save.
+   - Frontmatter `description` stays raw text (YAML can't hold rendered links meaningfully).
+2. **Per-Run Options**:
+   - `MediaExtendedRunOptions` in [`types.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/types.ts) groups `createNote`, `includeDescription`, and `includeTranscript`.
+   - [`renderMediaExtendedRunOptions()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/components/MediaExtendedRunOptions.ts) renders the three toggles for both modals; the description/transcript toggles are disabled while `createNote` is off.
+   - [`createMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) accepts optional `includeDescription`/`includeTranscript` overrides and falls back to the permanent settings, so batch commands (`processMediaExtendedNotes()`) keep using the permanent settings.
+3. **Defaults**: `DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false`, `DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false`, `DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true`, new `DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true`. Defaults only apply when the user has no saved value.

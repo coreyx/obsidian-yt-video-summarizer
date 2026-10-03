@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Per-Run Media Extended Description & Transcript Toggles**: The YouTube URL and custom prompt modals now include "Include description in Media Extended note" and "Include transcript in Media Extended note" toggles alongside "Create Media Extended note". They inherit the permanent settings, apply to the current run only, and are disabled while note creation is off.
+- **Include Transcript in Media Extended Note Setting**: New permanent setting controlling whether companion notes include the `# Transcript` section. Enabled by default.
+
+### Changed
+- **Standard YouTube Timestamp Links in Summary Notes**: Every timestamp in a video summary note — transcript, `## Description` section, and any timestamps in the AI summary — is now a markdown link to the original video in standard YouTube format (`[01:05](https://www.youtube.com/watch?v=...&t=65s)`). Raw description timestamps are converted automatically; code blocks, inline code, wikilinks, and non-timestamp links are left untouched.
+- **Media Extended Format in Companion Notes**: Timestamps in Media Extended companion notes (description and transcript) always use Media Extended playback links (`&t=SECONDS#t=mm:ss.ms`).
+- **Summary Note Description Off by Default**: `Include video description in summary note` now defaults to off. Existing saved settings are preserved.
+
+### Removed
+- **`Link transcript timestamps to YouTube` and `Format timestamps for Media Extended` settings**: Superseded by the fixed per-note formats above (summary notes always use YouTube links, companion notes always use Media Extended links).
+
+---
+
 ## [1.10.0] - 2026-10-02
 
 ### Added

@@ -16,11 +16,11 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
 -   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `description`, and `tags`.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
--   📝 **Video Description Preservation**: Optionally archives the creator's complete video description, timestamps, and external links directly in the note body.
+-   📝 **Video Description Preservation**: Optionally archives the creator's complete video description and external links in the note body, with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
 -   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
--   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable YouTube timestamps and Media Extended links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`), with zero AI token cost.
+-   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable timestamps, with zero AI token cost. Video summary notes use standard YouTube links (`[01:05](https://www.youtube.com/watch?v=...&t=65s)`); Media Extended companion notes use Media Extended playback links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`).
 -   🎬 **Media Extended Companion Notes**: Automatically creates separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a configurable folder (defaults to `Media Library`) with bidirectional wikilinks in a `# Related` section.
 -   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
 -   ⚙️ **Fully Customizable**: Tweak prompts, tokens, temperature, and toggle individual metadata fields to fit your workflow.
@@ -160,17 +160,19 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Generate Wikilinks for Technical Terms**: Formats extracted technical terms with Obsidian `[[wikilinks]]` (e.g. `- **[[Term]]**: explanation`). Enabled by default. When disabled, terms are retained as bold text without wikilinks (`- **Term**: explanation`).
 
-**Include Video Description**: Archives the complete YouTube video description, including external links, creator notes, and timestamps, under a `## Description` section in the note body.
+**Include Video Description in Summary Note**: Archives the complete YouTube video description, including external links and creator notes, under a `## Description` section in the summary note body. Timestamps in the description are converted into standard YouTube timestamp links. Disabled by default.
 
 **Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
 
-**Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note. Disabled by default.
+**Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note, with each timestamp linked to the video (e.g. `[01:05](https://www.youtube.com/watch?v=...&t=65s)`). Disabled by default.
 
-**Link Transcript Timestamps to YouTube**: Formats transcript timestamps as clickable YouTube links that open the video directly at that exact second (e.g. `[01:05](https://youtube.com/watch?v=...&t=66)`). Enabled by default.
-
-**Format Timestamps for Media Extended**: Formats transcript timestamp links with Media Extended fragments (`#t=mm:ss.ms`, e.g. `[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`) for seamless playback integration with the Media Extended plugin. Requires timestamp linking to be enabled. Enabled by default.
+**Timestamp links**: Every timestamp written to a video summary note (transcript, description, or AI summary) is linked to the original YouTube video in standard YouTube format (`&t=SECONDSs`). Every timestamp written to a Media Extended companion note is linked in Media Extended format (`&t=SECONDS#t=mm:ss.ms`).
 
 **Create Media Extended Notes**: Automatically creates a separate companion note formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin whenever a YouTube video is ingested. Enabled by default.
+
+**Include Description in Media Extended Note**: Includes the video description under `# Description` in the companion note, with timestamps converted into Media Extended playback links. Enabled by default.
+
+**Include Transcript in Media Extended Note**: Includes the timestamped transcript under `# Transcript` in the companion note. Enabled by default.
 
 **Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
 
@@ -200,7 +202,7 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 2. Open command palette (`Ctrl/Cmd + P`)
 3. Search for "Summarize YouTube Video"
 4. Paste URL when prompted
-5. Optionally toggle the "Create Media Extended note" checkbox (inherits your permanent setting for this run without altering it)
+5. Optionally toggle "Create Media Extended note", "Include description in Media Extended note", and "Include transcript in Media Extended note" (each inherits your permanent setting for this run without altering it)
 
 ### Method 2: Selection
 
@@ -215,7 +217,7 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 3. Search for "Summarize YouTube Video (with prompt)"
 4. Paste the URL (or select URL in note)
 5. Enter custom instructions in the prompt modal
-6. Optionally toggle the "Create Media Extended note" checkbox (inherits your permanent setting for this run without altering it)
+6. Optionally toggle "Create Media Extended note", "Include description in Media Extended note", and "Include transcript in Media Extended note" (each inherits your permanent setting for this run without altering it)
 7. The instructions are appended to the default prompt for this summarization only
 
 
@@ -224,7 +226,7 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 1. Open command palette (`Ctrl/Cmd + P`)
 2. Run `Get YouTube video transcript`
 3. Paste the YouTube URL (or select a URL in your note, or run from an active note containing a URL)
-4. The full transcript with clickable timestamps and Media Extended links is inserted immediately — **no AI model or API key required**!
+4. The full transcript with clickable YouTube timestamp links is inserted immediately — **no AI model or API key required**!
 
 ### Method 5: Upgrade Previous Notes
 
