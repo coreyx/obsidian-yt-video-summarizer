@@ -18,8 +18,10 @@ import {
 	applyFrontmatter,
 	buildFrontmatter,
 	buildMediaExtendedNote,
+	convertDescriptionTimestampsToMediaExtended,
 	convertTimestampsToLinks,
 	deduplicateTags,
+	ensureSectionOrder,
 	extractPlaylistIdFromFrontmatter,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
@@ -27,6 +29,8 @@ import {
 	filterFilesByFolderPaths,
 	formatTranscript,
 	FrontmatterData,
+	getVideoNoteKind,
+	hasMarkdownSection,
 	hasPlaylistTitlePlaceholder,
 	hasRelatedMediaExtendedLink,
 	isMediaExtendedCompanionNote,
@@ -34,11 +38,15 @@ import {
 	isNoteMissingFrontmatter,
 	isNoteMissingPlaylistFrontmatter,
 	MediaExtendedMetadata,
+	refreshMediaExtendedNoteContent,
 	sanitizeFileName,
 	sanitizeTag,
 	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
+	upsertMarkdownSection,
+	videoStatsFrontmatter,
 } from './utils/frontmatter';
+import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData } from './utils/vaultTags';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
@@ -121,6 +129,23 @@ export class YouTubeSummarizerPlugin extends Plugin {
 								.setIcon('youtube')
 								.onClick(async () => {
 									await this.fixPlaylistTitlePlaceholderInFolder(file);
+								});
+						});
+						menu.addItem((item) => {
+							item
+								.setTitle('Refresh video metadata in this folder')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.refreshVideoMetadataInFolder(file);
+								});
+						});
+					} else if (file instanceof TFile && file.extension === 'md') {
+						menu.addItem((item) => {
+							item
+								.setTitle('Refresh video metadata')
+								.setIcon('youtube')
+								.onClick(async () => {
+									await this.refreshVideoMetadataInNote(file);
 								});
 						});
 					}
@@ -283,6 +308,23 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			},
 		});
 
+		// Commands to add the video description / transcript to the active Media Extended note
+		this.addCommand({
+			id: 'add-description-to-media-extended-note',
+			name: 'Add description to Media Extended note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.addSectionToMediaExtendedNote(view.file, 'description');
+			},
+		});
+
+		this.addCommand({
+			id: 'add-transcript-to-media-extended-note',
+			name: 'Add transcript to Media Extended note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.addSectionToMediaExtendedNote(view.file, 'transcript');
+			},
+		});
+
 		// Command to upgrade the current note's frontmatter
 		this.addCommand({
 			id: 'upgrade-youtube-note',
@@ -397,6 +439,27 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Fix playlist title placeholder in folder...',
 			callback: () => {
 				this.promptFixPlaylistTitlePlaceholder();
+			},
+		});
+
+		// Commands to refresh video metadata (frontmatter) in video summary and Media Extended notes
+		this.addCommand({
+			id: 'refresh-video-metadata-current-note',
+			name: 'Refresh video metadata in current note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				if (view.file) {
+					await this.refreshVideoMetadataInNote(view.file);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: 'refresh-video-metadata-folder',
+			name: 'Refresh video metadata in folder...',
+			callback: () => {
+				new FolderSuggestModal(this.app, async (folder) => {
+					await this.refreshVideoMetadataInFolder(folder);
+				}).open();
 			},
 		});
 
@@ -532,9 +595,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				new Notice(`Error: ${error.message}`);
 				return;
 			}
-			const thumbnailUrl = YouTubeService.getThumbnailUrl(
-				transcript.videoId
-			);
+			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
 
 			// Step 1.5: New notes are always named after the video as soon as the title is known
 			if (pendingNote) {
@@ -656,6 +717,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				channel_username: transcript.channelUsername || '',
 				channel_url: transcript.channelUrl,
 				video_url: url,
+				...videoStatsFrontmatter(transcript),
 				thumbnail: thumbnailUrl,
 				thumbnail_text: thumbnailText,
 				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
@@ -938,6 +1000,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			publishedAt: transcript.publishedAt,
 			viewCount: transcript.viewCount,
 			likeCount: transcript.likeCount,
+			aspectRatio: transcript.aspectRatio,
+			cover: await YouTubeService.getCoverUrl(transcript.videoId),
 		};
 
 		let formattedTranscript = '';
@@ -972,6 +1036,104 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
+	 * Adds the video description or transcript to a Media Extended note as a `# Description` /
+	 * `# Transcript` section, detecting the video from the note. If the section already exists,
+	 * asks before replacing it. Timestamps are formatted as Media Extended playback links.
+	 */
+	public async addSectionToMediaExtendedNote(file: TFile | null, section: 'description' | 'transcript'): Promise<void> {
+		if (!file) {
+			new Notice('Open a Media Extended note first.');
+			return;
+		}
+
+		const heading = section === 'description' ? 'Description' : 'Transcript';
+		const content = await this.app.vault.read(file);
+		const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		if (!isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
+			new Notice(`"${file.basename}" isn't a Media Extended note (expected it in "${mediaFolder}" or with mx-uid frontmatter).`);
+			return;
+		}
+
+		const url = extractYouTubeUrlFromNote(content);
+		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
+		if (!url || !videoId) {
+			new Notice(`No YouTube video found in "${file.basename}".`);
+			return;
+		}
+
+		if (hasMarkdownSection(content, heading)) {
+			const replace = await ConfirmModal.confirm(
+				this.app,
+				`Replace # ${heading}?`,
+				`"${file.basename}" already has a "# ${heading}" section. Continue and replace it with the ${section} from YouTube?`,
+				'Replace'
+			);
+			if (!replace) {
+				return;
+			}
+		}
+
+		try {
+			let body: string;
+			let source = '';
+			if (section === 'description') {
+				// Prefer the description already in the note's frontmatter (if enabled), else fetch it
+				const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
+				let description: string;
+				if (this.settings.getMediaExtendedDescriptionFromFrontmatter() && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()) {
+					description = frontmatterDescription;
+					source = ' (from frontmatter)';
+				} else {
+					new Notice('Fetching video description...');
+					const result = await this.fetchVideoDescription(url, videoId);
+					description = result.description;
+					source = result.fromDataApi ? ' (YouTube Data API)' : ' (YouTube player data; set a YouTube Data API key to use the Data API)';
+				}
+				if (!description.trim()) {
+					new Notice('This video has no description.');
+					return;
+				}
+				body = convertDescriptionTimestampsToMediaExtended(description.replace(/\r\n/g, '\n').trim(), videoId);
+			} else {
+				new Notice('Fetching video transcript...');
+				const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
+				if (!transcript.lines || transcript.lines.length === 0) {
+					new Notice('No transcript lines found for this video.');
+					return;
+				}
+				body = formatTranscript(transcript.lines, videoId, { format: 'mediaExtended' });
+			}
+
+			// Keep the companion note order: # Description, # Transcript, # Related
+			// (Description is always moved above Transcript, even if the note was out of order)
+			const insertBefore = section === 'description' ? ['Transcript', 'Related'] : ['Related'];
+			await this.app.vault.process(file, (current) =>
+				ensureSectionOrder(upsertMarkdownSection(current, heading, body, insertBefore), 'Description', 'Transcript')
+			);
+			new Notice(`Added ${section} to "${file.basename}"${source}`);
+		} catch (error) {
+			new Notice(`Failed to add ${section}: ${error.message}`);
+			console.error(`Failed to add ${section} to Media Extended note:`, error);
+		}
+	}
+
+	/**
+	 * Fetches a video's description from the YouTube Data API when an API key is set,
+	 * falling back to YouTube player metadata (no key required).
+	 */
+	private async fetchVideoDescription(url: string, videoId: string): Promise<{ description: string; fromDataApi: boolean }> {
+		const apiKey = this.settings.getYoutubeApiKey().trim();
+		if (apiKey) {
+			const data = await YouTubeService.fetchYouTubeDataApiVideoData(videoId, apiKey);
+			if (data.description !== undefined) {
+				return { description: data.description, fromDataApi: true };
+			}
+		}
+		const metadata = await this.youtubeService.fetchVideoMetadata(url, apiKey || undefined);
+		return { description: metadata.description || '', fromDataApi: false };
+	}
+
+	/**
 	 * Upgrades the currently active note by fetching missing YouTube metadata
 	 * and updating frontmatter without re-running summary inference or generating tags.
 	 */
@@ -997,7 +1159,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				url,
 				this.settings.getYoutubeApiKey()
 			);
-			const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
 
 			let thumbnailText = '';
 			if (this.provider?.extractThumbnailText) {
@@ -1038,6 +1200,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				channel_username: metadata.channelUsername || '',
 				channel_url: metadata.channelUrl,
 				video_url: metadata.url,
+				...videoStatsFrontmatter(metadata),
 				thumbnail: thumbnailUrl,
 				thumbnail_text: thumbnailText,
 				description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
@@ -1111,7 +1274,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						url,
 						this.settings.getYoutubeApiKey()
 					);
-					const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+					const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
 
 					let thumbnailText = '';
 					if (this.provider?.extractThumbnailText) {
@@ -1152,6 +1315,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						channel_username: metadata.channelUsername || '',
 						channel_url: metadata.channelUrl,
 						video_url: metadata.url,
+						...videoStatsFrontmatter(metadata),
 						thumbnail: thumbnailUrl,
 						thumbnail_text: thumbnailText,
 						description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
@@ -1482,7 +1646,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						url,
 						this.settings.getYoutubeApiKey()
 					);
-					const thumbnailUrl = YouTubeService.getThumbnailUrl(metadata.videoId);
+					const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
 
 					const currentContent = await this.app.vault.read(file);
 					const fmMatch = currentContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -1516,6 +1680,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						channel_username: metadata.channelUsername || '',
 						channel_url: metadata.channelUrl,
 						video_url: metadata.url,
+						...videoStatsFrontmatter(metadata),
 						thumbnail: thumbnailUrl,
 						thumbnail_text: thumbnailText,
 						description: metadata.description,
@@ -1700,7 +1865,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 							channel_username: metadata.channelUsername || '',
 							channel_url: metadata.channelUrl,
 							video_url: metadata.url,
-							thumbnail: YouTubeService.getThumbnailUrl(metadata.videoId),
+							...videoStatsFrontmatter(metadata),
+							thumbnail: await YouTubeService.getAvailableThumbnailUrl(metadata.videoId),
 							thumbnail_text: thumbnailText,
 							description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
 							playlist_title: pTitle,
@@ -1960,6 +2126,162 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		}).open();
 	}
 
+	/**
+	 * Re-fetches a video's metadata and refreshes the frontmatter of one video summary note or
+	 * Media Extended note. Never changes the note body, tags, or AI-extracted thumbnail text.
+	 */
+	private async refreshNoteVideoMetadata(file: TFile): Promise<{ status: 'success' | 'skipped'; message: string; url?: string }> {
+		const content = await this.app.vault.read(file);
+		const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		const kind = getVideoNoteKind(content, file.path, mediaFolder);
+		if (!kind) {
+			return { status: 'skipped', message: 'Not a video summary note or Media Extended note' };
+		}
+
+		const url = extractYouTubeUrlFromNote(content);
+		if (!url || !VIDEO_ID_REGEX.test(url)) {
+			return { status: 'skipped', message: 'No YouTube video found in the note' };
+		}
+
+		const metadata = await this.youtubeService.fetchVideoMetadata(url, this.settings.getYoutubeApiKey());
+
+		if (kind === 'mediaExtended') {
+			const cover = await YouTubeService.getCoverUrl(metadata.videoId);
+			await this.app.vault.process(file, (current) =>
+				refreshMediaExtendedNoteContent(current, {
+					videoId: metadata.videoId,
+					title: metadata.title,
+					description: metadata.description,
+					duration: metadata.duration,
+					creator: metadata.author,
+					publishedAt: metadata.publishedAt,
+					viewCount: metadata.viewCount,
+					likeCount: metadata.likeCount,
+					cover,
+					aspectRatio: metadata.aspectRatio,
+				})
+			);
+			return { status: 'success', message: 'Refreshed Media Extended note frontmatter', url };
+		}
+
+		const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
+		const existingThumbnailText = this.app.metadataCache.getFileCache(file)?.frontmatter?.thumbnail_text;
+		const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
+		const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+			? playlist.title.trim()
+			: undefined;
+		const fmData: FrontmatterData = {
+			title: metadata.title,
+			channel_name: metadata.author,
+			channel_username: metadata.channelUsername || '',
+			channel_url: metadata.channelUrl,
+			// Keep the note's own URL (it may carry playlist parameters)
+			video_url: url,
+			...videoStatsFrontmatter(metadata),
+			thumbnail: thumbnailUrl,
+			thumbnail_text: typeof existingThumbnailText === 'string' ? existingThumbnailText : '',
+			description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
+			playlist_title: pTitle,
+			playlist_url: playlist?.url,
+			playlist_id: playlist?.id,
+			playlist_index: playlist?.index,
+			playlist_count: playlist?.count,
+		};
+		await this.app.vault.process(file, (current) =>
+			updateNoteContentWithFrontmatter(current, fmData, { excludeTags: true })
+		);
+		return { status: 'success', message: 'Refreshed video summary note frontmatter', url };
+	}
+
+	/**
+	 * Refreshes video metadata in a single video summary or Media Extended note.
+	 */
+	public async refreshVideoMetadataInNote(file: TFile): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice(`Refreshing video metadata in "${file.basename}"...`);
+			const result = await this.refreshNoteVideoMetadata(file);
+			new Notice(result.status === 'success'
+				? `Refreshed video metadata in "${file.basename}"`
+				: `Skipped "${file.basename}": ${result.message}`);
+		} catch (error) {
+			new Notice(`Failed to refresh video metadata: ${error.message}`);
+			console.error('Failed to refresh video metadata:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Refreshes video metadata in every video summary and Media Extended note in a folder (and its subfolders).
+	 */
+	public async refreshVideoMetadataInFolder(folder: TFolder): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		const operation = 'Refresh video metadata';
+		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+			new Notice(`Scanning ${scopeDescription} for video notes...`);
+
+			const candidates: TFile[] = [];
+			for (const file of filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder)) {
+				const content = await this.app.vault.read(file);
+				if (getVideoNoteKind(content, file.path, mediaFolder)) {
+					candidates.push(file);
+				}
+			}
+
+			if (candidates.length === 0) {
+				BatchProgressTracker.finishEmpty(this, operation, scopeDescription, `No video summary or Media Extended notes found in ${scopeDescription}.`);
+				return;
+			}
+
+			const tracker = new BatchProgressTracker(this, operation, scopeDescription, candidates.length);
+			for (let i = 0; i < candidates.length; i++) {
+				const file = candidates[i];
+				try {
+					const result = await this.refreshNoteVideoMetadata(file);
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						url: result.url,
+						status: result.status,
+						message: result.message,
+					});
+				} catch (error) {
+					tracker.recordItem({
+						filePath: file.path,
+						fileName: file.basename,
+						status: 'error',
+						message: error.message || String(error),
+					});
+				}
+
+				if (i < candidates.length - 1) {
+					await new Promise((res) => setTimeout(res, 300));
+				}
+			}
+
+			tracker.finish();
+		} catch (error) {
+			new Notice(`Failed to refresh video metadata: ${error.message}`);
+			console.error('Failed to refresh video metadata:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
 
 	private buildPrompt(transcriptText: string, customPrompt?: string): string {
 		let basePrompt = customPrompt && customPrompt.trim()
@@ -2010,7 +2332,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				return;
 			}
 
-			const thumbnailUrl = YouTubeService.getThumbnailUrl(transcript.videoId);
+			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
 
 			// Extract tags from title & description and/or YouTube Data API metadata if enabled
 			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
@@ -2095,6 +2417,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				channel_username: transcript.channelUsername || '',
 				channel_url: transcript.channelUrl,
 				video_url: url,
+				...videoStatsFrontmatter(transcript),
 				thumbnail: thumbnailUrl,
 				thumbnail_text: '',
 				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,

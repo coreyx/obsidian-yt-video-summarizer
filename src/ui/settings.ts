@@ -403,6 +403,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Use frontmatter description for "Add description to Media Extended note"
+        new Setting(containerEl)
+            .setName('Use frontmatter description for Media Extended notes')
+            .setDesc('When running "Add description to Media Extended note", copy the note\'s frontmatter description into the body instead of fetching it from YouTube. Falls back to fetching when the frontmatter description is missing or empty (enabled by default).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedDescriptionFromFrontmatter())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedDescriptionFromFrontmatter(value);
+                    })
+            );
+
         // Media Extended notes folder
         new Setting(containerEl)
             .setName('Media Extended notes folder')
