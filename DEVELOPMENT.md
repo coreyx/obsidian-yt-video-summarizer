@@ -754,3 +754,23 @@ This section preserves technical and design questions asked during development f
 1. **One cover URL**: [`getMediaExtendedCoverUrl()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) returns the provided cover (quotes stripped) or the max-resolution WebP thumbnail. `buildMediaExtendedFrontmatter()` and the body embed both use it, so `cover:` and `![Cover](...)` always match (including the `hqdefault` fallback chosen by `YouTubeService.getCoverUrl()`).
 2. **Embed in new notes**: `buildMediaExtendedNote()` takes `embedCover` (off by default in the pure function); `createMediaExtendedCompanionNote()` passes the *Embed cover in Media Extended notes* setting (`mediaExtendedEmbedCover`, default on). The embed is the first body block, so `upsertMarkdownSection()` inserts `# Description` / `# Transcript` after it and `addRelatedLink()` still appends `# Related` at the end. Refresh video metadata only touches frontmatter, so it never adds or moves the embed.
 3. **Insert at cursor**: [`insertVideoCoverAtCursor()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) captures the cursor before any network call, finds the video with `extractYouTubeUrlFromNote()`, prefers an `http(s)` `cover` frontmatter value (via `metadataCache`), else `getCoverUrl()`, and inserts `buildCoverEmbed(url)` with no duplicate check. Works in any note with a detectable YouTube video.
+
+---
+
+### Q22: When does the summarizer treat the current note as blank?
+
+**Context**: User requested that a note count as blank even if it has tags when: (1) tags are the only frontmatter, (2) no body exists, and (3) the note name starts with "Untitled" (refines Q17).
+
+**Answer**: [`isBlankNoteForSummary(content, noteName)`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) returns true for an empty note, or when **all** of these hold: the name starts with "Untitled" (case-insensitive, so "Untitled 3" matches), the content is a frontmatter block followed only by whitespace, and every top-level frontmatter key is `tags` (list or inline form; an empty `---`/`---` block also qualifies). Step 0 of `summarizeVideo()` uses it instead of `content.trim() === ''`. Writing then takes the existing merge path (`updateNoteContentWithFrontmatter()`), which keeps the note's tags and merges new ones; *Set note title from video* renames the Untitled note as before.
+
+---
+
+### Q23: Why was "Include video description in summary note" removed, and how does "Add description to video summary note" work?
+
+**Context**: User asked to replace the option that always put the description in the summary note body with an on-demand command (like the Media Extended one), since the body copy is only useful to make description timestamps clickable — they aren't in frontmatter.
+
+**Answer**:
+1. **Removed**: the `includeVideoDescription` setting (types, defaults, settings manager, settings UI) and the `## Description` blocks in `generateSummary()` and `retrieveTranscript()`. The description still goes to frontmatter per *Add description to frontmatter*. Stale `includeVideoDescription` keys in `data.json` are ignored and dropped on the next save.
+2. **Command** ([`addDescriptionToVideoSummaryNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts)): only runs on notes where `getVideoNoteKind()` is `summary`. Writes a level-2 `## Description` (matching the summary note's `##` sections) via `upsertMarkdownSection(..., ['Related'], 2)`, so it lands before `# Related` or at the end, and replaces an existing `## Description` after a `ConfirmModal`. Timestamps go through `convertTimestampsToLinks(..., 'youtube')`.
+3. **Shared description source**: `getDescriptionForNote()` is used by both "Add description" commands: frontmatter `description` (via `metadataCache`) when the setting is on and it's non-empty, else `fetchVideoDescription()` (Data API with key, player metadata otherwise). The setting keeps its key `mediaExtendedDescriptionFromFrontmatter` for compatibility, but its label is now *Use frontmatter description when adding description to body*.
+4. **Heading levels**: `findMarkdownSection()`, `hasMarkdownSection()`, and `upsertMarkdownSection()` take a `level` (default 1). A section ends at the next heading of the same or higher level, so `###` subsections belong to a `##` section and `##` subsections to a `#` section (unchanged level-1 behavior). `insertBefore` anchors are level-1 headings.

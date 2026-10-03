@@ -331,18 +331,6 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // Include video description
-        new Setting(containerEl)
-            .setName('Include video description in summary note')
-            .setDesc('Include the YouTube video description in the summary note body under a "## Description" section, with timestamps linked to the video (disabled by default)')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getIncludeVideoDescription())
-                    .onChange(async (value) => {
-                        await this.settings.updateIncludeVideoDescription(value);
-                    })
-            );
-
         // Add description to frontmatter
         new Setting(containerEl)
             .setName('Add description to frontmatter')
@@ -415,10 +403,10 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // Use frontmatter description for "Add description to Media Extended note"
+        // Use frontmatter description for the "Add description to ..." commands
         new Setting(containerEl)
-            .setName('Use frontmatter description for Media Extended notes')
-            .setDesc('When running "Add description to Media Extended note", copy the note\'s frontmatter description into the body instead of fetching it from YouTube. Falls back to fetching when the frontmatter description is missing or empty (enabled by default).')
+            .setName('Use frontmatter description when adding description to body')
+            .setDesc('When running "Add description to video summary note" or "Add description to Media Extended note", copy the note\'s frontmatter description into the body instead of fetching it from YouTube. Falls back to fetching when the frontmatter description is missing or empty (enabled by default).')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getMediaExtendedDescriptionFromFrontmatter())

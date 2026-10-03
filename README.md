@@ -16,7 +16,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
 -   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at`, `view_count`, `like_count`, `aspect_ratio`, `description`, and `tags`. Video stats are included when YouTube provides them.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
--   📝 **Video Description Preservation**: Optionally archives the creator's complete video description and external links in the note body, with every timestamp converted into a clickable link to that moment in the video.
+-   📝 **Video Description Preservation**: Stores the creator's complete video description in frontmatter, and on demand adds it to the note body with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
 -   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
@@ -162,8 +162,6 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Generate Wikilinks for Technical Terms**: Formats extracted technical terms with Obsidian `[[wikilinks]]` (e.g. `- **[[Term]]**: explanation`). Enabled by default. When disabled, terms are retained as bold text without wikilinks (`- **Term**: explanation`).
 
-**Include Video Description in Summary Note**: Archives the complete YouTube video description, including external links and creator notes, under a `## Description` section in the summary note body. Timestamps in the description are converted into standard YouTube timestamp links. Disabled by default.
-
 **Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
 
 **Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note, with each timestamp linked to the video (e.g. `[01:05](https://www.youtube.com/watch?v=...&t=65s)`). Disabled by default.
@@ -178,7 +176,7 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Embed Cover in Media Extended Notes**: Adds the video cover as an inline image (`![Cover](https://i.ytimg.com/...)`) at the top of the body of new Media Extended companion notes, using the same URL as the `cover` frontmatter. Enabled by default.
 
-**Use Frontmatter Description for Media Extended Notes**: When running `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
+**Use Frontmatter Description When Adding Description to Body**: When running `Add description to video summary note` or `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
 
 **Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
 
@@ -202,7 +200,7 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 
 ## Usage
 
-**Where the summary goes**: Run the summarizer from a **blank note** and the summary is written into that note. Run it from a note that already has a body and/or frontmatter, and a new note is created in the *Video summaries folder* (default `Video Summaries/`), a link to it is inserted at your cursor, and the summary is written to the new note when it's ready — you can keep working in other notes in the meantime. If the summary fails, the new note is moved to the trash and the link is removed.
+**Where the summary goes**: Run the summarizer from a **blank note** and the summary is written into that note. A note also counts as blank when its name starts with "Untitled", it has no body, and its only frontmatter is `tags` (e.g. a new note from a template); your tags are kept and merged with any new ones. Run it from a note that already has a body and/or frontmatter, and a new note is created in the *Video summaries folder* (default `Video Summaries/`), a link to it is inserted at your cursor, and the summary is written to the new note when it's ready — you can keep working in other notes in the meantime. If the summary fails, the new note is moved to the trash and the link is removed.
 
 ### Method 1: Command Palette
 
@@ -312,7 +310,7 @@ Every batch upgrade operation (Playlist Upgrades, Description & Tags Upgrades, C
 4. If the note already has a `# Description` / `# Transcript` section, you're asked whether to continue; continuing replaces that section
 5. The section is written with Media Extended timestamp links, in companion note order (`# Description`, `# Transcript`, `# Related`). `# Description` always ends up above `# Transcript`, even if the note had them the other way around.
 
-By default, the description is copied from the note's frontmatter `description:` (only the body gets the new `# Description` section; frontmatter is never changed). If the frontmatter description is missing or empty, or *Use frontmatter description for Media Extended notes* is off, it's fetched from the **YouTube Data API** when a YouTube Data API key is set, and from YouTube's player metadata otherwise (no key required). The transcript comes from the video's captions.
+By default, the description is copied from the note's frontmatter `description:` (only the body gets the new `# Description` section; frontmatter is never changed). If the frontmatter description is missing or empty, or *Use frontmatter description when adding description to body* is off, it's fetched from the **YouTube Data API** when a YouTube Data API key is set, and from YouTube's player metadata otherwise (no key required). The transcript comes from the video's captions.
 
 ### Method 12: Refresh Video Metadata
 
@@ -334,6 +332,15 @@ What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `vid
 3. Run `Insert video cover at cursor` from the Command Palette
 
 Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when it's a URL, otherwise the YouTube thumbnail (max resolution, or high quality for older videos). It doesn't check whether the note already has a cover image.
+
+### Method 14: Add Description to a Video Summary Note
+
+1. Open a video summary note (a note with `video_url` frontmatter)
+2. Run `Add description to video summary note` from the Command Palette
+3. If the note already has a `## Description` section, you're asked whether to continue; continuing replaces it
+4. A `## Description` section is added before `# Related` (or at the end), with every timestamp converted into a clickable YouTube link (`[01:23](https://www.youtube.com/watch?v=...&t=83s)`)
+
+The description is always stored in frontmatter, where its timestamps aren't clickable; use this command when you want clickable chapter links. The description source follows *Use frontmatter description when adding description to body* (frontmatter first, then YouTube).
 
 ## Output Format
 
@@ -427,7 +434,7 @@ Welcome to this video tutorial! Check out the chapter timestamps below:
 - [[Original Summary Note]]
 ```
 
-The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, video description in companion notes (with automatic timestamp conversion), and the video description section can each be toggled on or off in the plugin settings.
+The summary sections are customizable via the summary prompt setting. Note body title heading (`# Title`), technical term wikilinks, frontmatter properties, topic tags, and video description in companion notes (with automatic timestamp conversion) can each be toggled on or off in the plugin settings. To add the description to a summary note's body, use `Add description to video summary note`.
 
 ## Development
 

@@ -2641,7 +2641,8 @@ assert(meBare.includes('# Related\n\n- [[TypeScript Summary Note]]'));
 // 26b.5: Body defaults — summary note off, Media Extended note on
 const { readFileSync } = await import('node:fs');
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
-assert.match(defaultsSource, /DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false;/);
+// The "include description in summary note body" option was removed (use "Add description to video summary note")
+assert.doesNotMatch(defaultsSource, /DEFAULT_INCLUDE_VIDEO_DESCRIPTION/);
 assert.match(defaultsSource, /DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false;/);
 assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true;/);
 assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true;/);
@@ -3645,7 +3646,7 @@ console.log('✓ Video summary note placement, fallback folder paths, and source
 // Test 32: Add description / transcript to Media Extended notes (section detection, upsert, video detection)
 console.log('Testing Media Extended note section detection, insertion/replacement, and video detection...');
 
-function findMarkdownSectionHelper(content, heading) {
+function findMarkdownSectionHelper(content, heading, level = 1) {
 	const lines = content.split('\n');
 	let i = 0;
 	if (lines[0]?.trim() === '---') {
@@ -3661,24 +3662,28 @@ function findMarkdownSectionHelper(content, heading) {
 			continue;
 		}
 		if (inFence) continue;
-		const match = lines[i].match(/^# +(.+?)\s*$/);
+		const match = lines[i].match(/^(#{1,6}) +(.+?)\s*$/);
 		if (!match) continue;
-		if (start >= 0) return { start, end: i };
-		if (match[1].toLowerCase() === target) start = i;
+		const lineLevel = match[1].length;
+		if (start >= 0) {
+			if (lineLevel <= level) return { start, end: i };
+			continue;
+		}
+		if (lineLevel === level && match[2].toLowerCase() === target) start = i;
 	}
 	return start >= 0 ? { start, end: lines.length } : null;
 }
 
-function upsertMarkdownSectionHelper(content, heading, body, insertBefore = []) {
+function upsertMarkdownSectionHelper(content, heading, body, insertBefore = [], level = 1) {
 	const lines = content.replace(/\r\n/g, '\n').split('\n');
 	const normalized = lines.join('\n');
-	const sectionText = `# ${heading}\n\n${body.trim()}`;
+	const sectionText = `${'#'.repeat(level)} ${heading}\n\n${body.trim()}`;
 	const join = (before, after) => {
 		const head = before.join('\n').replace(/\s+$/, '');
 		const tail = after.join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
 		return `${[head, sectionText, tail].filter(Boolean).join('\n\n')}\n`;
 	};
-	const existing = findMarkdownSectionHelper(normalized, heading);
+	const existing = findMarkdownSectionHelper(normalized, heading, level);
 	if (existing) return join(lines.slice(0, existing.start), lines.slice(existing.end));
 	const anchors = insertBefore
 		.map((h) => findMarkdownSectionHelper(normalized, h))
@@ -4074,6 +4079,102 @@ const insertedTwice = insertCoverAtHelper(inserted, 0, 'https://i.ytimg.com/vi_w
 assert.strictEqual((insertedTwice.match(/!\[Cover\]/g) || []).length, 2);
 
 console.log('✓ Media Extended cover embed passed');
+
+// Test 36: Blank-note detection for the summarizer ("Untitled" notes with tags-only frontmatter)
+console.log('Testing blank-note detection for Untitled notes with tags-only frontmatter...');
+
+function isBlankNoteForSummaryHelper(content, noteName) {
+	if (content.trim() === '') return true;
+	if (!/^untitled/i.test(noteName.trim())) return false;
+	const fmMatch = content.match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
+	if (!fmMatch) return false;
+	if (content.slice(fmMatch[0].length).trim() !== '') return false;
+	const keys = splitYamlBlocksHelper((fmMatch[1] ?? '').replace(/\r\n/g, '\n'))
+		.filter((block) => block.lines.some((line) => line.trim() !== ''))
+		.map((block) => block.key);
+	return keys.every((key) => key === 'tags');
+}
+
+const tagsOnlyList = '---\ntags:\n  - inbox\n  - video\n---\n';
+const tagsOnlyInline = '---\ntags: [inbox, video]\n---';
+
+// 36.1: Empty notes are blank regardless of name
+assert.strictEqual(isBlankNoteForSummaryHelper('', 'My Note'), true);
+assert.strictEqual(isBlankNoteForSummaryHelper('  \n\n', 'Anything'), true);
+
+// 36.2: Untitled + tags-only frontmatter + no body → blank (list, inline, CRLF, trailing whitespace, numbered Untitled)
+assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyList, 'Untitled'), true);
+assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyInline, 'Untitled 3'), true);
+assert.strictEqual(isBlankNoteForSummaryHelper('---\r\ntags:\r\n  - inbox\r\n---\r\n\r\n', 'Untitled'), true);
+assert.strictEqual(isBlankNoteForSummaryHelper(`${tagsOnlyList}\n   \n`, 'untitled 2'), true);
+assert.strictEqual(isBlankNoteForSummaryHelper('---\n---\n', 'Untitled'), true);
+
+// 36.3: Any condition failing → not blank
+assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyList, 'Meeting notes'), false); // name
+assert.strictEqual(isBlankNoteForSummaryHelper(`${tagsOnlyList}\nSome text`, 'Untitled'), false); // body
+assert.strictEqual(isBlankNoteForSummaryHelper('---\ntags:\n  - a\ncreated: 2026-10-02\n---\n', 'Untitled'), false); // other key
+assert.strictEqual(isBlankNoteForSummaryHelper('---\naliases: [x]\n---\n', 'Untitled'), false); // non-tags key only
+assert.strictEqual(isBlankNoteForSummaryHelper('Just text', 'Untitled'), false); // body, no frontmatter
+
+// 36.4: Writing the summary into a tags-only note keeps the user's tags and adds the summary frontmatter + body
+const blankFmData = {
+	title: 'Video', channel_name: 'C', channel_username: '@c', channel_url: 'https://www.youtube.com/@c',
+	video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 't.jpg', thumbnail_text: '', tags: ['music'],
+};
+const tagsOnlyCurrent = `${tagsOnlyList.trimEnd()}\n\n## Summary\n\nText`;
+const tagsOnlyFm = tagsOnlyCurrent.match(/^---\r?\n([\s\S]*?\r?\n)---(\r?\n)?/);
+const mergedTagsOnly = `---\n${mergeFrontmatter(tagsOnlyFm[1], blankFmData)}\n---\n${tagsOnlyCurrent.slice(tagsOnlyFm[0].length)}`;
+assert(mergedTagsOnly.includes('  - inbox'));
+assert(mergedTagsOnly.includes('  - video'));
+assert(mergedTagsOnly.includes('  - music'));
+assert(mergedTagsOnly.includes('title: "Video"'));
+assert(mergedTagsOnly.trimEnd().endsWith('## Summary\n\nText'));
+assert.strictEqual((mergedTagsOnly.match(/^tags:/gm) || []).length, 1);
+
+console.log('✓ Blank-note detection for Untitled notes with tags-only frontmatter passed');
+
+// Test 37: "Add description to video summary note" (## Description with YouTube timestamp links)
+console.log('Testing add description to video summary note...');
+
+const summaryNoteFm = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\ndescription: |-\n  Chapters\n  0:00 Intro\n  01:23 Setup\n---';
+const summaryNoteBody = '![Thumbnail](https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg)\n\n## Summary\n\nText\n\n## Key points\n\n- Point\n\n# Related\n\n- [[Media Library/Video]]';
+const summaryNoteFull = `${summaryNoteFm}\n\n${summaryNoteBody}\n`;
+const ytDescriptionBody = convertTimestampsToLinksHelper('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ', 'youtube');
+
+// 37.1: Description timestamps become clickable standard YouTube links
+assert(ytDescriptionBody.includes('[0:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0s) Intro'));
+assert(ytDescriptionBody.includes('[01:23](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=83s) Setup'));
+assert(!ytDescriptionBody.includes('#t='));
+
+// 37.2: Classified as a summary note (and Media Extended notes are not)
+assert.strictEqual(getVideoNoteKindHelper(summaryNoteFull, 'Video Summaries/Video.md', 'Media Library'), 'summary');
+assert.strictEqual(getVideoNoteKindHelper(meNoteBare, 'Media Library/Video.md', 'Media Library'), 'mediaExtended');
+
+// 37.3: Inserted as ## Description before # Related (Media Extended link stays last)
+const withSummaryDesc = upsertMarkdownSectionHelper(summaryNoteFull, 'Description', ytDescriptionBody, ['Related'], 2);
+assert(withSummaryDesc.includes(`## Key points\n\n- Point\n\n## Description\n\n${ytDescriptionBody}\n\n# Related\n\n- [[Media Library/Video]]\n`));
+assert(withSummaryDesc.startsWith(summaryNoteFm));
+
+// 37.4: Appended at the end when there's no # Related
+const noRelated = `${summaryNoteFm}\n\n## Summary\n\nText\n`;
+assert.strictEqual(upsertMarkdownSectionHelper(noRelated, 'Description', 'D', ['Related'], 2), `${summaryNoteFm}\n\n## Summary\n\nText\n\n## Description\n\nD\n`);
+
+// 37.5: Existing ## Description is detected and replaced in place; level-2 sections end at the next ## or #
+assert.notStrictEqual(findMarkdownSectionHelper(withSummaryDesc, 'Description', 2), null);
+assert.strictEqual(findMarkdownSectionHelper(withSummaryDesc, 'Description', 1), null);
+const replacedSummaryDesc = upsertMarkdownSectionHelper(withSummaryDesc, 'Description', 'New', ['Related'], 2);
+assert(replacedSummaryDesc.includes('## Description\n\nNew\n\n# Related'));
+assert.strictEqual((replacedSummaryDesc.match(/^## Description$/gm) || []).length, 1);
+const midDesc = `${summaryNoteFm}\n\n## Description\n\nOld\n\n### Sub\n\nx\n\n## Key points\n\n- P\n`;
+const replacedMid = upsertMarkdownSectionHelper(midDesc, 'Description', 'New', ['Related'], 2);
+assert(replacedMid.includes('## Description\n\nNew\n\n## Key points\n\n- P\n'));
+assert(!replacedMid.includes('### Sub'));
+
+// 37.6: Level-1 behavior unchanged — ## subsections belong to a # section
+const level1WithSub = '# Description\n\nA\n\n## Links\n\n- x\n\n# Related\n\n- y';
+assert.deepStrictEqual(findMarkdownSectionHelper(level1WithSub, 'Description'), { start: 0, end: 8 });
+
+console.log('✓ Add description to video summary note passed');
 
 console.log('\nAll tests passed successfully!');
 

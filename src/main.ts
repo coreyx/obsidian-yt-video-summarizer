@@ -33,6 +33,7 @@ import {
 	getVideoNoteKind,
 	hasMarkdownSection,
 	hasPlaylistTitlePlaceholder,
+	isBlankNoteForSummary,
 	hasRelatedMediaExtendedLink,
 	isMediaExtendedCompanionNote,
 	isNoteMissingDescriptionFrontmatter,
@@ -319,6 +320,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'add-description-to-video-summary-note',
+			name: 'Add description to video summary note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.addDescriptionToVideoSummaryNote(view.file);
+			},
+		});
+
+		this.addCommand({
 			id: 'add-transcript-to-media-extended-note',
 			name: 'Add transcript to Media Extended note',
 			editorCallback: async (_editor: Editor, view: MarkdownView) => {
@@ -581,11 +590,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				return;
 			}
 
-			// Step 0: Decide where the summary goes. A blank note receives it directly; a note with a body
-			// and/or frontmatter gets a link at the cursor to a new note in the video summaries folder.
+			// Step 0: Decide where the summary goes. A blank note (including an "Untitled" note with only
+			// tags in its frontmatter) receives it directly; any other note gets a link at the cursor to a
+			// new note in the video summaries folder.
 			const sourceFile = view?.file ?? null;
 			let targetFile: TFile;
-			if (sourceFile && editor.getValue().trim() === '') {
+			if (sourceFile && isBlankNoteForSummary(editor.getValue(), sourceFile.basename)) {
 				targetFile = sourceFile;
 			} else {
 				pendingNote = await this.createPendingSummaryNote(url, editor, sourceFile);
@@ -696,7 +706,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				url,
 				summary,
 				inlineTags,
-				this.settings.getIncludeVideoDescription(),
 				this.settings.getIncludeTitleInBody(),
 				this.settings.getDumpTranscriptInSummary()
 			);
@@ -740,7 +749,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			};
 
 			// Written through the vault (not the editor) so it lands in the right note regardless of focus.
-			// If the user typed into the blank note meanwhile, append and merge frontmatter instead.
+			// If the blank note has tags-only frontmatter (or the user typed into it meanwhile), append and
+			// merge frontmatter instead, so existing tags are kept alongside any new ones.
 			await this.app.vault.process(targetFile, (current) =>
 				pendingNote || current.trim() === ''
 					? `${buildFrontmatter(fmData)}\n\n${bodyContent}`
@@ -1088,23 +1098,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			let body: string;
 			let source = '';
 			if (section === 'description') {
-				// Prefer the description already in the note's frontmatter (if enabled), else fetch it
-				const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
-				let description: string;
-				if (this.settings.getMediaExtendedDescriptionFromFrontmatter() && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()) {
-					description = frontmatterDescription;
-					source = ' (from frontmatter)';
-				} else {
-					new Notice('Fetching video description...');
-					const result = await this.fetchVideoDescription(url, videoId);
-					description = result.description;
-					source = result.fromDataApi ? ' (YouTube Data API)' : ' (YouTube player data; set a YouTube Data API key to use the Data API)';
-				}
-				if (!description.trim()) {
+				const result = await this.getDescriptionForNote(file, url, videoId);
+				if (!result.description.trim()) {
 					new Notice('This video has no description.');
 					return;
 				}
-				body = convertDescriptionTimestampsToMediaExtended(description.replace(/\r\n/g, '\n').trim(), videoId);
+				source = result.source;
+				body = convertDescriptionTimestampsToMediaExtended(result.description.replace(/\r\n/g, '\n').trim(), videoId);
 			} else {
 				new Notice('Fetching video transcript...');
 				const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
@@ -1126,6 +1126,77 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice(`Failed to add ${section}: ${error.message}`);
 			console.error(`Failed to add ${section} to Media Extended note:`, error);
 		}
+	}
+
+	/**
+	 * Adds the video description to a video summary note body as a `## Description` section (matching the
+	 * note's other `##` sections) with timestamps linked to the video in standard YouTube format, so they're
+	 * clickable (they aren't in frontmatter). If the section already exists, asks before replacing it.
+	 */
+	public async addDescriptionToVideoSummaryNote(file: TFile | null): Promise<void> {
+		if (!file) {
+			new Notice('Open a video summary note first.');
+			return;
+		}
+
+		const content = await this.app.vault.read(file);
+		const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		if (getVideoNoteKind(content, file.path, mediaFolder) !== 'summary') {
+			new Notice(`"${file.basename}" isn't a video summary note (expected video_url frontmatter). For Media Extended notes, use "Add description to Media Extended note".`);
+			return;
+		}
+
+		const url = extractYouTubeUrlFromNote(content);
+		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
+		if (!url || !videoId) {
+			new Notice(`No YouTube video found in "${file.basename}".`);
+			return;
+		}
+
+		if (hasMarkdownSection(content, 'Description', 2)) {
+			const replace = await ConfirmModal.confirm(
+				this.app,
+				'Replace ## Description?',
+				`"${file.basename}" already has a "## Description" section. Continue and replace it with the description from YouTube?`,
+				'Replace'
+			);
+			if (!replace) {
+				return;
+			}
+		}
+
+		try {
+			const result = await this.getDescriptionForNote(file, url, videoId);
+			if (!result.description.trim()) {
+				new Notice('This video has no description.');
+				return;
+			}
+			const body = convertTimestampsToLinks(result.description.replace(/\r\n/g, '\n').trim(), videoId, 'youtube');
+			// Keep # Related (the link to the Media Extended note) at the end
+			await this.app.vault.process(file, (current) => upsertMarkdownSection(current, 'Description', body, ['Related'], 2));
+			new Notice(`Added description to "${file.basename}"${result.source}`);
+		} catch (error) {
+			new Notice(`Failed to add description: ${error.message}`);
+			console.error('Failed to add description to video summary note:', error);
+		}
+	}
+
+	/**
+	 * Gets the description to put in a note's body: the note's frontmatter description when
+	 * *Use frontmatter description* is on and it's non-empty, otherwise fetched from YouTube.
+	 * `source` is a short suffix for the confirmation notice.
+	 */
+	private async getDescriptionForNote(file: TFile, url: string, videoId: string): Promise<{ description: string; source: string }> {
+		const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
+		if (this.settings.getMediaExtendedDescriptionFromFrontmatter() && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()) {
+			return { description: frontmatterDescription, source: ' (from frontmatter)' };
+		}
+		new Notice('Fetching video description...');
+		const result = await this.fetchVideoDescription(url, videoId);
+		return {
+			description: result.description,
+			source: result.fromDataApi ? ' (YouTube Data API)' : ' (YouTube player data; set a YouTube Data API key to use the Data API)',
+		};
 	}
 
 	/**
@@ -2425,11 +2496,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				`## Transcript\n\n${formattedTranscript}`
 			);
 
-			if (this.settings.getIncludeVideoDescription() && transcript.description && transcript.description.trim()) {
-				const formattedDescription = convertTimestampsToLinks(transcript.description.trim(), transcript.videoId, 'youtube');
-				bodyParts.push(`## Description\n\n${formattedDescription}`);
-			}
-
 			let bodyContent = bodyParts.join('\n\n');
 
 			if (mediaExtendedOptions.createNote) {
@@ -2485,7 +2551,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 	/**
 	 * Generates a summary string based on the provided transcript, thumbnail URL, video URL, summary,
-	 * optional inline tags, optional video description, optional title heading, and optional transcript dump.
+	 * optional inline tags, optional title heading, and optional transcript dump.
+	 * (The description stays in frontmatter; "Add description to video summary note" adds it to the body.)
 	 */
 	private generateSummary(
 		transcript: TranscriptResponse,
@@ -2493,7 +2560,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		url: string,
 		summaryText: string,
 		inlineTags?: string[],
-		includeDescription = true,
 		includeTitle = false,
 		dumpTranscript = false
 	): string {
@@ -2531,11 +2597,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				format: 'youtube',
 			});
 			summaryParts.push(`## Transcript\n\n${formattedTranscript}`);
-		}
-
-		if (includeDescription && transcript.description && transcript.description.trim()) {
-			const formattedDescription = convertTimestampsToLinks(transcript.description.trim(), transcript.videoId, 'youtube');
-			summaryParts.push(`## Description\n\n${formattedDescription}`);
 		}
 
 		return summaryParts.join('\n\n');

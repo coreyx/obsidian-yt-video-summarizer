@@ -1032,11 +1032,11 @@ export function buildMediaExtendedNote(
 }
 
 /**
- * Finds a level-1 markdown section (`# Heading`, case-insensitive) outside frontmatter and code fences.
- * Returns the line index of the heading and the line index where the section ends
- * (the next level-1 heading, or the number of lines).
+ * Finds a markdown section (`# Heading` at the given level, case-insensitive) outside frontmatter and
+ * code fences. Returns the line index of the heading and the line index where the section ends
+ * (the next heading of the same or a higher level, or the number of lines).
  */
-export function findMarkdownSection(content: string, heading: string): { start: number; end: number } | null {
+export function findMarkdownSection(content: string, heading: string, level = 1): { start: number; end: number } | null {
 	const lines = content.split('\n');
 	let i = 0;
 	if (lines[0]?.trim() === '---') {
@@ -1053,12 +1053,16 @@ export function findMarkdownSection(content: string, heading: string): { start: 
 			continue;
 		}
 		if (inFence) continue;
-		const match = lines[i].match(/^# +(.+?)\s*$/);
+		const match = lines[i].match(/^(#{1,6}) +(.+?)\s*$/);
 		if (!match) continue;
+		const lineLevel = match[1].length;
 		if (start >= 0) {
-			return { start, end: i };
+			if (lineLevel <= level) {
+				return { start, end: i };
+			}
+			continue;
 		}
-		if (match[1].toLowerCase() === target) {
+		if (lineLevel === level && match[2].toLowerCase() === target) {
 			start = i;
 		}
 	}
@@ -1066,26 +1070,27 @@ export function findMarkdownSection(content: string, heading: string): { start: 
 }
 
 /**
- * Checks whether a note has a level-1 `# Heading` section.
+ * Checks whether a note has a `# Heading` section at the given level (default level 1).
  */
-export function hasMarkdownSection(content: string, heading: string): boolean {
-	return findMarkdownSection(content, heading) !== null;
+export function hasMarkdownSection(content: string, heading: string, level = 1): boolean {
+	return findMarkdownSection(content, heading, level) !== null;
 }
 
 /**
- * Writes `# Heading` + body into a note. Replaces the section if it exists; otherwise inserts it
- * before the earliest of `insertBefore` headings that exists, or appends it at the end.
- * Sections are separated by a single empty line, with an empty line after each heading.
+ * Writes a heading (at `level`, default `#`) + body into a note. Replaces the section if it exists;
+ * otherwise inserts it before the earliest of the level-1 `insertBefore` headings that exists, or
+ * appends it at the end. Sections are separated by a single empty line, with an empty line after each heading.
  */
 export function upsertMarkdownSection(
 	content: string,
 	heading: string,
 	body: string,
-	insertBefore: string[] = []
+	insertBefore: string[] = [],
+	level = 1
 ): string {
 	const lines = content.replace(/\r\n/g, '\n').split('\n');
 	const normalized = lines.join('\n');
-	const sectionText = `# ${heading}\n\n${body.trim()}`;
+	const sectionText = `${'#'.repeat(level)} ${heading}\n\n${body.trim()}`;
 
 	const join = (before: string[], after: string[]): string => {
 		const head = before.join('\n').replace(/\s+$/, '');
@@ -1093,7 +1098,7 @@ export function upsertMarkdownSection(
 		return `${[head, sectionText, tail].filter(Boolean).join('\n\n')}\n`;
 	};
 
-	const existing = findMarkdownSection(normalized, heading);
+	const existing = findMarkdownSection(normalized, heading, level);
 	if (existing) {
 		return join(lines.slice(0, existing.start), lines.slice(existing.end));
 	}
@@ -1122,6 +1127,35 @@ export function getVideoNoteKind(content: string, filePath: string, mediaFolder:
 		return 'summary';
 	}
 	return null;
+}
+
+/**
+ * Decides whether the summarizer should treat a note as blank and write the summary into it.
+ * A note is blank when it's empty, or when all of these hold: its frontmatter has no keys other than
+ * `tags`, it has no body, and its name starts with "Untitled" (e.g. a new note that got default tags
+ * from a template).
+ */
+export function isBlankNoteForSummary(content: string, noteName: string): boolean {
+	if (content.trim() === '') {
+		return true;
+	}
+	if (!/^untitled/i.test(noteName.trim())) {
+		return false;
+	}
+
+	const fmMatch = content.match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
+	if (!fmMatch) {
+		return false;
+	}
+	const body = content.slice(fmMatch[0].length);
+	if (body.trim() !== '') {
+		return false;
+	}
+
+	const keys = splitYamlBlocks((fmMatch[1] ?? '').replace(/\r\n/g, '\n'))
+		.filter((block) => block.lines.some((line) => line.trim() !== ''))
+		.map((block) => block.key);
+	return keys.every((key) => key === 'tags');
 }
 
 /**

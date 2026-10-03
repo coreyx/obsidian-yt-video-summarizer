@@ -364,7 +364,6 @@ Note: Include all sections. If there are no technical terms, omit that section e
 export const DEFAULT_MAX_TOKENS = 10000;
 export const DEFAULT_TEMPERATURE = 1;
 
-export const DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false;
 export const DEFAULT_ADD_TOPICS_AS_TAGS = true;
 export const DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE = true;
 export const DEFAULT_ADD_TAGS_TO_FRONTMATTER = true;

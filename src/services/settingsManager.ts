@@ -7,7 +7,6 @@ import {
     DEFAULT_PROMPT,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
-    DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
     DEFAULT_ADD_TOPICS_AS_TAGS,
     DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
@@ -52,7 +51,6 @@ export class SettingsManager implements PluginSettings {
             customPrompt: DEFAULT_PROMPT,
             maxTokens: DEFAULT_MAX_TOKENS,
             temperature: DEFAULT_TEMPERATURE,
-            includeVideoDescription: DEFAULT_INCLUDE_VIDEO_DESCRIPTION,
             addTopicsAsTags: DEFAULT_ADD_TOPICS_AS_TAGS,
             detectTagsInDescriptionAndTitle: DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
             addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
@@ -97,7 +95,6 @@ export class SettingsManager implements PluginSettings {
                 customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
                 temperature: rawSettings.temperature ?? this.settings.temperature,
-                includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
                 detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
@@ -144,7 +141,6 @@ export class SettingsManager implements PluginSettings {
                 customPrompt: rawSettings.customPrompt ?? this.settings.customPrompt,
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
                 temperature: rawSettings.temperature ?? this.settings.temperature,
-                includeVideoDescription: rawSettings.includeVideoDescription ?? this.settings.includeVideoDescription,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
                 detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
@@ -383,15 +379,6 @@ export class SettingsManager implements PluginSettings {
 
         provider.apiKey = key;
         await this.saveData();
-    }
-
-    getIncludeVideoDescription(): boolean {
-        return this.settings.includeVideoDescription ?? DEFAULT_INCLUDE_VIDEO_DESCRIPTION;
-    }
-
-    updateIncludeVideoDescription(value: boolean): void {
-        this.settings.includeVideoDescription = value;
-        this.saveData();
     }
 
     getAddTopicsAsTags(): boolean {
