@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Commands: Tag with AI / Tag with YouTube**: Add tags to the current video note's frontmatter. *Tag with AI* generates topic tags from the note's summary (or frontmatter description) with the active AI model, using the same prompt and vault tag cache as summarizing. *Tag with YouTube* adds the video's YouTube tags (Data API with a key, player metadata otherwise) plus title/description hashtags (per *Detect tags in video title and description*). Both merge with existing tags using the same deduplication as summarizing and leave the rest of the note unchanged.
+- **Commands: Create Companion Note for Current Note**: `Create Media Extended note for current note` (from a video summary note) and `Create video summary note for current note` (from a Media Extended note for a YouTube video), plus matching File Explorer right-click items. New notes go in the configured *Media Extended notes folder* / *Video summaries folder*, and both notes are linked under `# Related`. An existing note for the same video is looked up only in that folder; if found, you're asked before it's rebuilt / regenerated in place, keeping frontmatter properties and tags you added.
+
+### Changed
+- **Rebuilding a Media Extended Note Keeps Your Properties**: When a companion note is regenerated over an existing one (e.g. summarizing the same video again), frontmatter properties and tags you added to it are now kept instead of being overwritten.
+
 ---
 
 ## [1.15.0] - 2026-10-02

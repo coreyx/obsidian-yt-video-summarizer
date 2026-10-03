@@ -4176,6 +4176,159 @@ assert.deepStrictEqual(findMarkdownSectionHelper(level1WithSub, 'Description'), 
 
 console.log('✓ Add description to video summary note passed');
 
+// Test 38: "Tag with AI" / "Tag with YouTube" — extracting and merging frontmatter tags
+console.log('Testing tag commands: frontmatter tag extraction and deduplicated merge...');
+
+function extractFrontmatterTagsHelper(content) {
+	const fmMatch = content.replace(/\r\n/g, '\n').match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
+	const tagsBlock = splitYamlBlocksHelper(fmMatch?.[1] ?? '').find((block) => block.key === 'tags');
+	if (!tagsBlock) return [];
+	const raw = [];
+	const inline = tagsBlock.lines[0].replace(/^tags:/, '').trim();
+	if (inline.startsWith('[') && inline.endsWith(']')) raw.push(...inline.slice(1, -1).split(','));
+	else if (inline) raw.push(...inline.split(/[,\s]+/));
+	for (const line of tagsBlock.lines.slice(1)) {
+		const item = line.match(/^\s*-\s+(.*)$/);
+		if (item) raw.push(item[1]);
+	}
+	return raw.map((tag) => tag.trim().replace(/^['"]|['"]$/g, '').replace(/^#/, '')).filter(Boolean);
+}
+
+function addTagsToNoteContentHelper(content, newTags) {
+	const existing = extractFrontmatterTagsHelper(content);
+	const existingDeduplicated = new Set(deduplicateTagsUpdatedHelper(existing));
+	const combined = deduplicateTagsUpdatedHelper([...existing, ...newTags]);
+	const added = combined.filter((tag) => !existingDeduplicated.has(tag));
+	if (added.length === 0) return { content, added };
+	const tagsBlock = ['tags:', ...combined.map((tag) => `  - ${tag}`)].join('\n');
+	const normalized = content.replace(/\r\n/g, '\n');
+	const fmMatch = normalized.match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
+	if (!fmMatch) {
+		const body = normalized.replace(/^\s+/, '');
+		return { content: body ? `---\n${tagsBlock}\n---\n\n${body}` : `---\n${tagsBlock}\n---\n`, added };
+	}
+	const merged = fmMatch[1] ? mergeYamlBlocksHelper(fmMatch[1], tagsBlock) : tagsBlock;
+	return { content: `---\n${merged}\n---\n${normalized.slice(fmMatch[0].length)}`, added };
+}
+
+// 38.1: Extraction handles list, inline, single/comma values, quotes, and #
+assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntitle: T\ntags:\n  - music\n  - "pop-culture"\n---\nBody'), ['music', 'pop-culture']);
+assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntags: [music, "#80s", pop]\n---\n'), ['music', '80s', 'pop']);
+assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntags: music, pop\n---\n'), ['music', 'pop']);
+assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntitle: T\n---\n'), []);
+assert.deepStrictEqual(extractFrontmatterTagsHelper('No frontmatter'), []);
+
+// 38.2: New tags merge into the existing list, deduplicated like the summary process (sanitized, collapsed variants)
+const taggable = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\ntags:\n  - music\n  - ai-machine-learning\ncustom: keep\n---\n\n## Summary\n\nText\n';
+const tagged = addTagsToNoteContentHelper(taggable, ['Music', 'ai/machine-learning', 'Rick Astley', '#80s']);
+assert.deepStrictEqual(tagged.added, deduplicateTagsUpdatedHelper(['music', 'ai-machine-learning', 'Music', 'ai/machine-learning', 'Rick Astley', '#80s']).filter((t) => !['music', 'ai-machine-learning'].includes(t)));
+assert(tagged.content.includes('  - music\n'));
+assert(tagged.content.includes('  - ai/machine-learning\n'));
+assert(!tagged.content.includes('ai-machine-learning'));
+assert.strictEqual((tagged.content.match(/^  - music$/gm) || []).length, 1);
+assert(tagged.content.includes('custom: keep'));
+assert(tagged.content.includes('title: "Video"'));
+assert(tagged.content.endsWith('---\n\n## Summary\n\nText\n'));
+assert.strictEqual((tagged.content.match(/^tags:/gm) || []).length, 1);
+
+// 38.3: Nothing new → note returned unchanged (no rewrite)
+const unchanged = addTagsToNoteContentHelper(taggable, ['music', 'MUSIC', '#music']);
+assert.deepStrictEqual(unchanged.added, []);
+assert.strictEqual(unchanged.content, taggable);
+
+// 38.4: Inline tags are converted to a list when new tags are added; notes without tags or frontmatter get them
+const inlineTagged = addTagsToNoteContentHelper('---\ntags: [music]\n---\nBody', ['pop']);
+assert.strictEqual(inlineTagged.content, '---\ntags:\n  - music\n  - pop\n---\nBody');
+assert.strictEqual(addTagsToNoteContentHelper('---\ntitle: T\n---\nBody', ['pop']).content, '---\ntitle: T\ntags:\n  - pop\n---\nBody');
+assert.strictEqual(addTagsToNoteContentHelper('Body only\n', ['pop']).content, '---\ntags:\n  - pop\n---\n\nBody only\n');
+assert.strictEqual(addTagsToNoteContentHelper('---\n---\nBody', ['pop']).content, '---\ntags:\n  - pop\n---\nBody');
+
+// 38.5: Empty or invalid new tags add nothing
+assert.deepStrictEqual(addTagsToNoteContentHelper(taggable, []).added, []);
+assert.deepStrictEqual(addTagsToNoteContentHelper(taggable, ['', '   ', '#']).added, []);
+
+console.log('✓ Tag commands: frontmatter tag extraction and deduplicated merge passed');
+
+// Test 39: Create the companion note in either direction (video matching, folder-scoped lookup, rebuild merges)
+console.log('Testing companion note creation in both directions...');
+
+function extractVideoIdFromUrlHelper(url) {
+	return url.match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/)?.[1] ?? null;
+}
+
+function frontmatterMatchesVideoHelper(frontmatter, keys, videoId) {
+	if (!frontmatter) return false;
+	return keys.some((key) => typeof frontmatter[key] === 'string' && extractVideoIdFromUrlHelper(frontmatter[key]) === videoId);
+}
+
+function keepExtraFrontmatterHelper(existingContent, freshContent) {
+	const pattern = /^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/;
+	const existingMatch = existingContent.replace(/\r\n/g, '\n').match(pattern);
+	const fresh = freshContent.replace(/\r\n/g, '\n');
+	const freshMatch = fresh.match(pattern);
+	if (!existingMatch?.[1] || !freshMatch) return freshContent;
+	return `---\n${mergeYamlBlocksHelper(existingMatch[1], freshMatch[1] ?? '')}\n---\n${fresh.slice(freshMatch[0].length)}`;
+}
+
+// 39.1: Video IDs from common URL shapes; non-YouTube values don't match
+assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/watch?list=PL123&v=dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrlHelper('https://youtu.be/dQw4w9WgXcQ?t=42'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/shorts/dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrlHelper('[[local-video.mp4]]'), null);
+assert.strictEqual(extractVideoIdFromUrlHelper('https://vimeo.com/123456789'), null);
+
+// 39.2: Frontmatter matching per note type
+assert.strictEqual(frontmatterMatchesVideoHelper({ video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }, ['video_url'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideoHelper({ video: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideoHelper({ media: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideoHelper({ video: 'https://youtu.be/jNQXAC9IVRw' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
+assert.strictEqual(frontmatterMatchesVideoHelper({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
+assert.strictEqual(frontmatterMatchesVideoHelper(undefined, ['video_url'], 'dQw4w9WgXcQ'), false);
+
+// 39.3: Only the target folder (and subfolders) is searched — matching notes elsewhere are ignored
+const vaultNotes = [
+	{ path: 'Media Library/Never Gonna Give You Up.md', frontmatter: { 'mx-uid': 'a', video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } },
+	{ path: 'Media Library/Archive/Renamed copy.md', frontmatter: { 'mx-uid': 'b', video: 'https://youtu.be/dQw4w9WgXcQ' } },
+	{ path: 'Elsewhere/Stray media note.md', frontmatter: { 'mx-uid': 'c', video: 'https://youtu.be/dQw4w9WgXcQ' } },
+	{ path: 'Video Summaries/Never Gonna Give You Up.md', frontmatter: { video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } },
+	{ path: 'Inbox/Old summary.md', frontmatter: { video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } },
+	{ path: 'Media Library Extra/Not inside.md', frontmatter: { video: 'https://youtu.be/dQw4w9WgXcQ' } },
+];
+const findInFolder = (folder, videoId, keys) =>
+	testFilterFilesByFolderPaths(vaultNotes, [folder]).filter((n) => frontmatterMatchesVideoHelper(n.frontmatter, keys, videoId)).map((n) => n.path);
+assert.deepStrictEqual(findInFolder('Media Library', 'dQw4w9WgXcQ', ['video', 'media']), ['Media Library/Never Gonna Give You Up.md', 'Media Library/Archive/Renamed copy.md']);
+assert.deepStrictEqual(findInFolder('Video Summaries', 'dQw4w9WgXcQ', ['video_url']), ['Video Summaries/Never Gonna Give You Up.md']);
+assert.deepStrictEqual(findInFolder('Video Summaries', 'jNQXAC9IVRw', ['video_url']), []);
+
+// 39.4: Rebuilding a Media Extended note keeps user-added frontmatter (and tags), replaces generated keys and body
+const userEditedMe = '---\nmx-uid: keepme\nvideo: https://youtu.be/dQw4w9WgXcQ\ntitle: Old\nmy_rating: 5\ntags:\n  - favorite\ncover: "[[old.jpg]]"\n---\n\nOld body with my notes\n';
+const freshMe = '---\nmx-uid: keepme\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: New Title\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\n---\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Related\n\n- [[Video Summaries/Video]]\n';
+const rebuiltMe = keepExtraFrontmatterHelper(userEditedMe, freshMe);
+assert(rebuiltMe.includes('title: New Title'));
+assert(rebuiltMe.includes('my_rating: 5'));
+assert(rebuiltMe.includes('tags:\n  - favorite'));
+assert(rebuiltMe.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
+assert(!rebuiltMe.includes('Old body'));
+assert(rebuiltMe.endsWith('\n# Related\n\n- [[Video Summaries/Video]]\n'));
+assert.strictEqual(keepExtraFrontmatterHelper('No frontmatter', freshMe), freshMe);
+
+// 39.5: Regenerating a summary note merges new frontmatter into the existing one (keeps added keys, merges tags)
+const existingSummaryNote = '---\ntitle: "Old"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\nmy_status: watched\ntags:\n  - favorite\n---\n\nOld summary\n';
+const regenFm = { title: 'New', channel_name: 'C', channel_username: '@c', channel_url: 'u', video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 't', thumbnail_text: '', tags: ['music'] };
+const existingFmBlock = existingSummaryNote.match(/^---\n[\s\S]*?\n---/)[0];
+const regenRaw = `${existingFmBlock}\n\n## Summary\n\nNew summary`;
+const regenFmMatch = regenRaw.match(/^---\r?\n([\s\S]*?\r?\n)---(\r?\n)?/);
+const regenerated = `---\n${mergeFrontmatter(regenFmMatch[1], regenFm)}\n---\n${regenRaw.slice(regenFmMatch[0].length)}`;
+assert(regenerated.includes('title: "New"'));
+assert(regenerated.includes('my_status: watched'));
+assert(regenerated.includes('  - favorite'));
+assert(regenerated.includes('  - music'));
+assert(!regenerated.includes('Old summary'));
+assert(regenerated.trimEnd().endsWith('## Summary\n\nNew summary'));
+
+console.log('✓ Companion note creation in both directions passed');
+
 console.log('\nAll tests passed successfully!');
 
 

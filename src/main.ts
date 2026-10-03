@@ -15,6 +15,7 @@ import { detectLMStudioServer } from './services/lmStudio';
 import { AIModelProvider } from './types';
 import {
 	addRelatedLink,
+	addTagsToNoteContent,
 	applyFrontmatter,
 	buildFrontmatter,
 	buildCoverEmbed,
@@ -23,13 +24,16 @@ import {
 	convertTimestampsToLinks,
 	deduplicateTags,
 	ensureSectionOrder,
+	extractFrontmatterTags,
 	extractPlaylistIdFromFrontmatter,
+	extractVideoIdFromUrl,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
 	filterFilesByFolder,
 	filterFilesByFolderPaths,
 	formatTranscript,
 	FrontmatterData,
+	frontmatterMatchesVideo,
 	getVideoNoteKind,
 	hasMarkdownSection,
 	hasPlaylistTitlePlaceholder,
@@ -39,6 +43,7 @@ import {
 	isNoteMissingDescriptionFrontmatter,
 	isNoteMissingFrontmatter,
 	isNoteMissingPlaylistFrontmatter,
+	keepExtraFrontmatter,
 	MediaExtendedMetadata,
 	refreshMediaExtendedNoteContent,
 	sanitizeFileName,
@@ -150,6 +155,30 @@ export class YouTubeSummarizerPlugin extends Plugin {
 									await this.refreshVideoMetadataInNote(file);
 								});
 						});
+
+						// Offer the companion note in the other direction, based on the note's frontmatter
+						const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+						const isMediaExtended = frontmatter?.['mx-uid'] != null || isMediaExtendedCompanionNote('', file.path, mediaFolder);
+						if (!isMediaExtended && typeof frontmatter?.video_url === 'string') {
+							menu.addItem((item) => {
+								item
+									.setTitle('Create Media Extended note')
+									.setIcon('youtube')
+									.onClick(async () => {
+										await this.createMediaExtendedNoteForSummaryNote(file);
+									});
+							});
+						} else if (isMediaExtended && [frontmatter?.video, frontmatter?.media].some((v) => typeof v === 'string' && extractVideoIdFromUrl(v))) {
+							menu.addItem((item) => {
+								item
+									.setTitle('Create video summary note')
+									.setIcon('youtube')
+									.onClick(async () => {
+										await this.createSummaryNoteForMediaExtendedNote(file);
+									});
+							});
+						}
 					}
 				})
 			);
@@ -332,6 +361,40 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Add transcript to Media Extended note',
 			editorCallback: async (_editor: Editor, view: MarkdownView) => {
 				await this.addSectionToMediaExtendedNote(view.file, 'transcript');
+			},
+		});
+
+		// Commands to create the companion note in the other direction for the current note
+		this.addCommand({
+			id: 'create-media-extended-note-for-current-note',
+			name: 'Create Media Extended note for current note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.createMediaExtendedNoteForSummaryNote(view.file);
+			},
+		});
+
+		this.addCommand({
+			id: 'create-video-summary-note-for-current-note',
+			name: 'Create video summary note for current note',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.createSummaryNoteForMediaExtendedNote(view.file);
+			},
+		});
+
+		// Commands to add tags to the current note's frontmatter
+		this.addCommand({
+			id: 'tag-with-ai',
+			name: 'Tag with AI',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.tagNote(view.file, 'ai');
+			},
+		});
+
+		this.addCommand({
+			id: 'tag-with-youtube',
+			name: 'Tag with YouTube',
+			editorCallback: async (_editor: Editor, view: MarkdownView) => {
+				await this.tagNote(view.file, 'youtube');
 			},
 		});
 
@@ -569,24 +632,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		try {
 			this.isProcessing = true;
-			// Get the selected model
-			const selectedModel = this.settings.getSelectedModel();
-
-			if (!selectedModel) {
-				new Notice('No AI model selected. Please select a model in the plugin settings.');
-				return;
-			}
-
-			// Check if the selected model's provider has an API key
-			if (!selectedModel.provider.apiKey) {
-				new Notice(
-					`${selectedModel.provider.name} API key is missing. Please set it in the plugin settings.`
-				);
-				return;
-			}
-
-			if (!this.provider) {
-				new Notice('AI provider not initialized. Please check your settings.');
+			if (!this.ensureAIReady()) {
 				return;
 			}
 
@@ -622,93 +668,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				await this.renamePendingSummaryNote(pendingNote, transcript.title);
 			}
 
-			// Step 2: Build the prompt for LLM
-			const prompt = this.buildPrompt(transcript.lines.map((line) => line.text).join(' '), customPrompt);
-
-			// Step 3: Run summary generation and thumbnail text recognition concurrently
-			new Notice('Generating summary...');
-			const summaryPromise = this.provider.summarizeVideo(transcript.videoId, prompt);
-
-			const thumbnailTextPromise = (async (): Promise<string> => {
-				try {
-					if (this.provider?.extractThumbnailText) {
-						const buffer = await YouTubeService.fetchThumbnailBuffer(transcript.videoId);
-						if (buffer) {
-							const base64 = arrayBufferToBase64(buffer);
-							return await this.provider.extractThumbnailText(base64, 'image/jpeg');
-						}
-					}
-				} catch (e) {
-					console.warn('Failed to extract thumbnail text:', e);
-				}
-				return '';
-			})();
-
-			let summary: string;
-			let thumbnailText = '';
-			try {
-				[summary, thumbnailText] = await Promise.all([summaryPromise, thumbnailTextPromise]);
-			} catch (error) {
-				new Notice(`Error: ${error.message}`);
-				console.error('Failed to generate summary:', error);
-				return;
-			}
-
-			if (!this.settings.getLinkTechnicalTerms()) {
-				summary = stripWikilinksFromTechnicalTerms(summary);
-			}
-
-			// Step 4: Extract tags from title & description, YouTube Data API/metadata, and/or generate topic tags
-			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-				? [
-						...extractTagsFromText(transcript.title),
-						...extractTagsFromText(transcript.description || ''),
-				  ]
-				: [];
-
-			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
-				? transcript.tags
-				: [];
-
-			let topicTags: string[] = [];
-			if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
-				try {
-					const vaultTagData = await this.rebuildVaultTagCache();
-					topicTags = await this.provider.generateTopics(summary, {
-						existingTags: [...detectedTags, ...ytDataApiTags],
-						vaultTags: vaultTagData.tags,
-						groupPrefixes: vaultTagData.groupPrefixes,
-						compressedContext: vaultTagData.compressedContext,
-						title: transcript.title,
-					});
-				} catch (e) {
-					console.warn('Failed to generate topic tags:', e);
-				}
-			}
-
-			const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags, ...topicTags]);
+			// Steps 2–4, 6–7: AI summary, thumbnail text, tags, body, and frontmatter
+			const parts = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl, customPrompt);
+			let bodyContent = parts.bodyContent;
+			const fmData = parts.fmData;
 
 			// Step 5: Optionally rename the blank note the user started from based on the sanitized video title
 			if (!pendingNote && this.settings.getSetNoteTitleFromVideo()) {
 				await this.setNoteTitle(targetFile, transcript.title);
 			}
-
-			// Step 6: Prepare tags for body and frontmatter
-			const addInlineTags = this.settings.getAddInlineTags();
-			const addTagsToFrontmatter = this.settings.getAddTagsToFrontmatter();
-			const inlineTags = addInlineTags ? allTags : undefined;
-			const frontmatterTags = addTagsToFrontmatter ? allTags : undefined;
-
-			// Step 7: Create the summary content for the body
-			let bodyContent = this.generateSummary(
-				transcript,
-				thumbnailUrl,
-				url,
-				summary,
-				inlineTags,
-				this.settings.getIncludeTitleInBody(),
-				this.settings.getDumpTranscriptInSummary()
-			);
 
 			// Step 7.5: Optionally create Media Extended companion note and link bidirectionally
 			if (mediaExtendedOptions.createNote) {
@@ -725,29 +693,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			// Step 8: Apply frontmatter and write the body to the target note
-			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
-			const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
-				? playlist.title.trim()
-				: undefined;
-			const fmData: FrontmatterData = {
-				title: transcript.title,
-				channel_name: transcript.author,
-				channel_username: transcript.channelUsername || '',
-				channel_url: transcript.channelUrl,
-				video_url: url,
-				...videoStatsFrontmatter(transcript),
-				thumbnail: thumbnailUrl,
-				thumbnail_text: thumbnailText,
-				description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
-				tags: frontmatterTags,
-				playlist_title: pTitle,
-				playlist_url: playlist?.url,
-				playlist_id: playlist?.id,
-				playlist_index: playlist?.index,
-				playlist_count: playlist?.count,
-			};
-
+			// Step 8: Write the frontmatter and body to the target note.
 			// Written through the vault (not the editor) so it lands in the right note regardless of focus.
 			// If the blank note has tags-only frontmatter (or the user typed into it meanwhile), append and
 			// merge frontmatter instead, so existing tags are kept alongside any new ones.
@@ -771,6 +717,287 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// Reset the processing flag
 			this.isProcessing = false;
 		}
+	}
+
+	/**
+	 * Checks that an AI model is selected, has an API key, and its provider is initialized,
+	 * showing a Notice and returning false otherwise.
+	 */
+	private ensureAIReady(): boolean {
+		const selectedModel = this.settings.getSelectedModel();
+		if (!selectedModel) {
+			new Notice('No AI model selected. Please select a model in the plugin settings.');
+			return false;
+		}
+		if (!selectedModel.provider.apiKey) {
+			new Notice(`${selectedModel.provider.name} API key is missing. Please set it in the plugin settings.`);
+			return false;
+		}
+		if (!this.provider) {
+			new Notice('AI provider not initialized. Please check your settings.');
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Finds notes for a video in a folder (and its subfolders) by the video URL in their frontmatter
+	 * `keys`. Only that folder is searched, never the whole vault.
+	 */
+	private findVideoNotesInFolder(folderPath: string, videoId: string, keys: string[]): TFile[] {
+		return filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), [folderPath]).filter((file) =>
+			frontmatterMatchesVideo(this.app.metadataCache.getFileCache(file)?.frontmatter, keys, videoId)
+		);
+	}
+
+	/**
+	 * Creates (or, after confirmation, rebuilds) the Media Extended companion note for a video summary note,
+	 * and links the two notes under # Related. Only the Media Extended notes folder is checked for an existing one.
+	 */
+	public async createMediaExtendedNoteForSummaryNote(file: TFile | null): Promise<void> {
+		if (!file) {
+			new Notice('Open a video summary note first.');
+			return;
+		}
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		const content = await this.app.vault.read(file);
+		const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		if (getVideoNoteKind(content, file.path, mediaFolder) !== 'summary') {
+			new Notice(`"${file.basename}" isn't a video summary note (expected video_url frontmatter).`);
+			return;
+		}
+		const url = extractYouTubeUrlFromNote(content);
+		const videoId = url ? extractVideoIdFromUrl(url) : null;
+		if (!url || !videoId) {
+			new Notice(`No YouTube video found in "${file.basename}".`);
+			return;
+		}
+
+		const existing = this.findVideoNotesInFolder(mediaFolder, videoId, ['video', 'media'])[0] ?? null;
+		if (existing) {
+			const rebuild = await ConfirmModal.confirm(
+				this.app,
+				'Rebuild Media Extended note?',
+				`"${existing.basename}" in "${mediaFolder}" is already the Media Extended note for this video. Rebuild it? Its body (cover, description, transcript) is regenerated; frontmatter properties you added are kept.`,
+				'Rebuild'
+			);
+			if (!rebuild) {
+				return;
+			}
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice('Fetching video transcript...');
+			const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
+			const mediaNote = await this.createMediaExtendedCompanionNote(transcript, file, undefined, existing);
+			if (!mediaNote) {
+				throw new Error('Could not write the Media Extended note');
+			}
+			await this.app.vault.process(file, (current) => addRelatedLink(current, mediaNote.path.replace(/\.md$/, '')));
+			new Notice(`${existing ? 'Rebuilt' : 'Created'} Media Extended note "${mediaNote.basename}"`);
+		} catch (error) {
+			new Notice(`Failed to create Media Extended note: ${error.message}`);
+			console.error('Failed to create Media Extended note for summary note:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Creates (or, after confirmation, regenerates) the AI video summary note for a Media Extended note
+	 * whose video is on YouTube, in the video summaries folder, and links the two notes under # Related.
+	 * Only the video summaries folder is checked for an existing one.
+	 */
+	public async createSummaryNoteForMediaExtendedNote(file: TFile | null): Promise<void> {
+		if (!file) {
+			new Notice('Open a Media Extended note first.');
+			return;
+		}
+		if (this.isProcessing) {
+			new Notice('Already processing a video, please wait...');
+			return;
+		}
+
+		const content = await this.app.vault.read(file);
+		const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+		if (getVideoNoteKind(content, file.path, mediaFolder) !== 'mediaExtended') {
+			new Notice(`"${file.basename}" isn't a Media Extended note (expected it in "${mediaFolder}" or with mx-uid frontmatter).`);
+			return;
+		}
+
+		// Only Media Extended notes whose media is a YouTube video (not local files or other sites)
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const url = [frontmatter?.video, frontmatter?.media].find(
+			(value): value is string => typeof value === 'string' && extractVideoIdFromUrl(value) !== null
+		);
+		const videoId = url ? extractVideoIdFromUrl(url) : null;
+		if (!url || !videoId) {
+			new Notice(`"${file.basename}" isn't for a YouTube video, so it can't be summarized.`);
+			return;
+		}
+
+		if (!this.ensureAIReady()) {
+			return;
+		}
+
+		const summaryFolder = this.getVideoSummaryFolderPath();
+		const existing = this.findVideoNotesInFolder(summaryFolder, videoId, ['video_url'])[0] ?? null;
+		if (existing) {
+			const regenerate = await ConfirmModal.confirm(
+				this.app,
+				'Regenerate video summary?',
+				`"${existing.basename}" in "${summaryFolder}" is already the summary note for this video. Regenerate it? Its body is replaced with a new AI summary; frontmatter properties and tags you added are kept.`,
+				'Regenerate'
+			);
+			if (!regenerate) {
+				return;
+			}
+		}
+
+		try {
+			this.isProcessing = true;
+			new Notice('Fetching video transcript...');
+			const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
+			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
+			const { bodyContent, fmData } = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl);
+			const body = addRelatedLink(bodyContent, file.path.replace(/\.md$/, ''));
+
+			let summaryFile: TFile;
+			if (existing) {
+				// Replace the body, merging the new frontmatter into the existing one (keeps added keys, merges tags)
+				await this.app.vault.process(existing, (current) => {
+					const existingFrontmatter = current.replace(/\r\n/g, '\n').match(/^---\n[\s\S]*?\n---/)?.[0];
+					return existingFrontmatter
+						? updateNoteContentWithFrontmatter(`${existingFrontmatter}\n\n${body}`, fmData)
+						: `${buildFrontmatter(fmData)}\n\n${body}`;
+				});
+				summaryFile = existing;
+			} else {
+				await this.ensureFolderExists(summaryFolder);
+				const path = this.getAvailableNotePath(summaryFolder, sanitizeFileName(transcript.title));
+				summaryFile = await this.app.vault.create(path, `${buildFrontmatter(fmData)}\n\n${body}`);
+			}
+
+			await this.app.vault.process(file, (current) => addRelatedLink(current, summaryFile.path.replace(/\.md$/, '')));
+			new Notice(`${existing ? 'Regenerated' : 'Created'} video summary note "${summaryFile.basename}"`);
+		} catch (error) {
+			new Notice(`Failed to create video summary note: ${error.message}`);
+			console.error('Failed to create video summary note for Media Extended note:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Builds a video summary note's body and frontmatter from a fetched transcript: runs the AI summary and
+	 * thumbnail text extraction, collects tags (title/description hashtags, YouTube tags, AI topic tags,
+	 * deduplicated), and renders the body. Throws if the AI summary fails.
+	 */
+	private async buildSummaryNoteParts(
+		transcript: TranscriptResponse,
+		url: string,
+		thumbnailUrl: string,
+		customPrompt?: string
+	): Promise<{ bodyContent: string; fmData: FrontmatterData }> {
+		if (!this.provider) {
+			throw new Error('AI provider not initialized. Please check your settings.');
+		}
+
+		// Build the prompt, then run summary generation and thumbnail text recognition concurrently
+		const prompt = this.buildPrompt(transcript.lines.map((line) => line.text).join(' '), customPrompt);
+		new Notice('Generating summary...');
+		const summaryPromise = this.provider.summarizeVideo(transcript.videoId, prompt);
+
+		const thumbnailTextPromise = (async (): Promise<string> => {
+			try {
+				if (this.provider?.extractThumbnailText) {
+					const buffer = await YouTubeService.fetchThumbnailBuffer(transcript.videoId);
+					if (buffer) {
+						const base64 = arrayBufferToBase64(buffer);
+						return await this.provider.extractThumbnailText(base64, 'image/jpeg');
+					}
+				}
+			} catch (e) {
+				console.warn('Failed to extract thumbnail text:', e);
+			}
+			return '';
+		})();
+
+		const [rawSummary, thumbnailText] = await Promise.all([summaryPromise, thumbnailTextPromise]);
+		const summary = this.settings.getLinkTechnicalTerms()
+			? rawSummary
+			: stripWikilinksFromTechnicalTerms(rawSummary);
+
+		// Extract tags from title & description, YouTube Data API/metadata, and/or generate topic tags
+		const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
+			? [
+					...extractTagsFromText(transcript.title),
+					...extractTagsFromText(transcript.description || ''),
+			  ]
+			: [];
+
+		const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
+			? transcript.tags
+			: [];
+
+		let topicTags: string[] = [];
+		if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
+			try {
+				const vaultTagData = await this.rebuildVaultTagCache();
+				topicTags = await this.provider.generateTopics(summary, {
+					existingTags: [...detectedTags, ...ytDataApiTags],
+					vaultTags: vaultTagData.tags,
+					groupPrefixes: vaultTagData.groupPrefixes,
+					compressedContext: vaultTagData.compressedContext,
+					title: transcript.title,
+				});
+			} catch (e) {
+				console.warn('Failed to generate topic tags:', e);
+			}
+		}
+
+		const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags, ...topicTags]);
+		const inlineTags = this.settings.getAddInlineTags() ? allTags : undefined;
+		const frontmatterTags = this.settings.getAddTagsToFrontmatter() ? allTags : undefined;
+
+		const bodyContent = this.generateSummary(
+			transcript,
+			thumbnailUrl,
+			url,
+			summary,
+			inlineTags,
+			this.settings.getIncludeTitleInBody(),
+			this.settings.getDumpTranscriptInSummary()
+		);
+
+		const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
+		const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
+			? playlist.title.trim()
+			: undefined;
+		const fmData: FrontmatterData = {
+			title: transcript.title,
+			channel_name: transcript.author,
+			channel_username: transcript.channelUsername || '',
+			channel_url: transcript.channelUrl,
+			video_url: url,
+			...videoStatsFrontmatter(transcript),
+			thumbnail: thumbnailUrl,
+			thumbnail_text: thumbnailText,
+			description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
+			tags: frontmatterTags,
+			playlist_title: pTitle,
+			playlist_url: playlist?.url,
+			playlist_id: playlist?.id,
+			playlist_index: playlist?.index,
+			playlist_count: playlist?.count,
+		};
+
+		return { bodyContent, fmData };
 	}
 
 	/**
@@ -979,7 +1206,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	private async createMediaExtendedCompanionNote(
 		transcript: TranscriptResponse,
 		originalFile?: TFile | null,
-		runOptions?: Pick<MediaExtendedRunOptions, 'includeDescription' | 'includeTranscript'>
+		runOptions?: Pick<MediaExtendedRunOptions, 'includeDescription' | 'includeTranscript'>,
+		existingCompanion?: TFile | null
 	): Promise<TFile | null> {
 		const includeDescription = runOptions?.includeDescription ?? this.settings.getMediaExtendedIncludeDescription();
 		const includeTranscript = runOptions?.includeTranscript ?? this.settings.getMediaExtendedIncludeTranscript();
@@ -987,20 +1215,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const folderPath = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 		await this.ensureFolderExists(folderPath);
 
+		// Rebuild a known companion in place (even if renamed); otherwise target the title-based path
 		const sanitizedTitle = sanitizeFileName(transcript.title);
-		const targetPath = `${folderPath}/${sanitizedTitle}.md`;
+		const targetPath = existingCompanion?.path ?? `${folderPath}/${sanitizedTitle}.md`;
 
 		if (originalFile && originalFile.path === targetPath) {
 			return originalFile;
 		}
 
 		let existingMxUid: string | undefined;
+		let existingContent: string | undefined;
 		const existingAbstract = this.app.vault.getAbstractFileByPath(targetPath);
 		let existingFile: TFile | null = null;
 		if (existingAbstract instanceof TFile) {
 			existingFile = existingAbstract;
 			try {
-				const existingContent = await this.app.vault.read(existingFile);
+				existingContent = await this.app.vault.read(existingFile);
 				const uidMatch = existingContent.match(/^mx-uid:\s*([a-z0-9]+)/m);
 				if (uidMatch) {
 					existingMxUid = uidMatch[1];
@@ -1045,7 +1275,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		try {
 			if (existingFile) {
-				await this.app.vault.modify(existingFile, noteContent);
+				// Keep frontmatter properties the user added to the existing note
+				await this.app.vault.modify(existingFile, existingContent ? keepExtraFrontmatter(existingContent, noteContent) : noteContent);
 				return existingFile;
 			} else {
 				return await this.app.vault.create(targetPath, noteContent);
@@ -1197,6 +1428,105 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			description: result.description,
 			source: result.fromDataApi ? ' (YouTube Data API)' : ' (YouTube player data; set a YouTube Data API key to use the Data API)',
 		};
+	}
+
+	/**
+	 * Adds tags to the current video note's frontmatter, deduplicated with its existing tags the same way
+	 * as when summarizing. `ai` generates topic tags from the note's content using the vault tag cache;
+	 * `youtube` uses the video's YouTube tags plus creator hashtags from the title and description.
+	 */
+	public async tagNote(file: TFile | null, source: 'ai' | 'youtube'): Promise<void> {
+		if (!file) {
+			new Notice('Open a video note first.');
+			return;
+		}
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		const content = await this.app.vault.read(file);
+		const url = extractYouTubeUrlFromNote(content);
+		if (!url || !VIDEO_ID_REGEX.test(url)) {
+			new Notice(`No YouTube video found in "${file.basename}".`);
+			return;
+		}
+
+		try {
+			this.isProcessing = true;
+			const newTags = source === 'ai'
+				? await this.generateAITagsForNote(file, content)
+				: await this.fetchYouTubeTagsForNote(url);
+			if (newTags === null) {
+				return;
+			}
+
+			let added: string[] = [];
+			await this.app.vault.process(file, (current) => {
+				const result = addTagsToNoteContent(current, newTags);
+				added = result.added;
+				return result.content;
+			});
+
+			const label = source === 'ai' ? 'AI' : 'YouTube';
+			new Notice(added.length > 0
+				? `Added ${added.length} tag(s) from ${label} to "${file.basename}": ${added.join(', ')}`
+				: `No new tags from ${label} for "${file.basename}".`);
+		} catch (error) {
+			new Notice(`Failed to tag note: ${error.message}`);
+			console.error(`Failed to tag note with ${source}:`, error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Generates topic tags for a note with the active AI model, using the same prompt and vault tag cache
+	 * as summarizing. Uses the note body (the summary), or the frontmatter description when the body is empty.
+	 * Returns null (after a Notice) when no AI model can be used.
+	 */
+	private async generateAITagsForNote(file: TFile, content: string): Promise<string[] | null> {
+		const selectedModel = this.settings.getSelectedModel();
+		if (!selectedModel) {
+			new Notice('No AI model selected. Please select a model in the plugin settings.');
+			return null;
+		}
+		if (!this.provider?.generateTopics) {
+			new Notice('AI provider not initialized or does not support tagging. Please check your settings.');
+			return null;
+		}
+
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').trim();
+		const description = typeof frontmatter?.description === 'string' ? frontmatter.description.trim() : '';
+		const noteText = body || description;
+		if (!noteText) {
+			new Notice(`"${file.basename}" has no summary or description to tag from.`);
+			return null;
+		}
+
+		new Notice('Generating tags with AI...');
+		const vaultTagData = await this.rebuildVaultTagCache();
+		return await this.provider.generateTopics(noteText, {
+			existingTags: extractFrontmatterTags(content),
+			vaultTags: vaultTagData.tags,
+			groupPrefixes: vaultTagData.groupPrefixes,
+			compressedContext: vaultTagData.compressedContext,
+			title: typeof frontmatter?.title === 'string' && frontmatter.title.trim() ? frontmatter.title : file.basename,
+		});
+	}
+
+	/**
+	 * Fetches a video's YouTube tags (YouTube Data API when a key is set, player metadata otherwise)
+	 * plus creator hashtags from the title and description (when *Detect tags in title and description* is on).
+	 */
+	private async fetchYouTubeTagsForNote(url: string): Promise<string[]> {
+		new Notice('Fetching tags from YouTube...');
+		const metadata = await this.youtubeService.fetchVideoMetadata(url, this.settings.getYoutubeApiKey());
+		const hashtags = this.settings.getDetectTagsInDescriptionAndTitle()
+			? [...extractTagsFromText(metadata.title), ...extractTagsFromText(metadata.description || '')]
+			: [];
+		return [...hashtags, ...(metadata.tags ?? [])];
 	}
 
 	/**

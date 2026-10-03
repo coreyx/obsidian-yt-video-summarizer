@@ -1159,6 +1159,58 @@ export function isBlankNoteForSummary(content: string, noteName: string): boolea
 }
 
 /**
+ * Extracts a note's frontmatter tags, whether written as a list, inline (`[a, b]`), or a single
+ * value (`tags: a, b`). Strips quotes and leading `#`.
+ */
+export function extractFrontmatterTags(content: string): string[] {
+	const fmMatch = content.replace(/\r\n/g, '\n').match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
+	const tagsBlock = splitYamlBlocks(fmMatch?.[1] ?? '').find((block) => block.key === 'tags');
+	if (!tagsBlock) {
+		return [];
+	}
+
+	const raw: string[] = [];
+	const inline = tagsBlock.lines[0].replace(/^tags:/, '').trim();
+	if (inline.startsWith('[') && inline.endsWith(']')) {
+		raw.push(...inline.slice(1, -1).split(','));
+	} else if (inline) {
+		raw.push(...inline.split(/[,\s]+/));
+	}
+	for (const line of tagsBlock.lines.slice(1)) {
+		const item = line.match(/^\s*-\s+(.*)$/);
+		if (item) {
+			raw.push(item[1]);
+		}
+	}
+	return raw.map((tag) => tag.trim().replace(/^['"]|['"]$/g, '').replace(/^#/, '')).filter(Boolean);
+}
+
+/**
+ * Adds tags to a note's frontmatter `tags`, combining them with the existing tags through the same
+ * `deduplicateTags()` used when summarizing. Leaves the rest of the frontmatter and the body unchanged,
+ * and returns the note untouched when nothing new would be added. Creates frontmatter if there is none.
+ */
+export function addTagsToNoteContent(content: string, newTags: string[]): { content: string; added: string[] } {
+	const existing = extractFrontmatterTags(content);
+	const existingDeduplicated = new Set(deduplicateTags(existing));
+	const combined = deduplicateTags([...existing, ...newTags]);
+	const added = combined.filter((tag) => !existingDeduplicated.has(tag));
+	if (added.length === 0) {
+		return { content, added };
+	}
+
+	const tagsBlock = ['tags:', ...combined.map((tag) => `  - ${tag}`)].join('\n');
+	const normalized = content.replace(/\r\n/g, '\n');
+	const fmMatch = normalized.match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
+	if (!fmMatch) {
+		const body = normalized.replace(/^\s+/, '');
+		return { content: body ? `---\n${tagsBlock}\n---\n\n${body}` : `---\n${tagsBlock}\n---\n`, added };
+	}
+	const merged = fmMatch[1] ? mergeYamlBlocks(fmMatch[1], tagsBlock) : tagsBlock;
+	return { content: `---\n${merged}\n---\n${normalized.slice(fmMatch[0].length)}`, added };
+}
+
+/**
  * Splits YAML into top-level blocks: a `key:` line plus its indented/blank continuation lines.
  * Other unindented lines (e.g. comments) become their own key-less blocks.
  */
@@ -1204,6 +1256,45 @@ export function mergeYamlBlocks(existingYaml: string, updatesYaml: string): stri
 		}
 	}
 	return merged.join('\n');
+}
+
+/**
+ * Extracts the 11-character YouTube video ID from a watch, youtu.be, shorts, or embed URL.
+ */
+export function extractVideoIdFromUrl(url: string): string | null {
+	return url.match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/)?.[1] ?? null;
+}
+
+/**
+ * Checks whether any of the given frontmatter keys holds a YouTube URL for `videoId`
+ * (e.g. `video_url` for summary notes, `video` / `media` for Media Extended notes).
+ */
+export function frontmatterMatchesVideo(
+	frontmatter: Record<string, unknown> | undefined | null,
+	keys: string[],
+	videoId: string
+): boolean {
+	if (!frontmatter) return false;
+	return keys.some((key) => {
+		const value = frontmatter[key];
+		return typeof value === 'string' && extractVideoIdFromUrl(value) === videoId;
+	});
+}
+
+/**
+ * Returns `freshContent` (a regenerated note), but with any frontmatter properties from `existingContent`
+ * that the fresh note doesn't set carried over (e.g. user-added keys and tags). Used when rebuilding a note.
+ */
+export function keepExtraFrontmatter(existingContent: string, freshContent: string): string {
+	const pattern = /^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/;
+	const existingMatch = existingContent.replace(/\r\n/g, '\n').match(pattern);
+	const fresh = freshContent.replace(/\r\n/g, '\n');
+	const freshMatch = fresh.match(pattern);
+	if (!existingMatch?.[1] || !freshMatch) {
+		return freshContent;
+	}
+	const merged = mergeYamlBlocks(existingMatch[1], freshMatch[1] ?? '');
+	return `---\n${merged}\n---\n${fresh.slice(freshMatch[0].length)}`;
 }
 
 /**
