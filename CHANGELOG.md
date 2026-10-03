@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.13.0] - 2026-10-02
+
 ### Added
 - **Commands: Refresh Video Metadata**: `Refresh video metadata in current note` and `Refresh video metadata in folder...`, plus File Explorer right-click items for notes and folders. Re-fetches each video's metadata and refreshes the frontmatter of video summary notes (title, channel, thumbnail, video stats, playlist, and description per settings) and Media Extended notes (all Media Extended fields, including `cover` and `aspect_ratio`, keeping `mx-uid`). Never changes the note body, tags, `thumbnail_text`, `video_url`, or unrelated properties, and uses no AI. Folder runs use the batch progress tracker and report.
 - **Commands: Add Description / Transcript to Media Extended Note**: `Add description to Media Extended note` and `Add transcript to Media Extended note` detect the video in the active Media Extended companion note and write a `# Description` or `# Transcript` section with Media Extended timestamp links, keeping the `# Description`, `# Transcript`, `# Related` order (`# Description` is moved above `# Transcript` if a note has them out of order). If the section already exists, you're asked before it's replaced. The description is copied from the note's frontmatter `description:` by default (the frontmatter itself is never changed); when that's missing or empty, or the new *Use frontmatter description for Media Extended notes* setting (on by default) is off, it's pulled from the YouTube Data API when an API key is set, with a no-key fallback to YouTube player metadata.

@@ -1,5 +1,38 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.13.0
+
+### Highlights
+
+YouTube Video Summarizer v1.13.0 is about richer, more reliable metadata, and keeping your existing notes up to date with it:
+
+* 🔄 **Refresh Video Metadata**: Refresh the frontmatter of a single note or a whole folder of video summary and Media Extended notes, picking up new fields and fixes without touching your summaries, tags, or custom properties.
+* 📊 **Video Stats in Summary Notes**: Summary notes now record `duration`, `published_at`, `view_count`, `like_count`, and `aspect_ratio`.
+* 🎬 **Fill In Media Extended Notes**: New commands add a `# Description` or `# Transcript` section to a Media Extended note, with Media Extended timestamp links.
+* 🖼️ **Images That Load**: Media Extended covers now point to the real YouTube thumbnail, and thumbnails fall back gracefully for older videos.
+
+### What's Changed in v1.13.0
+
+#### 🔄 Refresh Video Metadata
+* Run **Refresh video metadata in current note** or **Refresh video metadata in folder...**, or right-click a note or folder in the File Explorer.
+* **Summary notes**: title, channel, thumbnail, video stats, playlist, and description (per your settings) are refreshed.
+* **Media Extended notes**: all Media Extended frontmatter, including `cover` and `aspect_ratio`, is refreshed while keeping `mx-uid`.
+* Never changes the note body, tags, AI-extracted thumbnail text, `video_url`, or properties you added. No AI model is used, and folder runs show live progress and a report.
+
+#### 📊 Video Stats
+* `duration` (seconds), `published_at`, `view_count`, `like_count`, and `aspect_ratio` (e.g. `16 / 9`) are added to summary notes when YouTube provides them, in the same format Media Extended notes use.
+* Media Extended notes use the video's real aspect ratio (e.g. `9 / 16` for Shorts) instead of always `427 / 240`.
+
+#### 🎬 Media Extended Notes
+* **Add description to Media Extended note** and **Add transcript to Media Extended note** write a body section with Media Extended timestamp links. If the section already exists, you're asked before it's replaced, and `# Description` always stays above `# Transcript`.
+* New setting **Use frontmatter description for Media Extended notes** (on by default) copies the note's frontmatter description into the body; otherwise the description is fetched from the YouTube Data API (with a no-key fallback).
+
+#### 🖼️ Fixes
+* Media Extended `cover` now uses the full thumbnail URL (`https://i.ytimg.com/vi_webp/<id>/maxresdefault.webp`) instead of a link to a missing local file. Run **Refresh video metadata** on your Media Extended folder to fix existing notes.
+* Covers and summary note thumbnails fall back to the high-quality thumbnail when YouTube has no max-resolution one (common for older videos).
+
+---
+
 ## v1.12.0
 
 ### Highlights
