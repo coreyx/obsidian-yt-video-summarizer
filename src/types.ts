@@ -40,7 +40,6 @@ export interface StoredSettings {
 	customPrompt: string;
 	maxTokens: number;
 	temperature: number;
-	includeVideoDescription?: boolean;
 	addTopicsAsTags?: boolean;
 	detectTagsInDescriptionAndTitle?: boolean;
 	addTagsToFrontmatter?: boolean;
@@ -126,9 +125,6 @@ export interface PluginSettings {
 
 	/** Saves the API key for a provider without validation */
 	saveProviderKey(providerName: string, key: string): Promise<void>;
-
-	getIncludeVideoDescription(): boolean;
-	updateIncludeVideoDescription(value: boolean): void;
 
 	getAddTopicsAsTags(): boolean;
 	updateAddTopicsAsTags(value: boolean): void;

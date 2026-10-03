@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Command: Add Description to Video Summary Note**: Adds the video description to a video summary note body as a `## Description` section (before `# Related`) with every timestamp converted into a clickable YouTube link. Asks before replacing an existing `## Description`. Uses the frontmatter description first (per *Use frontmatter description when adding description to body*), otherwise fetches it from YouTube.
+
+### Changed
+- **Use Frontmatter Description Setting Covers Both Commands**: Renamed *Use frontmatter description for Media Extended notes* to *Use frontmatter description when adding description to body*; it now applies to both "Add description" commands. Your existing choice is kept.
+- **Untitled Notes With Only Tags Count as Blank**: The summarizer now writes into the current note (instead of creating a new note in the video summaries folder) when the note's name starts with "Untitled", it has no body, and `tags` is its only frontmatter. Existing tags are kept and merged with any new ones.
+
+### Removed
+- **`Include video description in summary note` setting**: Summaries no longer add the description to the note body (it stays in frontmatter). Use `Add description to video summary note` when you want clickable description timestamps in the body.
+
 ---
 
 ## [1.14.0] - 2026-10-02
