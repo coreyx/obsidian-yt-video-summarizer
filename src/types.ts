@@ -49,17 +49,23 @@ export interface StoredSettings {
 	includeTitleInBody?: boolean;
 	linkTechnicalTerms?: boolean;
 	dumpTranscriptInSummary?: boolean;
-	linkTranscriptTimestamps?: boolean;
-	mediaExtendedTimestamps?: boolean;
 	extractYouTubeDataApiTags?: boolean;
 	youtubeApiKey?: string;
 	createMediaExtendedNotes?: boolean;
 	mediaExtendedFolder?: string;
 	mediaExtendedIncludeDescription?: boolean;
+	mediaExtendedIncludeTranscript?: boolean;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
 	scanFolders?: string;
 	lmStudioUrl?: string;
+}
+
+/** Per-run Media Extended companion note options chosen in the URL / prompt modals (do not change permanent settings) */
+export interface MediaExtendedRunOptions {
+	createNote: boolean;
+	includeDescription: boolean;
+	includeTranscript: boolean;
 }
 
 
@@ -145,12 +151,6 @@ export interface PluginSettings {
 	getDumpTranscriptInSummary(): boolean;
 	updateDumpTranscriptInSummary(value: boolean): void;
 
-	getLinkTranscriptTimestamps(): boolean;
-	updateLinkTranscriptTimestamps(value: boolean): void;
-
-	getMediaExtendedTimestamps(): boolean;
-	updateMediaExtendedTimestamps(value: boolean): void;
-
 	getExtractYouTubeDataApiTags(): boolean;
 	updateExtractYouTubeDataApiTags(value: boolean): void;
 
@@ -165,6 +165,9 @@ export interface PluginSettings {
 
 	getMediaExtendedIncludeDescription(): boolean;
 	updateMediaExtendedIncludeDescription(value: boolean): void;
+
+	getMediaExtendedIncludeTranscript(): boolean;
+	updateMediaExtendedIncludeTranscript(value: boolean): void;
 
 	getAddDescriptionToFrontmatter(): boolean;
 	updateAddDescriptionToFrontmatter(value: boolean): void;

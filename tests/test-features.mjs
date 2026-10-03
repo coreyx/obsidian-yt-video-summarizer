@@ -935,24 +935,24 @@ function formatTimestampPartsHelper(offsetMs) {
 	return { timeStr, roundedSeconds, meTimeStr };
 }
 
+function buildTimestampUrlHelper(videoId, offsetMs, format) {
+	const { roundedSeconds, meTimeStr } = formatTimestampPartsHelper(offsetMs);
+	if (format === 'mediaExtended') {
+		return `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`;
+	}
+	const seconds = Math.floor(Math.max(0, offsetMs) / 1000);
+	return `https://www.youtube.com/watch?v=${videoId}&t=${seconds}s`;
+}
+
 function formatTranscriptHelper(lines, videoId, options = {}) {
-	const linkTimestamps = options.linkTimestamps ?? true;
-	const mediaExtended = options.mediaExtended ?? true;
+	const format = options.format ?? 'youtube';
 
 	return lines
 		.map((line) => {
-			const { timeStr, roundedSeconds, meTimeStr } = formatTimestampPartsHelper(line.offset);
-
-			let timestampPart = timeStr;
-			if (linkTimestamps) {
-				const url = mediaExtended
-					? `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`
-					: `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}`;
-				timestampPart = `[${timeStr}](${url})`;
-			}
-
+			const { timeStr } = formatTimestampPartsHelper(line.offset);
+			const url = buildTimestampUrlHelper(videoId, line.offset, format);
 			const text = line.text.replace(/\r?\n+/g, ' ').trim();
-			return `- ${timestampPart} ${text}`;
+			return `- [${timeStr}](${url}) ${text}`;
 		})
 		.join('\n');
 }
@@ -974,32 +974,27 @@ const testLines = [
 	{ text: 'Hour segment', offset: 3665610, duration: 2000 }
 ];
 
-// Both enabled (default): Media Extended format matching user's exact specification
-const bothEnabled = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ');
-assert.strictEqual(bothEnabled.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First segment'), true);
-assert.strictEqual(bothEnabled.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second segment with newline'), true);
-assert.strictEqual(bothEnabled.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3666#t=01:01:05.61) Hour segment'), true);
-assert.strictEqual(bothEnabled.includes('[[#t='), false);
+// Media Extended format (companion notes) matching user's exact specification
+const meFormatted = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
+assert.strictEqual(meFormatted.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First segment'), true);
+assert.strictEqual(meFormatted.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second segment with newline'), true);
+assert.strictEqual(meFormatted.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3666#t=01:01:05.61) Hour segment'), true);
+assert.strictEqual(meFormatted.includes('[[#t='), false);
 
-// Only YouTube links (Media Extended disabled)
-const ytOnly = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { mediaExtended: false });
-assert.strictEqual(ytOnly.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66) First segment'), true);
-assert.strictEqual(ytOnly.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123) Second segment with newline'), true);
-assert.strictEqual(ytOnly.includes('#t='), false);
-assert.strictEqual(ytOnly.includes('[[#t='), false);
+// Standard YouTube format (default, video summary notes): &t=SECONDSs, floored to the displayed second
+const ytFormatted = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ');
+assert.strictEqual(ytFormatted.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=65s) First segment'), true);
+assert.strictEqual(ytFormatted.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=122s) Second segment with newline'), true);
+assert.strictEqual(ytFormatted.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3665s) Hour segment'), true);
+assert.strictEqual(ytFormatted.includes('#t='), false);
+assert.strictEqual(ytFormatted.includes('[[#t='), false);
 
-// Links disabled: plain text timestamps
-const noLinks = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { linkTimestamps: false });
-assert.strictEqual(noLinks.includes('- 01:05 First segment'), true);
-assert.strictEqual(noLinks.includes('- 02:02 Second segment with newline'), true);
-assert.strictEqual(noLinks.includes('https://www.youtube.com'), false);
-assert.strictEqual(noLinks.includes('[['), false);
-
-// Both disabled
-const neither = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { linkTimestamps: false, mediaExtended: false });
-assert.strictEqual(neither.includes('- 01:05 First segment'), true);
-assert.strictEqual(neither.includes('[['), false);
-assert.strictEqual(neither.includes('https://'), false);
+// Every transcript line is linked in both formats
+for (const formatted of [meFormatted, ytFormatted]) {
+	for (const line of formatted.split('\n')) {
+		assert.match(line, /^- \[\d{2}:\d{2}(?::\d{2})?\]\(https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ&t=\d+/);
+	}
+}
 
 // Test summary generation with transcript dump
 function generateSummaryDumpHelper(transcript, thumbnailUrl, url, summaryText, dumpTranscript) {
@@ -1241,7 +1236,7 @@ function addRelatedLinkHelper(content, linkTarget) {
 	return trimmed ? `${trimmed}\n\n# Related\n\n${linkLine}\n` : `# Related\n\n${linkLine}\n`;
 }
 
-function parseTimestampToMediaExtendedUrlHelper(timeStr, videoId) {
+function parseTimestampToSecondsHelper(timeStr) {
 	const parts = timeStr.split(':').map((p) => parseInt(p, 10));
 	if (parts.some((n) => isNaN(n))) return null;
 
@@ -1257,29 +1252,38 @@ function parseTimestampToMediaExtendedUrlHelper(timeStr, videoId) {
 		return null;
 	}
 
-	const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-	const { meTimeStr } = formatTimestampPartsHelper(totalSeconds * 1000);
-	return `https://www.youtube.com/watch?v=${videoId}&t=${totalSeconds}#t=${meTimeStr}`;
+	return hours * 3600 + minutes * 60 + seconds;
 }
 
-function convertDescriptionTimestampsToMediaExtendedHelper(description, videoId) {
-	if (!description || !description.trim()) {
-		return description;
+function parseTimestampToUrlHelper(timeStr, videoId, format) {
+	const totalSeconds = parseTimestampToSecondsHelper(timeStr);
+	return totalSeconds === null ? null : buildTimestampUrlHelper(videoId, totalSeconds * 1000, format);
+}
+
+function parseTimestampToMediaExtendedUrlHelper(timeStr, videoId) {
+	return parseTimestampToUrlHelper(timeStr, videoId, 'mediaExtended');
+}
+
+function convertTimestampsToLinksHelper(text, videoId, format) {
+	if (!text || !text.trim()) {
+		return text;
 	}
 
 	const protectedTokens = [];
 	const createPlaceholder = (content) => {
-		const placeholder = `@@@ME_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
+		const placeholder = `@@@TS_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
 		protectedTokens.push(content);
 		return placeholder;
 	};
 
-	let processed = description;
+	let processed = text;
 	const TS_PATTERN = '(?:\\d{1,2}:[0-5]\\d:[0-5]\\d|\\d{1,2}:[0-5]\\d)';
+
+	processed = processed.replace(/```[\s\S]*?```|`[^`\n]+`|\[\[[^\]\n]+\]\]/g, (match) => createPlaceholder(match));
 
 	const existingMdLinkRegex = new RegExp(`\\[(${TS_PATTERN})\\]\\(([^)]+)\\)`, 'g');
 	processed = processed.replace(existingMdLinkRegex, (_match, ts) => {
-		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		const url = parseTimestampToUrlHelper(ts, videoId, format);
 		return url ? createPlaceholder(`[${ts}](${url})`) : createPlaceholder(_match);
 	});
 
@@ -1291,25 +1295,33 @@ function convertDescriptionTimestampsToMediaExtendedHelper(description, videoId)
 
 	const bracketedRegex = new RegExp(`\\[(${TS_PATTERN})\\]`, 'g');
 	processed = processed.replace(bracketedRegex, (_match, ts) => {
-		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		const url = parseTimestampToUrlHelper(ts, videoId, format);
 		return url ? createPlaceholder(`[${ts}](${url})`) : _match;
 	});
 
 	const standaloneRegex = new RegExp(
-		`(?<=^|[\\s(>•-])(${TS_PATTERN})(?=$|[\\s):.,!?-])(?!\\s*(?:am|pm)\\b)`,
+		`(?<=^|[\\s(>•*-])(${TS_PATTERN})(?=$|[\\s):.,!?*-])(?!\\s*(?:am|pm)\\b)`,
 		'gi'
 	);
 	processed = processed.replace(standaloneRegex, (ts) => {
-		const url = parseTimestampToMediaExtendedUrlHelper(ts, videoId);
+		const url = parseTimestampToUrlHelper(ts, videoId, format);
 		return url ? `[${ts}](${url})` : ts;
 	});
 
-	for (let i = 0; i < protectedTokens.length; i++) {
-		const placeholder = `@@@ME_PROTECTED_TOKEN_${i}@@@`;
+	for (let i = protectedTokens.length - 1; i >= 0; i--) {
+		const placeholder = `@@@TS_PROTECTED_TOKEN_${i}@@@`;
 		processed = processed.replace(placeholder, () => protectedTokens[i]);
 	}
 
 	return processed;
+}
+
+function convertDescriptionTimestampsToMediaExtendedHelper(description, videoId) {
+	return convertTimestampsToLinksHelper(description, videoId, 'mediaExtended');
+}
+
+function convertDescriptionTimestampsToYouTubeHelper(description, videoId) {
+	return convertTimestampsToLinksHelper(description, videoId, 'youtube');
 }
 
 function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink, options) {
@@ -1403,7 +1415,7 @@ const sampleLines = [
 	{ text: 'First line', duration: 2, offset: 65610 },
 	{ text: 'Second line', duration: 3, offset: 122650 }
 ];
-const formattedSampleLines = formatTranscriptHelper(sampleLines, 'dQw4w9WgXcQ', { linkTimestamps: true, mediaExtended: true });
+const formattedSampleLines = formatTranscriptHelper(sampleLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
 const fullMediaExtendedNote = buildMediaExtendedNoteHelper(
 	sampleRickAstleyData,
 	formattedSampleLines,
@@ -2508,6 +2520,87 @@ const summaryLinked = addRelatedLinkHelper(summaryBodyNote, 'Media Library/Compl
 assert(summaryLinked.includes('\n\n# Related\n\n- [[Media Library/Complete TypeScript Guide]]\n'));
 
 console.log('✓ Media Extended note description, timestamp conversion, and section headings passed');
+
+// Test 26b: Summary note YouTube timestamp links, per-run Media Extended options, and body defaults
+console.log('Testing summary note YouTube timestamp links, per-run Media Extended options, and defaults...');
+
+// 26b.1: Description timestamps become standard YouTube links in the summary note
+const ytDesc = convertDescriptionTimestampsToYouTubeHelper(sampleRawDescription, testVideoId);
+assert(ytDesc.includes('[0:00](https://www.youtube.com/watch?v=abc123XYZ&t=0s) - Introduction'));
+assert(ytDesc.includes('- [01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83s) Getting Started'));
+assert(ytDesc.includes('• [02:45](https://www.youtube.com/watch?v=abc123XYZ&t=165s) Basic Workflow'));
+assert(ytDesc.includes('[03:50](https://www.youtube.com/watch?v=abc123XYZ&t=230s): Best Practices'));
+assert(ytDesc.includes('[04:20](https://www.youtube.com/watch?v=abc123XYZ&t=260s) Advanced Tips'));
+assert(ytDesc.includes('([05:15](https://www.youtube.com/watch?v=abc123XYZ&t=315s)) Q&A Session'));
+assert(ytDesc.includes('[1:05:30](https://www.youtube.com/watch?v=abc123XYZ&t=3930s) Final Thoughts'));
+// Existing timestamp link re-pointed at this video in YouTube format
+assert(ytDesc.includes('[06:00](https://www.youtube.com/watch?v=abc123XYZ&t=360s)'));
+assert(!ytDesc.includes('#t='));
+assert(ytDesc.includes('[our blog](https://example.com/guide:1)'));
+assert(ytDesc.includes('https://example.com/repo/12:34'));
+assert(ytDesc.includes('10:00 AM'));
+assert(ytDesc.includes('16:9 widescreen'));
+
+// 26b.2: AI summary text — bold timestamps linked; code, inline code, and wikilinks untouched
+const aiSummary = [
+	'## Key Points',
+	'- **05:23** The [[TypeScript]] compiler is introduced',
+	'- Config uses `timeout: 12:30` inline',
+	'- See [[Notes 10:15]] for more',
+	'```',
+	'cron: 10:30',
+	'```',
+	'- Covered at [07:45] in detail',
+].join('\n');
+const linkedSummary = convertTimestampsToLinksHelper(aiSummary, testVideoId, 'youtube');
+assert(linkedSummary.includes('**[05:23](https://www.youtube.com/watch?v=abc123XYZ&t=323s)**'));
+assert(linkedSummary.includes('[[TypeScript]]'));
+assert(linkedSummary.includes('`timeout: 12:30`'));
+assert(linkedSummary.includes('[[Notes 10:15]]'));
+assert(linkedSummary.includes('```\ncron: 10:30\n```'));
+assert(linkedSummary.includes('[07:45](https://www.youtube.com/watch?v=abc123XYZ&t=465s)'));
+assert(!linkedSummary.includes('TS_PROTECTED_TOKEN'));
+
+// 26b.3: Nested protected tokens (inline code inside link text) restore fully
+const nested = convertTimestampsToLinksHelper('See [the `cfg` file](https://example.com) at 01:00', testVideoId, 'youtube');
+assert.strictEqual(nested, 'See [the `cfg` file](https://example.com) at [01:00](https://www.youtube.com/watch?v=abc123XYZ&t=60s)');
+
+// 26b.4: Per-run Media Extended options override permanent settings without changing them
+function resolveCompanionOptionsHelper(settings, runOptions) {
+	return {
+		includeDescription: runOptions?.includeDescription ?? settings.mediaExtendedIncludeDescription,
+		includeTranscript: runOptions?.includeTranscript ?? settings.mediaExtendedIncludeTranscript,
+	};
+}
+const permanentSettings = { mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true };
+assert.deepStrictEqual(resolveCompanionOptionsHelper(permanentSettings), { includeDescription: true, includeTranscript: true });
+assert.deepStrictEqual(
+	resolveCompanionOptionsHelper(permanentSettings, { createNote: true, includeDescription: false, includeTranscript: false }),
+	{ includeDescription: false, includeTranscript: false }
+);
+assert.deepStrictEqual(permanentSettings, { mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true });
+
+// Transcript excluded for the run: companion note has no # Transcript section
+const meNoTranscript = buildMediaExtendedNoteHelper(testMetadata, '', testRelatedNote, { includeDescription: true });
+assert(meNoTranscript.includes('# Description\n\n'));
+assert(!meNoTranscript.includes('# Transcript'));
+assert(meNoTranscript.includes('# Related\n\n- [[TypeScript Summary Note]]'));
+
+// Both excluded: frontmatter + related link only
+const meBare = buildMediaExtendedNoteHelper(testMetadata, '', testRelatedNote, { includeDescription: false });
+assert(!meBare.includes('# Description'));
+assert(!meBare.includes('# Transcript'));
+assert(meBare.includes('# Related\n\n- [[TypeScript Summary Note]]'));
+
+// 26b.5: Body defaults — summary note off, Media Extended note on
+const { readFileSync } = await import('node:fs');
+const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
+assert.match(defaultsSource, /DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false;/);
+assert.match(defaultsSource, /DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false;/);
+assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true;/);
+assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true;/);
+
+console.log('✓ Summary note YouTube timestamp links, per-run Media Extended options, and defaults passed');
 
 // Test 27: Playlist frontmatter detection and YouTube Data API playlist upgrade
 console.log('Testing playlist frontmatter detection and YouTube Data API playlist upgrade...');

@@ -636,37 +636,48 @@ export function formatTimestampParts(offsetMs: number): {
 	return { timeStr, roundedSeconds, meTimeStr };
 }
 
+/**
+ * Timestamp link styles:
+ * - `youtube`: standard YouTube link (`https://www.youtube.com/watch?v=ID&t=66s`), used in video summary notes.
+ * - `mediaExtended`: Media Extended playback link (`https://www.youtube.com/watch?v=ID&t=66#t=01:05.61`),
+ *   used in Media Extended companion notes.
+ */
+export type TimestampLinkFormat = 'youtube' | 'mediaExtended';
+
+/**
+ * Builds a timestamp URL for a video at the given offset in the requested link format.
+ */
+export function buildTimestampUrl(videoId: string, offsetMs: number, format: TimestampLinkFormat): string {
+	const { roundedSeconds, meTimeStr } = formatTimestampParts(offsetMs);
+	if (format === 'mediaExtended') {
+		return `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`;
+	}
+	// Floor so the link never starts after the displayed timestamp
+	const seconds = Math.floor(Math.max(0, offsetMs) / 1000);
+	return `https://www.youtube.com/watch?v=${videoId}&t=${seconds}s`;
+}
+
 export interface FormatTranscriptOptions {
-	linkTimestamps?: boolean;
-	mediaExtended?: boolean;
+	format?: TimestampLinkFormat;
 }
 
 /**
  * Formats an array of TranscriptLine objects into markdown transcript text
- * with optional YouTube timestamp links and Media Extended playback links.
+ * with every timestamp linked to the video (standard YouTube or Media Extended format).
  */
 export function formatTranscript(
 	lines: TranscriptLine[],
 	videoId: string,
 	options: FormatTranscriptOptions = {}
 ): string {
-	const linkTimestamps = options.linkTimestamps ?? true;
-	const mediaExtended = options.mediaExtended ?? true;
+	const format = options.format ?? 'youtube';
 
 	return lines
 		.map((line) => {
-			const { timeStr, roundedSeconds, meTimeStr } = formatTimestampParts(line.offset);
-
-			let timestampPart = timeStr;
-			if (linkTimestamps) {
-				const url = mediaExtended
-					? `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}#t=${meTimeStr}`
-					: `https://www.youtube.com/watch?v=${videoId}&t=${roundedSeconds}`;
-				timestampPart = `[${timeStr}](${url})`;
-			}
-
+			const { timeStr } = formatTimestampParts(line.offset);
+			const url = buildTimestampUrl(videoId, line.offset, format);
 			const text = line.text.replace(/\r?\n+/g, ' ').trim();
-			return `- ${timestampPart} ${text}`;
+			return `- [${timeStr}](${url}) ${text}`;
 		})
 		.join('\n');
 }
@@ -746,9 +757,9 @@ export function buildMediaExtendedFrontmatter(data: MediaExtendedMetadata): stri
 }
 
 /**
- * Converts a timestamp string (e.g. "0:00", "01:23", "1:23:45") into a Media Extended playback URL.
+ * Parses a timestamp string (e.g. "0:00", "01:23", "1:23:45") into total seconds.
  */
-export function parseTimestampToMediaExtendedUrl(timeStr: string, videoId: string): string | null {
+export function parseTimestampToSeconds(timeStr: string): number | null {
 	const parts = timeStr.split(':').map((p) => parseInt(p, 10));
 	if (parts.some((n) => isNaN(n))) return null;
 
@@ -764,81 +775,114 @@ export function parseTimestampToMediaExtendedUrl(timeStr: string, videoId: strin
 		return null;
 	}
 
-	const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-	const { meTimeStr } = formatTimestampParts(totalSeconds * 1000);
-	return `https://www.youtube.com/watch?v=${videoId}&t=${totalSeconds}#t=${meTimeStr}`;
+	return hours * 3600 + minutes * 60 + seconds;
 }
 
 /**
- * Scans a video description for timestamps (e.g. "0:00", "01:23", "[01:23]", "(01:23)", "1:05:30")
- * and converts them into Media Extended markdown links ([MM:SS](https://...&t=SECONDS#t=MM:SS.00))
- * while preserving existing non-timestamp markdown links and URLs.
+ * Converts a timestamp string (e.g. "0:00", "01:23", "1:23:45") into a timestamp URL in the given format.
  */
-export function convertDescriptionTimestampsToMediaExtended(
-	description: string,
-	videoId: string
+export function parseTimestampToUrl(timeStr: string, videoId: string, format: TimestampLinkFormat): string | null {
+	const totalSeconds = parseTimestampToSeconds(timeStr);
+	return totalSeconds === null ? null : buildTimestampUrl(videoId, totalSeconds * 1000, format);
+}
+
+/**
+ * Converts a timestamp string (e.g. "0:00", "01:23", "1:23:45") into a Media Extended playback URL.
+ */
+export function parseTimestampToMediaExtendedUrl(timeStr: string, videoId: string): string | null {
+	return parseTimestampToUrl(timeStr, videoId, 'mediaExtended');
+}
+
+/**
+ * Scans markdown text (a video description, AI summary, etc.) for timestamps
+ * (e.g. "0:00", "01:23", "[01:23]", "(01:23)", "1:05:30") and converts them into markdown links
+ * to the video in the given format, re-pointing existing timestamp links at the video.
+ * Preserves existing non-timestamp markdown links, wikilinks, raw URLs, and code.
+ */
+export function convertTimestampsToLinks(
+	text: string,
+	videoId: string,
+	format: TimestampLinkFormat
 ): string {
-	if (!description || !description.trim()) {
-		return description;
+	if (!text || !text.trim()) {
+		return text;
 	}
 
 	// Placeholders to protect already processed or existing links/URLs
 	const protectedTokens: string[] = [];
 	const createPlaceholder = (content: string): string => {
-		const placeholder = `@@@ME_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
+		const placeholder = `@@@TS_PROTECTED_TOKEN_${protectedTokens.length}@@@`;
 		protectedTokens.push(content);
 		return placeholder;
 	};
 
-	let processed = description;
+	let processed = text;
 
 	// Pattern for matching timestamp digits: H:MM:SS, HH:MM:SS, M:SS, or MM:SS
 	// Seconds must be 00-59. Minutes in 3-part must be 00-59.
 	const TS_PATTERN = '(?:\\d{1,2}:[0-5]\\d:[0-5]\\d|\\d{1,2}:[0-5]\\d)';
 
-	// Step 1: Convert existing markdown links where the link text is a timestamp
+	// Step 1: Protect fenced code blocks, inline code, and wikilinks
+	processed = processed.replace(/```[\s\S]*?```|`[^`\n]+`|\[\[[^\]\n]+\]\]/g, (match) => createPlaceholder(match));
+
+	// Step 2: Re-point existing markdown links where the link text is a timestamp
 	// e.g. [01:23](https://youtube.com/...)
 	const existingMdLinkRegex = new RegExp(`\\[(${TS_PATTERN})\\]\\(([^)]+)\\)`, 'g');
 	processed = processed.replace(existingMdLinkRegex, (_match, ts) => {
-		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		const url = parseTimestampToUrl(ts, videoId, format);
 		return url ? createPlaceholder(`[${ts}](${url})`) : createPlaceholder(_match);
 	});
 
-	// Step 2: Protect any other existing markdown links [text](url)
+	// Step 3: Protect any other existing markdown links [text](url)
 	const otherMdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
 	processed = processed.replace(otherMdLinkRegex, (match) => createPlaceholder(match));
 
-	// Step 3: Protect existing URLs (http:// or https://)
+	// Step 4: Protect existing URLs (http:// or https://)
 	const rawUrlRegex = /https?:\/\/[^\s)]+/g;
 	processed = processed.replace(rawUrlRegex, (match) => createPlaceholder(match));
 
-	// Step 4: Convert bracketed timestamps e.g. [01:23] or [1:23:45]
+	// Step 5: Convert bracketed timestamps e.g. [01:23] or [1:23:45]
 	const bracketedRegex = new RegExp(`\\[(${TS_PATTERN})\\]`, 'g');
 	processed = processed.replace(bracketedRegex, (_match, ts) => {
-		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		const url = parseTimestampToUrl(ts, videoId, format);
 		return url ? createPlaceholder(`[${ts}](${url})`) : _match;
 	});
 
-	// Step 5: Convert standalone timestamps
-	// Preceded by start of string, whitespace, '(', '>', '•', or '-'
-	// Followed by end of string, whitespace, ')', ':', '.', ',', '!', '?', or '-'
+	// Step 6: Convert standalone timestamps
+	// Preceded by start of string, whitespace, '(', '>', '•', '-', or '*'
+	// Followed by end of string, whitespace, ')', ':', '.', ',', '!', '?', '-', or '*'
 	// Not followed by AM or PM (e.g. 10:00 AM)
 	const standaloneRegex = new RegExp(
-		`(?<=^|[\\s(>•-])(${TS_PATTERN})(?=$|[\\s):.,!?-])(?!\\s*(?:am|pm)\\b)`,
+		`(?<=^|[\\s(>•*-])(${TS_PATTERN})(?=$|[\\s):.,!?*-])(?!\\s*(?:am|pm)\\b)`,
 		'gi'
 	);
 	processed = processed.replace(standaloneRegex, (ts) => {
-		const url = parseTimestampToMediaExtendedUrl(ts, videoId);
+		const url = parseTimestampToUrl(ts, videoId, format);
 		return url ? `[${ts}](${url})` : ts;
 	});
 
-	// Step 6: Restore all protected placeholders
-	for (let i = 0; i < protectedTokens.length; i++) {
-		const placeholder = `@@@ME_PROTECTED_TOKEN_${i}@@@`;
+	// Step 7: Restore protected placeholders, newest first, so tokens nested inside
+	// later tokens (e.g. inline code inside link text) are restored too
+	for (let i = protectedTokens.length - 1; i >= 0; i--) {
+		const placeholder = `@@@TS_PROTECTED_TOKEN_${i}@@@`;
 		processed = processed.replace(placeholder, () => protectedTokens[i]);
 	}
 
 	return processed;
+}
+
+/**
+ * Converts description timestamps into standard YouTube timestamp links ([MM:SS](https://...&t=SECONDSs)).
+ */
+export function convertDescriptionTimestampsToYouTube(description: string, videoId: string): string {
+	return convertTimestampsToLinks(description, videoId, 'youtube');
+}
+
+/**
+ * Converts description timestamps into Media Extended markdown links ([MM:SS](https://...&t=SECONDS#t=MM:SS.00)).
+ */
+export function convertDescriptionTimestampsToMediaExtended(description: string, videoId: string): string {
+	return convertTimestampsToLinks(description, videoId, 'mediaExtended');
 }
 
 /**

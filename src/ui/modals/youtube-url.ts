@@ -1,29 +1,31 @@
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
+import { MediaExtendedRunOptions } from '../../types';
+import { renderMediaExtendedRunOptions } from '../components/MediaExtendedRunOptions';
 
 /**
  * A modal dialog for entering a YouTube URL and run options.
  */
 export class YouTubeURLModal extends Modal {
-	private onSubmit: (url: string, createMediaExtended: boolean) => void;
-	private createMediaExtended: boolean;
+	private onSubmit: (url: string, mediaExtendedOptions: MediaExtendedRunOptions) => void;
+	private mediaExtendedOptions: MediaExtendedRunOptions;
 	private showMediaExtendedOption: boolean;
 
 	/**
 	 * Constructs a new YouTubeURLModal.
 	 * @param app - The Obsidian app instance.
-	 * @param onSubmit - Callback function to handle the submitted URL and options.
-	 * @param initialCreateMediaExtended - Inherited state from permanent setting.
-	 * @param showMediaExtendedOption - Whether to display the Media Extended checkbox.
+	 * @param onSubmit - Callback function to handle the submitted URL and per-run options.
+	 * @param initialMediaExtendedOptions - Initial per-run Media Extended options (inherited from permanent settings).
+	 * @param showMediaExtendedOption - Whether to display the Media Extended toggles.
 	 */
 	constructor(
 		app: App,
-		onSubmit: (url: string, createMediaExtended: boolean) => void,
-		initialCreateMediaExtended = true,
+		onSubmit: (url: string, mediaExtendedOptions: MediaExtendedRunOptions) => void,
+		initialMediaExtendedOptions: MediaExtendedRunOptions,
 		showMediaExtendedOption = true
 	) {
 		super(app);
 		this.onSubmit = onSubmit;
-		this.createMediaExtended = initialCreateMediaExtended;
+		this.mediaExtendedOptions = { ...initialMediaExtendedOptions };
 		this.showMediaExtendedOption = showMediaExtendedOption;
 	}
 
@@ -49,18 +51,9 @@ export class YouTubeURLModal extends Modal {
 				cls: 'yt-summarizer__input',
 			});
 
-			// Media Extended option
+			// Media Extended options
 			if (this.showMediaExtendedOption) {
-				new Setting(modalEl)
-					.setName('Create Media Extended note')
-					.setDesc('Create a separate companion note for Media Extended (does not change permanent setting)')
-					.addToggle((toggle) =>
-						toggle
-							.setValue(this.createMediaExtended)
-							.onChange((value) => {
-								this.createMediaExtended = value;
-							})
-					);
+				renderMediaExtendedRunOptions(modalEl, this.mediaExtendedOptions);
 			}
 
 			// Action buttons
@@ -82,7 +75,7 @@ export class YouTubeURLModal extends Modal {
 			submitBtn.addEventListener('click', () => {
 				const url = inputEl.value.trim();
 				if (url) {
-					this.onSubmit(url, this.createMediaExtended);
+					this.onSubmit(url, { ...this.mediaExtendedOptions });
 					this.close();
 				} else {
 					new Notice('Please enter a valid URL');

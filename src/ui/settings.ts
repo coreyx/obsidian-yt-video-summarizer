@@ -320,8 +320,8 @@ export class SettingsTab extends PluginSettingTab {
 
         // Include video description
         new Setting(containerEl)
-            .setName('Include video description')
-            .setDesc('Include the YouTube video description and links in the note body')
+            .setName('Include video description in summary note')
+            .setDesc('Include the YouTube video description in the summary note body under a "## Description" section, with timestamps linked to the video (disabled by default)')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getIncludeVideoDescription())
@@ -345,36 +345,12 @@ export class SettingsTab extends PluginSettingTab {
         // Include transcript in summary
         new Setting(containerEl)
             .setName('Include transcript in summary note')
-            .setDesc('Append the full video transcript under a "## Transcript" section when generating a summary (disabled by default)')
+            .setDesc('Append the full video transcript under a "## Transcript" section when generating a summary, with each timestamp linked to the video (e.g. [01:05](https://www.youtube.com/watch?v=...&t=65s)) (disabled by default)')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getDumpTranscriptInSummary())
                     .onChange(async (value) => {
                         await this.settings.updateDumpTranscriptInSummary(value);
-                    })
-            );
-
-        // Link transcript timestamps to YouTube
-        new Setting(containerEl)
-            .setName('Link transcript timestamps to YouTube')
-            .setDesc('Format transcript timestamps as clickable links jumping directly to that time (e.g. [01:05](https://youtube.com/watch?v=...&t=66))')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getLinkTranscriptTimestamps())
-                    .onChange(async (value) => {
-                        await this.settings.updateLinkTranscriptTimestamps(value);
-                    })
-            );
-
-        // Media Extended timestamp links
-        new Setting(containerEl)
-            .setName('Format timestamps for Media Extended')
-            .setDesc('Format transcript timestamp links for the Media Extended plugin (e.g. [01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)) instead of standard YouTube links. Requires timestamp linking to be enabled.')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getMediaExtendedTimestamps())
-                    .onChange(async (value) => {
-                        await this.settings.updateMediaExtendedTimestamps(value);
                     })
             );
 
@@ -399,6 +375,18 @@ export class SettingsTab extends PluginSettingTab {
                     .setValue(this.settings.getMediaExtendedIncludeDescription())
                     .onChange(async (value) => {
                         await this.settings.updateMediaExtendedIncludeDescription(value);
+                    })
+            );
+
+        // Include transcript in Media Extended note
+        new Setting(containerEl)
+            .setName('Include transcript in Media Extended note')
+            .setDesc('Include the timestamped transcript in the Media Extended companion note (enabled by default). Timestamps are formatted as Media Extended playback links (e.g. [01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedIncludeTranscript())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedIncludeTranscript(value);
                     })
             );
 
