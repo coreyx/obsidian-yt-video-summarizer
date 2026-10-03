@@ -1,5 +1,30 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.16.0
+
+### Highlights
+
+YouTube Video Summarizer v1.16.0 lets you fill in what's missing on the notes you already have:
+
+* 🏷️ **Tag With AI or YouTube**: Add tags to a video note on demand, from your AI model or from YouTube.
+* 🔗 **Create the Other Note**: Turn a summary note into a Media Extended note, or a YouTube Media Extended note into an AI summary, with one command.
+
+### What's Changed in v1.16.0
+
+#### 🏷️ Tag With AI / Tag With YouTube
+* **Tag with AI** suggests topic tags from the note's summary using your active AI model and your vault's existing tags (same as *Generate semantic topic tags*).
+* **Tag with YouTube** adds the video's YouTube tags plus creator hashtags from the title and description.
+* New tags are merged into frontmatter with the same deduplication as summarizing; nothing else in the note changes.
+
+#### 🔗 Create Companion Note for Current Note
+* **Create Media Extended note for current note** (from a summary note) builds the Media Extended note in your *Media Extended notes folder*.
+* **Create video summary note for current note** (from a Media Extended note for a YouTube video) generates the AI summary in your *Video summaries folder*.
+* Both link the two notes under `# Related` and are also available by right-clicking a note in the File Explorer.
+* If a note for the same video already exists in the target folder, you're asked before it's rebuilt or regenerated. Properties and tags you added are kept.
+* Summarizing a video again now also keeps properties and tags you added to its existing Media Extended note.
+
+---
+
 ## v1.15.0
 
 ### Highlights
