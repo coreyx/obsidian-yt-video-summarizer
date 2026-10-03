@@ -176,6 +176,8 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Include Transcript in Media Extended Note**: Includes the timestamped transcript under `# Transcript` in the companion note. Enabled by default.
 
+**Embed Cover in Media Extended Notes**: Adds the video cover as an inline image (`![Cover](https://i.ytimg.com/...)`) at the top of the body of new Media Extended companion notes, using the same URL as the `cover` frontmatter. Enabled by default.
+
 **Use Frontmatter Description for Media Extended Notes**: When running `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
 
 **Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
@@ -324,6 +326,14 @@ What gets refreshed:
 - **Media Extended notes**: all Media Extended frontmatter fields, including `cover` and `aspect_ratio`, keeping the existing `mx-uid`.
 
 What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `video_url`, and any frontmatter properties the plugin doesn't manage. No AI model is used.
+
+### Method 13: Insert Video Cover at Cursor
+
+1. Open any note with a YouTube video (in `video_url` / `video` / `media` frontmatter, or a YouTube link in the note)
+2. Place the cursor where the image should go
+3. Run `Insert video cover at cursor` from the Command Palette
+
+Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when it's a URL, otherwise the YouTube thumbnail (max resolution, or high quality for older videos). It doesn't check whether the note already has a cover image.
 
 ## Output Format
 

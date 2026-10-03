@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Embed Cover in Media Extended Notes**: New setting (on by default) that adds the video cover as an inline image (`![Cover](url)`) at the top of the body of new Media Extended companion notes, using the same URL as the `cover` frontmatter.
+- **Command: Insert Video Cover at Cursor**: Inserts the note's video cover as an inline image at the cursor. Uses the `cover` frontmatter when it's a URL, otherwise the YouTube thumbnail with the low-resolution fallback. No check for an existing cover image.
+
 ---
 
 ## [1.13.0] - 2026-10-02

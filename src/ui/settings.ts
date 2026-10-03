@@ -403,6 +403,18 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Embed the cover image at the top of new Media Extended notes
+        new Setting(containerEl)
+            .setName('Embed cover in Media Extended notes')
+            .setDesc('Add the video cover as an inline image (![Cover](https://i.ytimg.com/...)) at the top of the body of new Media Extended companion notes (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedEmbedCover())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedEmbedCover(value);
+                    })
+            );
+
         // Use frontmatter description for "Add description to Media Extended note"
         new Setting(containerEl)
             .setName('Use frontmatter description for Media Extended notes')

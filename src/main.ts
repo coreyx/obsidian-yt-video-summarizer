@@ -17,6 +17,7 @@ import {
 	addRelatedLink,
 	applyFrontmatter,
 	buildFrontmatter,
+	buildCoverEmbed,
 	buildMediaExtendedNote,
 	convertDescriptionTimestampsToMediaExtended,
 	convertTimestampsToLinks,
@@ -322,6 +323,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Add transcript to Media Extended note',
 			editorCallback: async (_editor: Editor, view: MarkdownView) => {
 				await this.addSectionToMediaExtendedNote(view.file, 'transcript');
+			},
+		});
+
+		// Command to insert the video cover as an inline image at the cursor
+		this.addCommand({
+			id: 'insert-video-cover-at-cursor',
+			name: 'Insert video cover at cursor',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				await this.insertVideoCoverAtCursor(editor, view);
 			},
 		});
 
@@ -1020,6 +1030,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		const noteContent = buildMediaExtendedNote(metadata, formattedTranscript, originalNoteLink, {
 			includeDescription,
+			embedCover: this.settings.getMediaExtendedEmbedCover(),
 		});
 
 		try {
@@ -1115,6 +1126,31 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice(`Failed to add ${section}: ${error.message}`);
 			console.error(`Failed to add ${section} to Media Extended note:`, error);
 		}
+	}
+
+	/**
+	 * Inserts the note's video cover as an inline image (`![Cover](url)`) at the cursor. Uses the note's
+	 * `cover` frontmatter when it's a URL, otherwise the YouTube thumbnail (with low-resolution fallback).
+	 * Doesn't check whether the note already has a cover embed.
+	 */
+	public async insertVideoCoverAtCursor(editor: Editor, view: MarkdownView): Promise<void> {
+		// Capture the insertion point before any network request
+		const insertAt = editor.getCursor('to');
+		const url = extractYouTubeUrlFromNote(editor.getValue());
+		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
+		if (!videoId) {
+			new Notice('No YouTube video found in this note.');
+			return;
+		}
+
+		const frontmatterCover = view.file ? this.app.metadataCache.getFileCache(view.file)?.frontmatter?.cover : undefined;
+		const coverUrl = typeof frontmatterCover === 'string' && /^https?:\/\//i.test(frontmatterCover.trim())
+			? frontmatterCover.trim()
+			: await YouTubeService.getCoverUrl(videoId);
+
+		const embed = buildCoverEmbed(coverUrl);
+		editor.replaceRange(embed, insertAt);
+		editor.setCursor(editor.offsetToPos(editor.posToOffset(insertAt) + embed.length));
 	}
 
 	/**

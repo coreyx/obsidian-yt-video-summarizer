@@ -24,6 +24,7 @@ import {
     DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
     DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT,
     DEFAULT_MEDIA_EXTENDED_DESCRIPTION_FROM_FRONTMATTER,
+    DEFAULT_MEDIA_EXTENDED_EMBED_COVER,
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
     DEFAULT_SCAN_FOLDERS,
@@ -68,6 +69,7 @@ export class SettingsManager implements PluginSettings {
             mediaExtendedIncludeDescription: DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION,
             mediaExtendedIncludeTranscript: DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT,
             mediaExtendedDescriptionFromFrontmatter: DEFAULT_MEDIA_EXTENDED_DESCRIPTION_FROM_FRONTMATTER,
+            mediaExtendedEmbedCover: DEFAULT_MEDIA_EXTENDED_EMBED_COVER,
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
             scanFolders: DEFAULT_SCAN_FOLDERS,
@@ -112,6 +114,7 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
                 mediaExtendedIncludeTranscript: rawSettings.mediaExtendedIncludeTranscript ?? this.settings.mediaExtendedIncludeTranscript,
                 mediaExtendedDescriptionFromFrontmatter: rawSettings.mediaExtendedDescriptionFromFrontmatter ?? this.settings.mediaExtendedDescriptionFromFrontmatter,
+                mediaExtendedEmbedCover: rawSettings.mediaExtendedEmbedCover ?? this.settings.mediaExtendedEmbedCover,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -158,6 +161,7 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedIncludeDescription: rawSettings.mediaExtendedIncludeDescription ?? this.settings.mediaExtendedIncludeDescription,
                 mediaExtendedIncludeTranscript: rawSettings.mediaExtendedIncludeTranscript ?? this.settings.mediaExtendedIncludeTranscript,
                 mediaExtendedDescriptionFromFrontmatter: rawSettings.mediaExtendedDescriptionFromFrontmatter ?? this.settings.mediaExtendedDescriptionFromFrontmatter,
+                mediaExtendedEmbedCover: rawSettings.mediaExtendedEmbedCover ?? this.settings.mediaExtendedEmbedCover,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
                 scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
@@ -531,6 +535,15 @@ export class SettingsManager implements PluginSettings {
 
     updateMediaExtendedDescriptionFromFrontmatter(value: boolean): void {
         this.settings.mediaExtendedDescriptionFromFrontmatter = value;
+        this.saveData();
+    }
+
+    getMediaExtendedEmbedCover(): boolean {
+        return this.settings.mediaExtendedEmbedCover ?? DEFAULT_MEDIA_EXTENDED_EMBED_COVER;
+    }
+
+    updateMediaExtendedEmbedCover(value: boolean): void {
+        this.settings.mediaExtendedEmbedCover = value;
         this.saveData();
     }
 

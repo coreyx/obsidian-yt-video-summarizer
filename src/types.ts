@@ -57,6 +57,7 @@ export interface StoredSettings {
 	mediaExtendedIncludeDescription?: boolean;
 	mediaExtendedIncludeTranscript?: boolean;
 	mediaExtendedDescriptionFromFrontmatter?: boolean;
+	mediaExtendedEmbedCover?: boolean;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
 	scanFolders?: string;
@@ -176,6 +177,9 @@ export interface PluginSettings {
 
 	getMediaExtendedDescriptionFromFrontmatter(): boolean;
 	updateMediaExtendedDescriptionFromFrontmatter(value: boolean): void;
+
+	getMediaExtendedEmbedCover(): boolean;
+	updateMediaExtendedEmbedCover(value: boolean): void;
 
 	getAddDescriptionToFrontmatter(): boolean;
 	updateAddDescriptionToFrontmatter(value: boolean): void;
