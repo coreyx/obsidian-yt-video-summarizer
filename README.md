@@ -342,6 +342,22 @@ Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when
 
 The description is always stored in frontmatter, where its timestamps aren't clickable; use this command when you want clickable chapter links. The description source follows *Use frontmatter description when adding description to body* (frontmatter first, then YouTube).
 
+### Method 15: Tag a Note With AI or YouTube
+
+Run either command from the Command Palette in a video summary or Media Extended note (any note with a YouTube video):
+
+- **`Tag with AI`**: The active AI model suggests 3 to 7 topic tags from the note's summary (or its frontmatter description if the body is empty), using the same prompt and vault tag cache as *Generate semantic topic tags*, so it prefers tags you already use and your group prefixes (e.g. `ai/`).
+- **`Tag with YouTube`**: Adds the video's YouTube tags (YouTube Data API when a key is set, otherwise YouTube's player metadata) plus creator hashtags from the title and description (when *Detect tags in video title and description* is on).
+
+New tags are merged into the frontmatter `tags` with the same deduplication as summarizing (e.g. `ai/machine-learning` replaces `ai-machine-learning`, and `Music` / `#music` / `music` collapse into one). The rest of the frontmatter and the body aren't changed, and the note isn't touched if there's nothing new.
+
+### Method 16: Create the Companion Note for the Current Note
+
+- **From a video summary note**: run `Create Media Extended note for current note` (or right-click the note → **Create Media Extended note**). Creates the Media Extended note in your *Media Extended notes folder* with your Media Extended settings (description, transcript, cover embed) and links the two notes under `# Related`.
+- **From a Media Extended note** whose media is a YouTube video: run `Create video summary note for current note` (or right-click → **Create video summary note**). Generates the AI summary note in your *Video summaries folder*, exactly like summarizing, and links the two notes under `# Related`. Media Extended notes for local files or other sites are skipped.
+
+Each command looks for an existing note for the same video only in its target folder (and subfolders). If one exists, you're asked first: the Media Extended note is **rebuilt**, or the summary note is **regenerated**, in place. Frontmatter properties and tags you added are kept.
+
 ## Output Format
 
 The plugin generates structured notes with comprehensive YAML frontmatter and markdown sections:
