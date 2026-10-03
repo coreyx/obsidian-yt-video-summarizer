@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.12.0] - 2026-10-02
+
 ### Added
 - **Video Summaries Folder Setting**: New default / fallback folder for new video summary notes (`Video Summaries` in the vault root by default).
 
