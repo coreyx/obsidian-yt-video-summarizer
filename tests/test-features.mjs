@@ -3519,6 +3519,83 @@ assert.ok(fmFixed.includes('No body link here.'), 'body content preserved');
 
 console.log('✓ hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-playlist-title-placeholder logic passed');
 
+// Test 31: Video summary note placement (blank note vs. new note in fallback folder)
+console.log('Testing video summary note placement, fallback folder paths, and source note link handling...');
+
+function normalizeVideoSummaryFolderHelper(value) {
+	return (value ?? 'Video Summaries').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Video Summaries';
+}
+
+// Mirrors summarizeVideo Step 0: blank note → write into it; body and/or frontmatter (or no file) → new note
+function resolveSummaryTargetHelper(editorText, hasSourceFile) {
+	return hasSourceFile && editorText.trim() === '' ? 'current-note' : 'new-note';
+}
+
+function getAvailableNotePathHelper(existingPaths, folderPath, baseName, currentPath, extension = 'md') {
+	const parentDir = folderPath && folderPath !== '/' ? `${folderPath}/` : '';
+	let targetPath = `${parentDir}${baseName}.${extension}`;
+	let counter = 1;
+	while (existingPaths.has(targetPath) && targetPath !== currentPath) {
+		targetPath = `${parentDir}${baseName} (${counter}).${extension}`;
+		counter++;
+	}
+	return targetPath;
+}
+
+// 31.1: Fallback folder default and normalization
+assert.strictEqual(normalizeVideoSummaryFolderHelper(undefined), 'Video Summaries');
+assert.strictEqual(normalizeVideoSummaryFolderHelper('   '), 'Video Summaries');
+assert.strictEqual(normalizeVideoSummaryFolderHelper('/Notes\\Videos/'), 'Notes/Videos');
+assert.match(defaultsSource, /DEFAULT_VIDEO_SUMMARY_FOLDER = 'Video Summaries';/);
+
+// 31.2: Target resolution
+assert.strictEqual(resolveSummaryTargetHelper('', true), 'current-note');
+assert.strictEqual(resolveSummaryTargetHelper('  \n\n ', true), 'current-note');
+assert.strictEqual(resolveSummaryTargetHelper('Some notes', true), 'new-note');
+assert.strictEqual(resolveSummaryTargetHelper('---\ntags: [a]\n---\n', true), 'new-note');
+assert.strictEqual(resolveSummaryTargetHelper('---\ntags: [a]\n---\n\nBody', true), 'new-note');
+assert.strictEqual(resolveSummaryTargetHelper('', false), 'new-note');
+
+// 31.3: Collision-free paths in the fallback folder (renaming a note onto its own path is a no-op)
+const existing = new Set(['Video Summaries/My Video.md', 'Video Summaries/My Video (1).md']);
+assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'Other Video'), 'Video Summaries/Other Video.md');
+assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'My Video'), 'Video Summaries/My Video (2).md');
+assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'My Video', 'Video Summaries/My Video.md'), 'Video Summaries/My Video.md');
+assert.strictEqual(getAvailableNotePathHelper(new Set(), '', 'Root Note'), 'Root Note.md');
+
+// 31.4: Link inserted at the cursor, updated after rename, removed on failure
+function insertAtHelper(content, offset, text) {
+	return content.slice(0, offset) + text + content.slice(offset);
+}
+const sourceBefore = 'Watch this: https://youtu.be/dQw4w9WgXcQ\nMore notes below.';
+const urlEnd = sourceBefore.indexOf('\n');
+const placeholderLink = '[[YouTube Summary dQw4w9WgXcQ]]';
+const withLink = insertAtHelper(sourceBefore, urlEnd, ` ${placeholderLink}`);
+assert.strictEqual(withLink, 'Watch this: https://youtu.be/dQw4w9WgXcQ [[YouTube Summary dQw4w9WgXcQ]]\nMore notes below.');
+
+// User keeps typing elsewhere in the note while the summary runs
+const editedMeanwhile = `${withLink}\nA new line typed during summarization.`;
+const renamedLink = '[[Never Gonna Give You Up]]';
+const afterRename = editedMeanwhile.replace(placeholderLink, () => renamedLink);
+assert(afterRename.includes('https://youtu.be/dQw4w9WgXcQ [[Never Gonna Give You Up]]\n'));
+assert(afterRename.endsWith('A new line typed during summarization.'));
+// Idempotent if Obsidian already updated the link itself
+assert.strictEqual(afterRename.replace(placeholderLink, () => renamedLink), afterRename);
+
+// Failure cleanup removes exactly the inserted text
+const afterCleanup = afterRename.replace(` ${renamedLink}`, '');
+assert.strictEqual(afterCleanup, `${sourceBefore}\nA new line typed during summarization.`);
+
+// 31.5: Writing into a blank note that the user typed into during summarization appends instead of overwriting
+function writeSummaryHelper(current, isNewNote, fm, body) {
+	return isNewNote || current.trim() === '' ? `${fm}\n\n${body}` : `${current.trimEnd()}\n\n${body}`;
+}
+assert.strictEqual(writeSummaryHelper('Summarizing https://youtu.be/x…\n', true, '---\ntitle: T\n---', 'Body'), '---\ntitle: T\n---\n\nBody');
+assert.strictEqual(writeSummaryHelper('', false, '---\ntitle: T\n---', 'Body'), '---\ntitle: T\n---\n\nBody');
+assert.strictEqual(writeSummaryHelper('Typed meanwhile\n', false, '---\ntitle: T\n---', 'Body'), 'Typed meanwhile\n\nBody');
+
+console.log('✓ Video summary note placement, fallback folder paths, and source note link handling passed');
+
 console.log('\nAll tests passed successfully!');
 
 

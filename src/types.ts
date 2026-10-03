@@ -46,6 +46,7 @@ export interface StoredSettings {
 	addTagsToFrontmatter?: boolean;
 	addInlineTags?: boolean;
 	setNoteTitleFromVideo?: boolean;
+	videoSummaryFolder?: string;
 	includeTitleInBody?: boolean;
 	linkTechnicalTerms?: boolean;
 	dumpTranscriptInSummary?: boolean;
@@ -141,6 +142,9 @@ export interface PluginSettings {
 
 	getSetNoteTitleFromVideo(): boolean;
 	updateSetNoteTitleFromVideo(value: boolean): void;
+
+	getVideoSummaryFolder(): string;
+	updateVideoSummaryFolder(value: string): void;
 
 	getIncludeTitleInBody(): boolean;
 	updateIncludeTitleInBody(value: boolean): void;

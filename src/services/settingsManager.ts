@@ -13,6 +13,7 @@ import {
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
     DEFAULT_ADD_INLINE_TAGS,
     DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+    DEFAULT_VIDEO_SUMMARY_FOLDER,
     DEFAULT_INCLUDE_TITLE_IN_BODY,
     DEFAULT_LINK_TECHNICAL_TERMS,
     DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
@@ -55,6 +56,7 @@ export class SettingsManager implements PluginSettings {
             addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
             addInlineTags: DEFAULT_ADD_INLINE_TAGS,
             setNoteTitleFromVideo: DEFAULT_SET_NOTE_TITLE_FROM_VIDEO,
+            videoSummaryFolder: DEFAULT_VIDEO_SUMMARY_FOLDER,
             includeTitleInBody: DEFAULT_INCLUDE_TITLE_IN_BODY,
             linkTechnicalTerms: DEFAULT_LINK_TECHNICAL_TERMS,
             dumpTranscriptInSummary: DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY,
@@ -97,6 +99,7 @@ export class SettingsManager implements PluginSettings {
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
+                videoSummaryFolder: rawSettings.videoSummaryFolder ?? this.settings.videoSummaryFolder,
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
@@ -141,6 +144,7 @@ export class SettingsManager implements PluginSettings {
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
                 setNoteTitleFromVideo: rawSettings.setNoteTitleFromVideo ?? this.settings.setNoteTitleFromVideo,
+                videoSummaryFolder: rawSettings.videoSummaryFolder ?? this.settings.videoSummaryFolder,
                 includeTitleInBody: rawSettings.includeTitleInBody ?? this.settings.includeTitleInBody,
                 linkTechnicalTerms: rawSettings.linkTechnicalTerms ?? this.settings.linkTechnicalTerms,
                 dumpTranscriptInSummary: rawSettings.dumpTranscriptInSummary ?? this.settings.dumpTranscriptInSummary,
@@ -424,6 +428,15 @@ export class SettingsManager implements PluginSettings {
 
     updateSetNoteTitleFromVideo(value: boolean): void {
         this.settings.setNoteTitleFromVideo = value;
+        this.saveData();
+    }
+
+    getVideoSummaryFolder(): string {
+        return this.settings.videoSummaryFolder ?? DEFAULT_VIDEO_SUMMARY_FOLDER;
+    }
+
+    updateVideoSummaryFolder(value: string): void {
+        this.settings.videoSummaryFolder = value;
         this.saveData();
     }
 

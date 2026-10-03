@@ -692,3 +692,16 @@ This section preserves technical and design questions asked during development f
    - [`renderMediaExtendedRunOptions()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/components/MediaExtendedRunOptions.ts) renders the three toggles for both modals; the description/transcript toggles are disabled while `createNote` is off.
    - [`createMediaExtendedCompanionNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts) accepts optional `includeDescription`/`includeTranscript` overrides and falls back to the permanent settings, so batch commands (`processMediaExtendedNotes()`) keep using the permanent settings.
 3. **Defaults**: `DEFAULT_INCLUDE_VIDEO_DESCRIPTION = false`, `DEFAULT_DUMP_TRANSCRIPT_IN_SUMMARY = false`, `DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true`, new `DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true`. Defaults only apply when the user has no saved value.
+
+---
+
+### Q17: Where does a new video summary go, and how does writing stay correct when the user switches notes mid-run?
+
+**Context**: User requested a default / fallback folder for video summaries (default `Video Summaries` in the vault root). From a blank note, the summary goes into that note. From a note with a body and/or frontmatter, a new note is created, a link is inserted at the cursor, and the summary is added to the new note when finished, regardless of where the user is focused.
+
+**Answer**:
+1. **Target resolution** (Step 0 of [`summarizeVideo()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts)): if the active note's editor text is blank, it is the target. Otherwise `createPendingSummaryNote()` creates `Video Summaries/YouTube Summary <videoId>.md` immediately and inserts a link at the cursor (after the selection when a URL is selected, so the URL is kept). The link is generated with `fileManager.generateMarkdownLink()`, so it follows the user's wikilink/markdown link preference.
+2. **Naming**: As soon as the transcript (and title) is fetched, `renamePendingSummaryNote()` renames the note to the sanitized title (collision-free via `getAvailableNotePath()`, shared with `setNoteTitle()`). The link in the source note is rewritten directly with `vault.process()` so it doesn't depend on the "Automatically update internal links" preference; if Obsidian already updated it, the replace is a no-op. *Set note title from video* now only governs renaming a blank note the user started from.
+3. **Focus independence**: All writes after the trigger use the vault (`vault.process()` / `fileManager`), never the editor, so the summary lands in the right file even if the user switches notes or tabs. A blank target that the user typed into during the run gets the summary appended with frontmatter merged, instead of being overwritten.
+4. **Failure cleanup**: If the run ends without writing the summary (transcript fetch error, AI error, exception), `discardPendingSummaryNote()` removes exactly the inserted link text from the source note and moves the placeholder note to the trash (`fileManager.trashFile()`, respecting the user's trash setting).
+5. **Scope**: Applies to the summarize commands. `Get YouTube video transcript` is unchanged (it is designed to write into the note that contains the video URL).
