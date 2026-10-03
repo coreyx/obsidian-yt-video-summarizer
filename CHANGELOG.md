@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.11.0] - 2026-10-02
+
 ### Added
+- **Command: Fix Playlist Title Placeholder**: Added `Fix playlist title placeholder` command (folder picker) and a File Explorer folder context menu item. Finds notes that have a `playlist_id` but a generic `Playlist` placeholder title, fetches only the playlist details (no full video metadata fetch), and replaces the placeholder in frontmatter and in any legacy `Playlist: Playlist` body link.
+- **Batch Operation Progress Tracking & Report**: All batch upgrade commands now show live in-place progress notices and status bar updates, log every processed note, and produce a report viewable in an interactive modal (metric cards, filter tabs, clickable note links, Markdown export). Added the `View last batch operation report & logs` command and a *Batch operation status and logs* settings card.
 - **Per-Run Media Extended Description & Transcript Toggles**: The YouTube URL and custom prompt modals now include "Include description in Media Extended note" and "Include transcript in Media Extended note" toggles alongside "Create Media Extended note". They inherit the permanent settings, apply to the current run only, and are disabled while note creation is off.
 - **Include Transcript in Media Extended Note Setting**: New permanent setting controlling whether companion notes include the `# Transcript` section. Enabled by default.
 
@@ -15,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Standard YouTube Timestamp Links in Summary Notes**: Every timestamp in a video summary note — transcript, `## Description` section, and any timestamps in the AI summary — is now a markdown link to the original video in standard YouTube format (`[01:05](https://www.youtube.com/watch?v=...&t=65s)`). Raw description timestamps are converted automatically; code blocks, inline code, wikilinks, and non-timestamp links are left untouched.
 - **Media Extended Format in Companion Notes**: Timestamps in Media Extended companion notes (description and transcript) always use Media Extended playback links (`&t=SECONDS#t=mm:ss.ms`).
 - **Summary Note Description Off by Default**: `Include video description in summary note` now defaults to off. Existing saved settings are preserved.
+
+### Fixed
+- **Playlist Title Always Showing as "Playlist"**: Playlist titles are now resolved from the YouTube Data API (when a key is set) with a no-key fallback that reads the playlist page; when no real title is found, `playlist_title` is omitted instead of written as `Playlist`. Notes with the old placeholder are treated as missing playlist frontmatter so the playlist upgrade command can repair them.
 
 ### Removed
 - **`Link transcript timestamps to YouTube` and `Format timestamps for Media Extended` settings**: Superseded by the fixed per-note formats above (summary notes always use YouTube links, companion notes always use Media Extended links).
