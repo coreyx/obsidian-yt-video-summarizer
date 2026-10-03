@@ -56,6 +56,7 @@ export interface StoredSettings {
 	mediaExtendedFolder?: string;
 	mediaExtendedIncludeDescription?: boolean;
 	mediaExtendedIncludeTranscript?: boolean;
+	mediaExtendedDescriptionFromFrontmatter?: boolean;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
 	scanFolders?: string;
@@ -173,6 +174,9 @@ export interface PluginSettings {
 	getMediaExtendedIncludeTranscript(): boolean;
 	updateMediaExtendedIncludeTranscript(value: boolean): void;
 
+	getMediaExtendedDescriptionFromFrontmatter(): boolean;
+	updateMediaExtendedDescriptionFromFrontmatter(value: boolean): void;
+
 	getAddDescriptionToFrontmatter(): boolean;
 	updateAddDescriptionToFrontmatter(value: boolean): void;
 
@@ -221,6 +225,7 @@ export interface VideoMetadata {
 	publishedAt?: string;
 	viewCount?: number;
 	likeCount?: number;
+	aspectRatio?: string;
 	playlist?: PlaylistInfo;
 }
 
@@ -246,6 +251,7 @@ export interface TranscriptResponse {
 	publishedAt?: string;
 	viewCount?: number;
 	likeCount?: number;
+	aspectRatio?: string;
 	lines: TranscriptLine[];
 	playlist?: PlaylistInfo;
 }

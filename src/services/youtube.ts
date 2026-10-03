@@ -117,6 +117,44 @@ export class YouTubeService {
 	 * @param quality - Desired thumbnail quality (default: 'maxres')
 	 * @returns URL string for the video thumbnail
 	 */
+	/**
+	 * Returns a cover image URL for Media Extended notes: the max-resolution WebP thumbnail,
+	 * or the high-quality one when YouTube has no max-resolution thumbnail (common for old / low-res videos).
+	 */
+	static async getCoverUrl(videoId: string): Promise<string> {
+		return YouTubeService.preferAvailableImage(
+			`https://i.ytimg.com/vi_webp/${videoId}/maxresdefault.webp`,
+			`https://i.ytimg.com/vi_webp/${videoId}/hqdefault.webp`
+		);
+	}
+
+	/**
+	 * Returns the thumbnail URL for video summary notes: the max-resolution JPEG,
+	 * or the high-quality one when YouTube has no max-resolution thumbnail.
+	 */
+	static async getAvailableThumbnailUrl(videoId: string): Promise<string> {
+		return YouTubeService.preferAvailableImage(
+			YouTubeService.getThumbnailUrl(videoId, 'maxres'),
+			YouTubeService.getThumbnailUrl(videoId, 'high')
+		);
+	}
+
+	/**
+	 * Returns `preferred` unless a HEAD request shows it doesn't exist (404), in which case returns `fallback`.
+	 * Network errors keep `preferred`, so offline use never downgrades the image.
+	 */
+	private static async preferAvailableImage(preferred: string, fallback: string): Promise<string> {
+		try {
+			const response = await requestUrl({ url: preferred, method: 'HEAD', throw: false });
+			if (response.status === 404) {
+				return fallback;
+			}
+		} catch (error) {
+			console.warn('Could not check thumbnail availability; using preferred URL:', error);
+		}
+		return preferred;
+	}
+
 	static getThumbnailUrl(
 		videoId: string,
 		quality: keyof ThumbnailQuality = 'maxres'
@@ -163,6 +201,7 @@ export class YouTubeService {
 	 * Fetches video metadata (tags, published date, views, likes) using the official YouTube Data API v3 if an API key is provided.
 	 */
 	static async fetchYouTubeDataApiVideoData(videoId: string, apiKey: string): Promise<{
+		description?: string;
 		tags?: string[];
 		publishedAt?: string;
 		viewCount?: number;
@@ -195,7 +234,8 @@ export class YouTubeService {
 				}
 				const viewCount = item?.statistics?.viewCount ? parseInt(item.statistics.viewCount, 10) : undefined;
 				const likeCount = item?.statistics?.likeCount ? parseInt(item.statistics.likeCount, 10) : undefined;
-				return { tags, publishedAt, viewCount, likeCount };
+				const description = typeof item?.snippet?.description === 'string' ? item.snippet.description : undefined;
+				return { description, tags, publishedAt, viewCount, likeCount };
 			}
 		} catch (error) {
 			console.warn('YouTube Data API video data request failed:', error);
@@ -708,8 +748,39 @@ export class YouTubeService {
 			publishedAt,
 			viewCount,
 			likeCount,
+			aspectRatio: YouTubeService.getAspectRatioFromPlayerData(playerData),
 			playlist,
 		};
+	}
+
+	/**
+	 * Derives the video's aspect ratio (e.g. "16 / 9") from the largest stream format in the player data.
+	 */
+	static getAspectRatioFromPlayerData(playerData: {
+		streamingData?: { formats?: { width?: number; height?: number }[]; adaptiveFormats?: { width?: number; height?: number }[] };
+	}): string | undefined {
+		const formats: { width?: number; height?: number }[] = [
+			...(playerData?.streamingData?.formats ?? []),
+			...(playerData?.streamingData?.adaptiveFormats ?? []),
+		];
+		let best: { width: number; height: number } | undefined;
+		for (const format of formats) {
+			const width = Number(format?.width);
+			const height = Number(format?.height);
+			if (width > 0 && height > 0 && (!best || width * height > best.width * best.height)) {
+				best = { width, height };
+			}
+		}
+		return best ? YouTubeService.formatAspectRatio(best.width, best.height) : undefined;
+	}
+
+	/**
+	 * Reduces width/height to the simplest ratio in CSS aspect-ratio form ("16 / 9"), as Media Extended uses.
+	 */
+	static formatAspectRatio(width: number, height: number): string {
+		const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+		const divisor = gcd(Math.round(width), Math.round(height)) || 1;
+		return `${Math.round(width) / divisor} / ${Math.round(height) / divisor}`;
 	}
 
 	/**

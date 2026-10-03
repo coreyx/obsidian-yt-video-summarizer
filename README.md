@@ -14,7 +14,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
 -   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, LM Studio, etc.).
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
--   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `description`, and `tags`.
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at`, `view_count`, `like_count`, `aspect_ratio`, `description`, and `tags`. Video stats are included when YouTube provides them.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Optionally archives the creator's complete video description and external links in the note body, with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
@@ -176,6 +176,8 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Include Transcript in Media Extended Note**: Includes the timestamped transcript under `# Transcript` in the companion note. Enabled by default.
 
+**Use Frontmatter Description for Media Extended Notes**: When running `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
+
 **Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
 
 **Generate Semantic Topic Tags**: Uses AI semantic analysis and inference with your configured AI model to infer relevant topic tags and identify obvious missing tags. When enabled, the plugin automatically indexes your entire vault's existing tag taxonomy into a compressed in-memory cache prior to inference, providing the model with your vault's existing tags and established group prefixes (e.g. `ai/`, `dev/`). The prompt strictly enforces reusing existing tags whenever semantically appropriate, formatting new tags in lowercase kebab-case, and nesting specific concepts under established group prefixes (e.g. `ai/machine-learning` instead of `ai-machine-learning`). See [AI_TAGGING.md](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/AI_TAGGING.md) for full architectural documentation. *Note: This feature is semantic and inferred, adds your vault's tag list to the AI context, and may increase the context window size and token usage.*
@@ -300,6 +302,29 @@ Every batch upgrade operation (Playlist Upgrades, Description & Tags Upgrades, C
   - Run the command `View last batch operation report & logs` from the Command Palette (`Ctrl/Cmd + P`), or click **View Last Report & Logs** in plugin settings.
   - Displays summary metric pills (Total, Succeeded, Skipped, Failed), elapsed execution duration, interactive filter tabs, clickable note links to jump straight to notes in Obsidian, and a **Copy Log to Clipboard** button exporting a GitHub-flavored Markdown table.
 
+### Method 11: Add Description or Transcript to a Media Extended Note
+
+1. Open a Media Extended companion note (a note in your Media Extended notes folder, or with `mx-uid` frontmatter)
+2. Run `Add description to Media Extended note` or `Add transcript to Media Extended note` from the Command Palette
+3. The video is detected from the note's `video:` frontmatter (or a YouTube link in the note)
+4. If the note already has a `# Description` / `# Transcript` section, you're asked whether to continue; continuing replaces that section
+5. The section is written with Media Extended timestamp links, in companion note order (`# Description`, `# Transcript`, `# Related`). `# Description` always ends up above `# Transcript`, even if the note had them the other way around.
+
+By default, the description is copied from the note's frontmatter `description:` (only the body gets the new `# Description` section; frontmatter is never changed). If the frontmatter description is missing or empty, or *Use frontmatter description for Media Extended notes* is off, it's fetched from the **YouTube Data API** when a YouTube Data API key is set, and from YouTube's player metadata otherwise (no key required). The transcript comes from the video's captions.
+
+### Method 12: Refresh Video Metadata
+
+Re-fetches a video's metadata from YouTube and refreshes the frontmatter of video summary notes and Media Extended notes. Use it to pick up newly supported metadata fields, current view/like counts, or to fix notes created with older versions (for example, Media Extended covers that pointed to a missing local image).
+
+- **One note**: run `Refresh video metadata in current note`, or right-click a note in the File Explorer → **Refresh video metadata**
+- **A folder** (including subfolders): run `Refresh video metadata in folder...`, or right-click a folder → **Refresh video metadata in this folder**. Progress and per-note results appear in the batch report (`View last batch operation report & logs`)
+
+What gets refreshed:
+- **Video summary notes** (notes with `video_url` frontmatter): `title`, channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `description` (when *Add description to frontmatter* is on).
+- **Media Extended notes**: all Media Extended frontmatter fields, including `cover` and `aspect_ratio`, keeping the existing `mx-uid`.
+
+What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `video_url`, and any frontmatter properties the plugin doesn't manage. No AI model is used.
+
 ## Output Format
 
 The plugin generates structured notes with comprehensive YAML frontmatter and markdown sections:
@@ -313,6 +338,11 @@ channel_url: "https://www.youtube.com/@channel"
 video_url: "https://www.youtube.com/watch?v=VIDEO_ID"
 thumbnail: "https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg"
 thumbnail_text: "TEXT EXTRACTED FROM THUMBNAIL"
+duration: 213
+published_at: 2009-10-25
+view_count: 1822608029
+like_count: 19404514
+aspect_ratio: 16 / 9
 playlist_title: "Series Playlist Title"
 playlist_url: "https://www.youtube.com/playlist?list=PLAYLIST_ID"
 playlist_id: "PLAYLIST_ID"
@@ -366,8 +396,8 @@ creator: Channel Name
 published_at: 2009-10-25
 view_count: 1818745023
 like_count: 19404514
-cover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"
-aspect_ratio: 427 / 240
+cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"
+aspect_ratio: 16 / 9
 ---
 
 # Description

@@ -1168,7 +1168,7 @@ function generateMxUidHelper() {
 function buildMediaExtendedFrontmatterHelper(data) {
 	const mxUid = data.mxUid || generateMxUidHelper();
 	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
-	const cover = data.cover || `"[[mx-cover-youtube_${data.videoId}.jpg]]"`;
+	const cover = data.cover || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
 	const aspectRatio = data.aspectRatio || '427 / 240';
 
 	const lines = ['---'];
@@ -1366,7 +1366,7 @@ const sampleRickAstleyData = {
 	publishedAt: '2009-10-25',
 	viewCount: 1818745023,
 	likeCount: 19404514,
-	cover: '[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]',
+	cover: 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp',
 	aspectRatio: '427 / 240',
 };
 
@@ -1380,7 +1380,41 @@ assert(sampleFm.includes('creator: Rick Astley'));
 assert(sampleFm.includes('published_at: 2009-10-25'));
 assert(sampleFm.includes('view_count: 1818745023'));
 assert(sampleFm.includes('like_count: 19404514'));
-assert(sampleFm.includes('cover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"'));
+assert(sampleFm.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
+
+// Default cover (no explicit cover) is the full max-resolution WebP thumbnail URL, never a local wikilink
+const defaultCoverFm = buildMediaExtendedFrontmatterHelper({ videoId: 'z02Y-1OvWSM', title: 'T', creator: 'C' });
+assert(defaultCoverFm.includes('cover: "https://i.ytimg.com/vi_webp/z02Y-1OvWSM/maxresdefault.webp"'));
+assert(!defaultCoverFm.includes('[['));
+
+// getCoverUrl: falls back to hqdefault when maxres is missing (404); keeps maxres on success or network error
+async function getCoverUrlHelper(videoId, headStatus) {
+	const maxres = `https://i.ytimg.com/vi_webp/${videoId}/maxresdefault.webp`;
+	try {
+		const status = await headStatus(maxres);
+		if (status === 404) return `https://i.ytimg.com/vi_webp/${videoId}/hqdefault.webp`;
+	} catch {
+		// keep maxres
+	}
+	return maxres;
+}
+assert.strictEqual(await getCoverUrlHelper('dQw4w9WgXcQ', async () => 200), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+assert.strictEqual(await getCoverUrlHelper('jNQXAC9IVRw', async () => 404), 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp');
+assert.strictEqual(await getCoverUrlHelper('dQw4w9WgXcQ', async () => { throw new Error('offline'); }), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+
+// getAvailableThumbnailUrl (video summary notes): same fallback on the img.youtube.com JPEG thumbnails
+async function getAvailableThumbnailUrlHelper(videoId, headStatus) {
+	const maxres = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+	try {
+		if ((await headStatus(maxres)) === 404) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+	} catch {
+		// keep maxres
+	}
+	return maxres;
+}
+assert.strictEqual(await getAvailableThumbnailUrlHelper('dQw4w9WgXcQ', async () => 200), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
+assert.strictEqual(await getAvailableThumbnailUrlHelper('jNQXAC9IVRw', async () => 404), 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg');
+assert.strictEqual(await getAvailableThumbnailUrlHelper('dQw4w9WgXcQ', async () => { throw new Error('offline'); }), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
 assert(sampleFm.includes('aspect_ratio: 427 / 240'));
 
 // Case 3: Title with special characters is properly quoted
@@ -3595,6 +3629,383 @@ assert.strictEqual(writeSummaryHelper('', false, '---\ntitle: T\n---', 'Body'), 
 assert.strictEqual(writeSummaryHelper('Typed meanwhile\n', false, '---\ntitle: T\n---', 'Body'), 'Typed meanwhile\n\nBody');
 
 console.log('✓ Video summary note placement, fallback folder paths, and source note link handling passed');
+
+// Test 32: Add description / transcript to Media Extended notes (section detection, upsert, video detection)
+console.log('Testing Media Extended note section detection, insertion/replacement, and video detection...');
+
+function findMarkdownSectionHelper(content, heading) {
+	const lines = content.split('\n');
+	let i = 0;
+	if (lines[0]?.trim() === '---') {
+		const close = lines.findIndex((line, idx) => idx > 0 && line.trim() === '---');
+		i = close >= 0 ? close + 1 : 0;
+	}
+	const target = heading.trim().toLowerCase();
+	let inFence = false;
+	let start = -1;
+	for (; i < lines.length; i++) {
+		if (/^\s*(```|~~~)/.test(lines[i])) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence) continue;
+		const match = lines[i].match(/^# +(.+?)\s*$/);
+		if (!match) continue;
+		if (start >= 0) return { start, end: i };
+		if (match[1].toLowerCase() === target) start = i;
+	}
+	return start >= 0 ? { start, end: lines.length } : null;
+}
+
+function upsertMarkdownSectionHelper(content, heading, body, insertBefore = []) {
+	const lines = content.replace(/\r\n/g, '\n').split('\n');
+	const normalized = lines.join('\n');
+	const sectionText = `# ${heading}\n\n${body.trim()}`;
+	const join = (before, after) => {
+		const head = before.join('\n').replace(/\s+$/, '');
+		const tail = after.join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+		return `${[head, sectionText, tail].filter(Boolean).join('\n\n')}\n`;
+	};
+	const existing = findMarkdownSectionHelper(normalized, heading);
+	if (existing) return join(lines.slice(0, existing.start), lines.slice(existing.end));
+	const anchors = insertBefore
+		.map((h) => findMarkdownSectionHelper(normalized, h))
+		.filter((s) => s !== null)
+		.sort((a, b) => a.start - b.start);
+	if (anchors.length > 0) return join(lines.slice(0, anchors[0].start), lines.slice(anchors[0].start));
+	return join(lines, []);
+}
+
+function extractYouTubeUrlFromFrontmatterHelper(content) {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (!fmMatch) return null;
+	for (const key of ['video_url', 'video', 'media']) {
+		const m = fmMatch[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
+		const value = m?.[1].trim();
+		if (value && (key === 'video_url' || /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(value))) {
+			return value;
+		}
+	}
+	return null;
+}
+
+const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
+const meNoteBare = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n`;
+const meNoteFull = `${meFrontmatter}\n\n# Description\n\nOld description\n\n# Transcript\n\n- [00:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Hi\n\n# Related\n\n- [[Summary Note]]\n`;
+
+// 32.1: Video detection from Media Extended frontmatter (video / media keys), ignoring non-YouTube values
+assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper(meNoteBare), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nmedia: https://youtu.be/dQw4w9WgXcQ\n---\n'), 'https://youtu.be/dQw4w9WgXcQ');
+assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo: "[[local.mp4]]"\n---\n'), null);
+assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo_url: https://www.youtube.com/watch?v=abc123XYZ00\nvideo: https://youtu.be/other\n---\n'), 'https://www.youtube.com/watch?v=abc123XYZ00');
+
+// 32.2: Section detection — level-1 only, case-insensitive, ignores frontmatter and code fences
+assert.strictEqual(findMarkdownSectionHelper(meNoteBare, 'Description'), null);
+assert.strictEqual(findMarkdownSectionHelper(meNoteBare, 'Transcript'), null);
+assert.notStrictEqual(findMarkdownSectionHelper(meNoteFull, 'Description'), null);
+assert.notStrictEqual(findMarkdownSectionHelper(meNoteFull, 'transcript'), null);
+assert.strictEqual(findMarkdownSectionHelper('## Description\n\nText', 'Description'), null);
+assert.strictEqual(findMarkdownSectionHelper('```\n# Description\n```\n', 'Description'), null);
+assert.strictEqual(findMarkdownSectionHelper('---\ntitle: "# Description"\n---\nBody', 'Description'), null);
+
+// 32.3: Insert description before # Transcript / # Related when missing
+const descBody = '[0:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Intro';
+const withDesc = upsertMarkdownSectionHelper(meNoteBare, 'Description', descBody, ['Transcript', 'Related']);
+assert.strictEqual(withDesc, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Related\n\n- [[Summary Note]]\n`);
+
+// 32.4: Insert transcript after description, before # Related
+const transcriptBody = '- [00:01](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1#t=00:01.00) Hello';
+const withBoth = upsertMarkdownSectionHelper(withDesc, 'Transcript', transcriptBody, ['Related']);
+assert.strictEqual(withBoth, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`);
+
+// 32.5: Replace an existing section in place, keeping other sections
+const replacedDesc = upsertMarkdownSectionHelper(meNoteFull, 'Description', 'New description', ['Transcript', 'Related']);
+assert(replacedDesc.includes('# Description\n\nNew description\n\n# Transcript\n\n'));
+assert(!replacedDesc.includes('Old description'));
+assert(replacedDesc.includes('# Related\n\n- [[Summary Note]]\n'));
+const replacedTranscript = upsertMarkdownSectionHelper(meNoteFull, 'Transcript', transcriptBody, ['Related']);
+assert(replacedTranscript.includes(`# Transcript\n\n${transcriptBody}\n\n# Related`));
+assert(!replacedTranscript.includes(') Hi\n'));
+assert.strictEqual((replacedTranscript.match(/^# Transcript$/gm) || []).length, 1);
+
+// 32.6: Appends at the end when no anchors exist; works with frontmatter-only notes and CRLF
+assert.strictEqual(upsertMarkdownSectionHelper(meFrontmatter, 'Transcript', transcriptBody, ['Related']), `${meFrontmatter}\n\n# Transcript\n\n${transcriptBody}\n`);
+assert.strictEqual(upsertMarkdownSectionHelper('---\na: 1\n---\r\n\r\nNotes\r\n', 'Description', 'D'), '---\na: 1\n---\n\nNotes\n\n# Description\n\nD\n');
+
+// 32.7: Subheadings inside a section belong to it; replacing removes them
+const withSubheading = `${meFrontmatter}\n\n# Description\n\nOld\n\n## Links\n\n- a\n\n# Related\n\n- [[X]]\n`;
+const replacedSub = upsertMarkdownSectionHelper(withSubheading, 'Description', 'New', ['Transcript', 'Related']);
+assert(!replacedSub.includes('## Links'));
+assert(replacedSub.includes('# Description\n\nNew\n\n# Related\n\n- [[X]]\n'));
+
+// 32.8a: Description always comes before Transcript
+function ensureSectionOrderHelper(content, first, second) {
+	const normalized = content.replace(/\r\n/g, '\n');
+	const firstSection = findMarkdownSectionHelper(normalized, first);
+	const secondSection = findMarkdownSectionHelper(normalized, second);
+	if (!firstSection || !secondSection || firstSection.start < secondSection.start) return content;
+	const lines = normalized.split('\n');
+	const moved = lines.slice(firstSection.start, firstSection.end).join('\n').trim();
+	const remaining = [...lines.slice(0, firstSection.start), ...lines.slice(firstSection.end)];
+	const head = remaining.slice(0, secondSection.start).join('\n').replace(/\s+$/, '');
+	const tail = remaining.slice(secondSection.start).join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+	return `${[head, moved, tail].filter(Boolean).join('\n\n')}\n`;
+}
+const addSection = (content, heading, body, insertBefore) =>
+	ensureSectionOrderHelper(upsertMarkdownSectionHelper(content, heading, body, insertBefore), 'Description', 'Transcript');
+const expectedOrder = `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`;
+
+// Either command order produces Description → Transcript → Related
+const transcriptFirst = addSection(meNoteBare, 'Transcript', transcriptBody, ['Related']);
+assert.strictEqual(addSection(transcriptFirst, 'Description', descBody, ['Transcript', 'Related']), expectedOrder);
+const descriptionFirst = addSection(meNoteBare, 'Description', descBody, ['Transcript', 'Related']);
+assert.strictEqual(addSection(descriptionFirst, 'Transcript', transcriptBody, ['Related']), expectedOrder);
+
+// Out-of-order note (Transcript above Description): replacing either section fixes the order
+const outOfOrder = `${meFrontmatter}\n\n# Transcript\n\nOld transcript\n\n# Description\n\nOld description\n\n# Related\n\n- [[Summary Note]]\n`;
+const fixedByDesc = addSection(outOfOrder, 'Description', descBody, ['Transcript', 'Related']);
+assert.strictEqual(fixedByDesc, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\nOld transcript\n\n# Related\n\n- [[Summary Note]]\n`);
+const fixedByTranscript = addSection(outOfOrder, 'Transcript', transcriptBody, ['Related']);
+assert.strictEqual(fixedByTranscript, `${meFrontmatter}\n\n# Description\n\nOld description\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`);
+
+// # Related above an existing # Description: adding the transcript still lands it after Description
+const relatedFirst = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n\n# Description\n\n${descBody}\n`;
+const withTranscriptAfterDesc = addSection(relatedFirst, 'Transcript', transcriptBody, ['Related']);
+assert(withTranscriptAfterDesc.indexOf('# Description') < withTranscriptAfterDesc.indexOf('# Transcript'));
+
+// Already ordered or single-section notes are unchanged
+assert.strictEqual(ensureSectionOrderHelper(expectedOrder, 'Description', 'Transcript'), expectedOrder);
+assert.strictEqual(ensureSectionOrderHelper(meNoteBare, 'Description', 'Transcript'), meNoteBare);
+
+// 32.8: Description source — frontmatter first when enabled and non-empty, else fetch
+function resolveDescriptionSourceHelper(useFrontmatter, frontmatterDescription) {
+	return useFrontmatter && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()
+		? 'frontmatter'
+		: 'fetch';
+}
+assert.strictEqual(resolveDescriptionSourceHelper(true, 'Creator description\n0:00 Intro'), 'frontmatter');
+assert.strictEqual(resolveDescriptionSourceHelper(true, ''), 'fetch');
+assert.strictEqual(resolveDescriptionSourceHelper(true, '   '), 'fetch');
+assert.strictEqual(resolveDescriptionSourceHelper(true, undefined), 'fetch');
+assert.strictEqual(resolveDescriptionSourceHelper(true, 123), 'fetch');
+assert.strictEqual(resolveDescriptionSourceHelper(false, 'Creator description'), 'fetch');
+assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_DESCRIPTION_FROM_FRONTMATTER = true;/);
+
+// Frontmatter description timestamps still become Media Extended links in the body
+const fmDescBody = convertDescriptionTimestampsToMediaExtendedHelper('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ');
+assert(fmDescBody.includes('[01:23](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=83#t=01:23.00) Setup'));
+
+console.log('✓ Media Extended note section detection, insertion/replacement, and video detection passed');
+
+// Test 33: Video stats frontmatter (duration, published_at, view_count, like_count, aspect_ratio)
+console.log('Testing video stats frontmatter and aspect ratio detection...');
+
+function formatAspectRatioHelper(width, height) {
+	const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+	const divisor = gcd(Math.round(width), Math.round(height)) || 1;
+	return `${Math.round(width) / divisor} / ${Math.round(height) / divisor}`;
+}
+
+function getAspectRatioFromPlayerDataHelper(playerData) {
+	const formats = [...(playerData?.streamingData?.formats ?? []), ...(playerData?.streamingData?.adaptiveFormats ?? [])];
+	let best;
+	for (const format of formats) {
+		const width = Number(format?.width);
+		const height = Number(format?.height);
+		if (width > 0 && height > 0 && (!best || width * height > best.width * best.height)) {
+			best = { width, height };
+		}
+	}
+	return best ? formatAspectRatioHelper(best.width, best.height) : undefined;
+}
+
+function videoStatsFrontmatterHelper(metadata) {
+	return {
+		duration: metadata.duration,
+		published_at: metadata.publishedAt,
+		view_count: metadata.viewCount,
+		like_count: metadata.likeCount,
+		aspect_ratio: metadata.aspectRatio,
+	};
+}
+
+function buildVideoStatsLinesHelper(data) {
+	const lines = {};
+	if (typeof data.duration === 'number' && data.duration > 0) lines.duration = `duration: ${Math.round(data.duration)}`;
+	if (data.published_at && /^\d{4}-\d{2}-\d{2}$/.test(data.published_at)) lines.published_at = `published_at: ${data.published_at}`;
+	if (typeof data.view_count === 'number' && !isNaN(data.view_count)) lines.view_count = `view_count: ${data.view_count}`;
+	if (typeof data.like_count === 'number' && !isNaN(data.like_count)) lines.like_count = `like_count: ${data.like_count}`;
+	if (data.aspect_ratio && /^\d+ \/ \d+$/.test(data.aspect_ratio)) lines.aspect_ratio = `aspect_ratio: ${data.aspect_ratio}`;
+	return lines;
+}
+
+// 33.1: Aspect ratio reduction and detection (largest format wins; dimensions from real player responses)
+assert.strictEqual(formatAspectRatioHelper(3840, 2160), '16 / 9');
+assert.strictEqual(formatAspectRatioHelper(320, 240), '4 / 3');
+assert.strictEqual(formatAspectRatioHelper(1080, 1920), '9 / 16');
+assert.strictEqual(formatAspectRatioHelper(1280, 534), '640 / 267');
+assert.strictEqual(
+	getAspectRatioFromPlayerDataHelper({
+		streamingData: {
+			formats: [{ width: 640, height: 360 }],
+			adaptiveFormats: [{ width: 3840, height: 2160 }, { mimeType: 'audio/mp4' }, { width: 1280, height: 720 }],
+		},
+	}),
+	'16 / 9'
+);
+assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { adaptiveFormats: [{ width: 1080, height: 1920 }] } }), '9 / 16');
+assert.strictEqual(getAspectRatioFromPlayerDataHelper({}), undefined);
+assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { formats: [{ mimeType: 'audio/webm' }] } }), undefined);
+
+// 33.2: Metadata mapping and frontmatter lines in Media Extended-compatible formats
+const statsData = videoStatsFrontmatterHelper({ duration: 213.4, publishedAt: '2009-10-25', viewCount: 1822608029, likeCount: 19404514, aspectRatio: '16 / 9' });
+assert.deepStrictEqual(Object.values(buildVideoStatsLinesHelper(statsData)), [
+	'duration: 213',
+	'published_at: 2009-10-25',
+	'view_count: 1822608029',
+	'like_count: 19404514',
+	'aspect_ratio: 16 / 9',
+]);
+// Zero counts are kept (a real value); missing or malformed values are omitted
+assert.deepStrictEqual(buildVideoStatsLinesHelper({ view_count: 0, like_count: 0 }), { view_count: 'view_count: 0', like_count: 'like_count: 0' });
+assert.deepStrictEqual(buildVideoStatsLinesHelper(videoStatsFrontmatterHelper({})), {});
+assert.deepStrictEqual(buildVideoStatsLinesHelper({ duration: 0, published_at: 'Oct 25, 2009', aspect_ratio: '16:9', view_count: NaN }), {});
+
+// 33.3: Merging into existing frontmatter replaces stale stats in place and appends missing ones
+function mergeStatsHelper(rawYaml, data) {
+	const targets = buildVideoStatsLinesHelper(data);
+	const updated = new Set();
+	const out = rawYaml.split('\n').map((line) => {
+		const key = line.match(/^([a-zA-Z0-9_-]+):/)?.[1];
+		if (key && key in targets) {
+			updated.add(key);
+			return targets[key];
+		}
+		return line;
+	});
+	for (const [key, line] of Object.entries(targets)) {
+		if (!updated.has(key)) out.push(line);
+	}
+	return out.join('\n');
+}
+const mergedStats = mergeStatsHelper('title: "T"\nview_count: 5\ncustom: keep', statsData);
+assert.strictEqual(mergedStats, 'title: "T"\nview_count: 1822608029\ncustom: keep\nduration: 213\npublished_at: 2009-10-25\nlike_count: 19404514\naspect_ratio: 16 / 9');
+
+console.log('✓ Video stats frontmatter and aspect ratio detection passed');
+
+// Test 34: Refresh video metadata (note classification, YAML block merge, Media Extended frontmatter refresh)
+console.log('Testing refresh video metadata classification and frontmatter merging...');
+
+function getVideoNoteKindHelper(content, filePath, mediaFolder) {
+	if (isMediaExtendedCompanionNoteHelper(content, filePath, mediaFolder)) return 'mediaExtended';
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (fmMatch && /^video_url:\s*["']?https?:\/\//m.test(fmMatch[1])) return 'summary';
+	return null;
+}
+
+function splitYamlBlocksHelper(yaml) {
+	const blocks = [];
+	for (const line of yaml.split('\n')) {
+		const keyMatch = line.match(/^([A-Za-z0-9_-]+):/);
+		if (keyMatch) blocks.push({ key: keyMatch[1], lines: [line] });
+		else if (/^\S/.test(line) || blocks.length === 0) blocks.push({ key: null, lines: [line] });
+		else blocks[blocks.length - 1].lines.push(line);
+	}
+	return blocks;
+}
+
+function mergeYamlBlocksHelper(refreshExistingYaml, refreshUpdatesYaml) {
+	const updates = splitYamlBlocksHelper(refreshUpdatesYaml).filter((b) => b.key !== null);
+	const updateMap = new Map(updates.map((b) => [b.key, b.lines]));
+	const used = new Set();
+	const merged = [];
+	for (const block of splitYamlBlocksHelper(refreshExistingYaml)) {
+		if (block.key !== null && updateMap.has(block.key)) {
+			if (!used.has(block.key)) {
+				merged.push(...updateMap.get(block.key));
+				used.add(block.key);
+			}
+		} else {
+			merged.push(...block.lines);
+		}
+	}
+	for (const block of updates) if (!used.has(block.key)) merged.push(...block.lines);
+	return merged.join('\n');
+}
+
+function refreshMediaExtendedNoteContentHelper(content, metadata) {
+	const normalized = content.replace(/\r\n/g, '\n');
+	const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+	const refreshExistingYaml = fmMatch?.[1] ?? '';
+	const existingUid = refreshExistingYaml.match(/^mx-uid:\s*([A-Za-z0-9_-]+)/m)?.[1];
+	const fresh = buildMediaExtendedFrontmatterHelper({ ...metadata, mxUid: existingUid ?? metadata.mxUid });
+	let freshYaml = fresh.replace(/^---\n/, '').replace(/\n---$/, '');
+	if (/^media:/m.test(refreshExistingYaml) && !/^video:/m.test(refreshExistingYaml)) {
+		freshYaml = freshYaml.split('\n').filter((line) => !line.startsWith('video:')).join('\n');
+	}
+	if (!fmMatch) {
+		const body = normalized.replace(/^\s+/, '');
+		return body ? `${fresh}\n\n${body}` : `${fresh}\n`;
+	}
+	const body = normalized.slice(fmMatch[0].length);
+	return `---\n${mergeYamlBlocksHelper(refreshExistingYaml, freshYaml)}\n---\n${body}`;
+}
+
+// 34.1: Classification
+assert.strictEqual(getVideoNoteKindHelper('---\nmx-uid: abc\n---\n', 'Notes/x.md', 'Media Library'), 'mediaExtended');
+assert.strictEqual(getVideoNoteKindHelper('---\ntitle: x\n---\n', 'Media Library/x.md', 'Media Library'), 'mediaExtended');
+assert.strictEqual(getVideoNoteKindHelper('---\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n---\n', 'Video Summaries/x.md', 'Media Library'), 'summary');
+assert.strictEqual(getVideoNoteKindHelper('Just a link https://youtu.be/dQw4w9WgXcQ in a note', 'Notes/x.md', 'Media Library'), null);
+assert.strictEqual(getVideoNoteKindHelper('---\ntitle: x\n---\n', 'Notes/x.md', 'Media Library'), null);
+
+// 34.2: YAML block merge — replaces in place (incl. multi-line blocks), appends new keys, keeps others and comments
+const refreshExistingYaml = 'mx-uid: keepme\ntitle: Old\n# my comment\ndescription: |-\n  Old line 1\n\n  Old line 2\ncustom: value\ncover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"';
+const refreshUpdatesYaml = 'title: New\ndescription: |-\n  New desc\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\naspect_ratio: 16 / 9';
+assert.strictEqual(
+	mergeYamlBlocksHelper(refreshExistingYaml, refreshUpdatesYaml),
+	'mx-uid: keepme\ntitle: New\n# my comment\ndescription: |-\n  New desc\ncustom: value\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\naspect_ratio: 16 / 9'
+);
+
+// 34.3: Media Extended refresh — fixes the old wikilink cover, keeps mx-uid, custom keys, and the body
+const oldMeNote = '---\nmx-uid: vcxchy79gecb4s69v25oxq9s\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Old Title\ndescription: ""\nduration: 200\ncreator: Rick Astley\nmy_rating: 5\ncover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"\naspect_ratio: 427 / 240\n---\n\n# Description\n\nBody text\n\n# Related\n\n- [[Summary]]\n';
+const refreshedMe = refreshMediaExtendedNoteContentHelper(oldMeNote, {
+	videoId: 'dQw4w9WgXcQ',
+	title: 'Rick Astley - Never Gonna Give You Up',
+	description: 'Fresh description',
+	duration: 213,
+	creator: 'Rick Astley',
+	publishedAt: '2009-10-25',
+	viewCount: 1822608029,
+	likeCount: 19404514,
+	cover: 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp',
+	aspectRatio: '16 / 9',
+});
+assert(refreshedMe.startsWith('---\nmx-uid: vcxchy79gecb4s69v25oxq9s\n'));
+assert(refreshedMe.includes('title: Rick Astley - Never Gonna Give You Up'));
+assert(refreshedMe.includes('description: |-\n  Fresh description'));
+assert(refreshedMe.includes('duration: 213'));
+assert(refreshedMe.includes('my_rating: 5'));
+assert(refreshedMe.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
+assert(!refreshedMe.includes('mx-cover-youtube'));
+assert(refreshedMe.includes('aspect_ratio: 16 / 9'));
+assert(refreshedMe.includes('published_at: 2009-10-25'));
+assert(refreshedMe.endsWith('---\n\n# Description\n\nBody text\n\n# Related\n\n- [[Summary]]\n'));
+assert.strictEqual((refreshedMe.match(/^mx-uid:/gm) || []).length, 1);
+assert.strictEqual((refreshedMe.match(/^cover:/gm) || []).length, 1);
+
+// Refreshing twice is stable (idempotent)
+const refreshMeta = { videoId: 'dQw4w9WgXcQ', title: 'T', creator: 'C', cover: 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/hqdefault.webp' };
+const refreshedOnce = refreshMediaExtendedNoteContentHelper(oldMeNote, refreshMeta);
+assert.strictEqual(refreshMediaExtendedNoteContentHelper(refreshedOnce, refreshMeta), refreshedOnce);
+
+// 34.4: Notes that use `media:` don't get a duplicate `video:` key
+const mediaKeyNote = '---\nmx-uid: abc\nmedia: https://www.youtube.com/watch?v=dQw4w9WgXcQ\n---\nBody\n';
+const refreshedMediaKey = refreshMediaExtendedNoteContentHelper(mediaKeyNote, refreshMeta);
+assert(!/^video:/m.test(refreshedMediaKey));
+assert(refreshedMediaKey.includes('media: https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+assert(refreshedMediaKey.endsWith('---\nBody\n'));
+
+console.log('✓ Refresh video metadata classification and frontmatter merging passed');
 
 console.log('\nAll tests passed successfully!');
 

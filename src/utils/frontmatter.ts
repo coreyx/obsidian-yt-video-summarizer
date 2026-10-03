@@ -11,6 +11,11 @@ export interface FrontmatterData {
 	thumbnail_text: string;
 	description?: string;
 	tags?: string[];
+	duration?: number;
+	published_at?: string;
+	view_count?: number;
+	like_count?: number;
+	aspect_ratio?: string;
 	playlist_title?: string;
 	playlist_url?: string;
 	playlist_id?: string;
@@ -20,6 +25,50 @@ export interface FrontmatterData {
 
 export interface FrontmatterOptions {
 	excludeTags?: boolean;
+}
+
+/**
+ * Maps fetched video metadata to the video stats frontmatter properties.
+ */
+export function videoStatsFrontmatter(metadata: {
+	duration?: number;
+	publishedAt?: string;
+	viewCount?: number;
+	likeCount?: number;
+	aspectRatio?: string;
+}): Pick<FrontmatterData, 'duration' | 'published_at' | 'view_count' | 'like_count' | 'aspect_ratio'> {
+	return {
+		duration: metadata.duration,
+		published_at: metadata.publishedAt,
+		view_count: metadata.viewCount,
+		like_count: metadata.likeCount,
+		aspect_ratio: metadata.aspectRatio,
+	};
+}
+
+/**
+ * Builds the video stats frontmatter lines (duration, published_at, view_count, like_count, aspect_ratio)
+ * for the values that are available, keyed by property name. Uses the same formats as Media Extended notes
+ * (duration in seconds, unquoted YYYY-MM-DD date, aspect ratio like "16 / 9").
+ */
+function buildVideoStatsLines(data: FrontmatterData): Record<string, string> {
+	const lines: Record<string, string> = {};
+	if (typeof data.duration === 'number' && data.duration > 0) {
+		lines['duration'] = `duration: ${Math.round(data.duration)}`;
+	}
+	if (data.published_at && /^\d{4}-\d{2}-\d{2}$/.test(data.published_at)) {
+		lines['published_at'] = `published_at: ${data.published_at}`;
+	}
+	if (typeof data.view_count === 'number' && !isNaN(data.view_count)) {
+		lines['view_count'] = `view_count: ${data.view_count}`;
+	}
+	if (typeof data.like_count === 'number' && !isNaN(data.like_count)) {
+		lines['like_count'] = `like_count: ${data.like_count}`;
+	}
+	if (data.aspect_ratio && /^\d+ \/ \d+$/.test(data.aspect_ratio)) {
+		lines['aspect_ratio'] = `aspect_ratio: ${data.aspect_ratio}`;
+	}
+	return lines;
 }
 
 /**
@@ -34,6 +83,7 @@ export function buildFrontmatter(data: FrontmatterData): string {
 	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
 	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
 	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
+	lines.push(...Object.values(buildVideoStatsLines(data)));
 
 	if (data.playlist_title) {
 		lines.push(`playlist_title: ${JSON.stringify(data.playlist_title)}`);
@@ -95,6 +145,7 @@ export function mergeFrontmatter(
 		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
 		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
 		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
+		...buildVideoStatsLines(data),
 	};
 
 	if (data.playlist_title) {
@@ -292,12 +343,15 @@ export function updateNoteContentWithFrontmatter(
  * Extracts a YouTube URL from note content or frontmatter.
  */
 export function extractYouTubeUrlFromNote(content: string): string | null {
-	// 1. Check YAML frontmatter video_url
+	// 1. Check YAML frontmatter video_url (summary notes), then video / media (Media Extended notes)
 	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 	if (fmMatch) {
-		const videoUrlMatch = fmMatch[1].match(/^video_url:\s*["']?([^"'\r\n]+)["']?/m);
-		if (videoUrlMatch && videoUrlMatch[1].trim()) {
-			return videoUrlMatch[1].trim();
+		for (const key of ['video_url', 'video', 'media']) {
+			const videoUrlMatch = fmMatch[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
+			const value = videoUrlMatch?.[1].trim();
+			if (value && (key === 'video_url' || /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(value))) {
+				return value;
+			}
 		}
 	}
 
@@ -714,7 +768,7 @@ export function generateMxUid(): string {
 export function buildMediaExtendedFrontmatter(data: MediaExtendedMetadata): string {
 	const mxUid = data.mxUid || generateMxUid();
 	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
-	const cover = data.cover || `"[[mx-cover-youtube_${data.videoId}.jpg]]"`;
+	const cover = data.cover || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
 	const aspectRatio = data.aspectRatio || '427 / 240';
 
 	const lines: string[] = ['---'];
@@ -955,6 +1009,192 @@ export function buildMediaExtendedNote(
 	}
 
 	return body.trim() ? `${fm}\n\n${body.trim()}\n` : `${fm}\n`;
+}
+
+/**
+ * Finds a level-1 markdown section (`# Heading`, case-insensitive) outside frontmatter and code fences.
+ * Returns the line index of the heading and the line index where the section ends
+ * (the next level-1 heading, or the number of lines).
+ */
+export function findMarkdownSection(content: string, heading: string): { start: number; end: number } | null {
+	const lines = content.split('\n');
+	let i = 0;
+	if (lines[0]?.trim() === '---') {
+		const close = lines.findIndex((line, idx) => idx > 0 && line.trim() === '---');
+		i = close >= 0 ? close + 1 : 0;
+	}
+
+	const target = heading.trim().toLowerCase();
+	let inFence = false;
+	let start = -1;
+	for (; i < lines.length; i++) {
+		if (/^\s*(```|~~~)/.test(lines[i])) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence) continue;
+		const match = lines[i].match(/^# +(.+?)\s*$/);
+		if (!match) continue;
+		if (start >= 0) {
+			return { start, end: i };
+		}
+		if (match[1].toLowerCase() === target) {
+			start = i;
+		}
+	}
+	return start >= 0 ? { start, end: lines.length } : null;
+}
+
+/**
+ * Checks whether a note has a level-1 `# Heading` section.
+ */
+export function hasMarkdownSection(content: string, heading: string): boolean {
+	return findMarkdownSection(content, heading) !== null;
+}
+
+/**
+ * Writes `# Heading` + body into a note. Replaces the section if it exists; otherwise inserts it
+ * before the earliest of `insertBefore` headings that exists, or appends it at the end.
+ * Sections are separated by a single empty line, with an empty line after each heading.
+ */
+export function upsertMarkdownSection(
+	content: string,
+	heading: string,
+	body: string,
+	insertBefore: string[] = []
+): string {
+	const lines = content.replace(/\r\n/g, '\n').split('\n');
+	const normalized = lines.join('\n');
+	const sectionText = `# ${heading}\n\n${body.trim()}`;
+
+	const join = (before: string[], after: string[]): string => {
+		const head = before.join('\n').replace(/\s+$/, '');
+		const tail = after.join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+		return `${[head, sectionText, tail].filter(Boolean).join('\n\n')}\n`;
+	};
+
+	const existing = findMarkdownSection(normalized, heading);
+	if (existing) {
+		return join(lines.slice(0, existing.start), lines.slice(existing.end));
+	}
+
+	const anchors = insertBefore
+		.map((h) => findMarkdownSection(normalized, h))
+		.filter((s): s is { start: number; end: number } => s !== null)
+		.sort((a, b) => a.start - b.start);
+	if (anchors.length > 0) {
+		return join(lines.slice(0, anchors[0].start), lines.slice(anchors[0].start));
+	}
+
+	return join(lines, []);
+}
+
+/**
+ * Classifies a note for metadata refresh: a Media Extended companion note, a video summary note
+ * (frontmatter has a `video_url`), or neither.
+ */
+export function getVideoNoteKind(content: string, filePath: string, mediaFolder: string): 'mediaExtended' | 'summary' | null {
+	if (isMediaExtendedCompanionNote(content, filePath, mediaFolder)) {
+		return 'mediaExtended';
+	}
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	if (fmMatch && /^video_url:\s*["']?https?:\/\//m.test(fmMatch[1])) {
+		return 'summary';
+	}
+	return null;
+}
+
+/**
+ * Splits YAML into top-level blocks: a `key:` line plus its indented/blank continuation lines.
+ * Other unindented lines (e.g. comments) become their own key-less blocks.
+ */
+function splitYamlBlocks(yaml: string): { key: string | null; lines: string[] }[] {
+	const blocks: { key: string | null; lines: string[] }[] = [];
+	for (const line of yaml.split('\n')) {
+		const keyMatch = line.match(/^([A-Za-z0-9_-]+):/);
+		if (keyMatch) {
+			blocks.push({ key: keyMatch[1], lines: [line] });
+		} else if (/^\S/.test(line) || blocks.length === 0) {
+			blocks.push({ key: null, lines: [line] });
+		} else {
+			blocks[blocks.length - 1].lines.push(line);
+		}
+	}
+	return blocks;
+}
+
+/**
+ * Merges top-level YAML blocks: keys present in `updatesYaml` replace the existing block in place
+ * (including multi-line values like `description: |-`), keys not yet present are appended,
+ * and every other existing key and comment is kept as-is.
+ */
+export function mergeYamlBlocks(existingYaml: string, updatesYaml: string): string {
+	const updates = splitYamlBlocks(updatesYaml).filter((block) => block.key !== null);
+	const updateMap = new Map(updates.map((block) => [block.key as string, block.lines]));
+	const used = new Set<string>();
+
+	const merged: string[] = [];
+	for (const block of splitYamlBlocks(existingYaml)) {
+		if (block.key !== null && updateMap.has(block.key)) {
+			if (!used.has(block.key)) {
+				merged.push(...(updateMap.get(block.key) as string[]));
+				used.add(block.key);
+			}
+		} else {
+			merged.push(...block.lines);
+		}
+	}
+	for (const block of updates) {
+		if (!used.has(block.key as string)) {
+			merged.push(...block.lines);
+		}
+	}
+	return merged.join('\n');
+}
+
+/**
+ * Refreshes the frontmatter of a Media Extended note from fresh video metadata, keeping the existing
+ * `mx-uid`, any other keys, and the note body. Notes that reference the video via `media:` don't get
+ * a duplicate `video:` key.
+ */
+export function refreshMediaExtendedNoteContent(content: string, metadata: MediaExtendedMetadata): string {
+	const normalized = content.replace(/\r\n/g, '\n');
+	const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+	const existingYaml = fmMatch?.[1] ?? '';
+	const existingUid = existingYaml.match(/^mx-uid:\s*([A-Za-z0-9_-]+)/m)?.[1];
+
+	const fresh = buildMediaExtendedFrontmatter({ ...metadata, mxUid: existingUid ?? metadata.mxUid });
+	let freshYaml = fresh.replace(/^---\n/, '').replace(/\n---$/, '');
+	if (/^media:/m.test(existingYaml) && !/^video:/m.test(existingYaml)) {
+		freshYaml = freshYaml.split('\n').filter((line) => !line.startsWith('video:')).join('\n');
+	}
+
+	if (!fmMatch) {
+		const body = normalized.replace(/^\s+/, '');
+		return body ? `${fresh}\n\n${body}` : `${fresh}\n`;
+	}
+	const body = normalized.slice(fmMatch[0].length);
+	return `---\n${mergeYamlBlocks(existingYaml, freshYaml)}\n---\n${body}`;
+}
+
+/**
+ * Ensures the `# first` section comes before the `# second` section (e.g. Description before Transcript).
+ * If both exist and are out of order, moves the first section to directly above the second.
+ */
+export function ensureSectionOrder(content: string, first: string, second: string): string {
+	const normalized = content.replace(/\r\n/g, '\n');
+	const firstSection = findMarkdownSection(normalized, first);
+	const secondSection = findMarkdownSection(normalized, second);
+	if (!firstSection || !secondSection || firstSection.start < secondSection.start) {
+		return content;
+	}
+
+	const lines = normalized.split('\n');
+	const moved = lines.slice(firstSection.start, firstSection.end).join('\n').trim();
+	const remaining = [...lines.slice(0, firstSection.start), ...lines.slice(firstSection.end)];
+	const head = remaining.slice(0, secondSection.start).join('\n').replace(/\s+$/, '');
+	const tail = remaining.slice(secondSection.start).join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
+	return `${[head, moved, tail].filter(Boolean).join('\n\n')}\n`;
 }
 
 /**

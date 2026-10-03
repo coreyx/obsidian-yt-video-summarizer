@@ -164,7 +164,7 @@ npm install
   published_at: 2026-10-02
   view_count: 1000000
   like_count: 50000
-  cover: "[[mx-cover-youtube_VIDEO_ID.jpg]]"
+  cover: "https://i.ytimg.com/vi_webp/VIDEO_ID/maxresdefault.webp"
   aspect_ratio: 427 / 240
   ---
   ```
@@ -705,3 +705,41 @@ This section preserves technical and design questions asked during development f
 3. **Focus independence**: All writes after the trigger use the vault (`vault.process()` / `fileManager`), never the editor, so the summary lands in the right file even if the user switches notes or tabs. A blank target that the user typed into during the run gets the summary appended with frontmatter merged, instead of being overwritten.
 4. **Failure cleanup**: If the run ends without writing the summary (transcript fetch error, AI error, exception), `discardPendingSummaryNote()` removes exactly the inserted link text from the source note and moves the placeholder note to the trash (`fileManager.trashFile()`, respecting the user's trash setting).
 5. **Scope**: Applies to the summarize commands. `Get YouTube video transcript` is unchanged (it is designed to write into the note that contains the video URL).
+
+---
+
+### Q18: How do the "Add description / transcript to Media Extended note" commands find the video, place the section, and handle an existing section?
+
+**Context**: User requested a command to add a description to a Media Extended note by detecting the video and pulling it from the YouTube Data API, a second command to add the transcript, and a prompt to continue if a `# Description` / `# Transcript` header already exists.
+
+**Answer**:
+1. **Scope & detection** ([`addSectionToMediaExtendedNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts)): the active note must pass `isMediaExtendedCompanionNote()` (inside the Media Extended folder or has `mx-uid`). The video comes from [`extractYouTubeUrlFromNote()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), which now checks `video_url`, then the Media Extended `video` / `media` keys (YouTube URLs only, so local media like `[[file.mp4]]` is ignored), then links in the body.
+2. **Existing section check**: [`hasMarkdownSection()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) looks for a level-1 heading (`# Description` / `# Transcript`, case-insensitive), skipping frontmatter and code fences. If found, [`ConfirmModal.confirm()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/ui/modals/ConfirmModal.ts) asks to continue; closing the dialog counts as cancel.
+3. **Sources**: the description is written to the body only; frontmatter `description:` is never modified. With *Use frontmatter description for Media Extended notes* on (default, `mediaExtendedDescriptionFromFrontmatter`), the frontmatter `description` (read via `metadataCache`, which parses `|-` block scalars) is copied into the body when non-empty. Otherwise the description uses `fetchYouTubeDataApiVideoData()` (now also returning `snippet.description`) when a YouTube Data API key is set, and falls back to InnerTube player metadata otherwise; the Notice says which source was used. The transcript uses `fetchTranscript()` (captions), since the Data API's caption download requires OAuth.
+4. **Formatting & placement**: description timestamps go through `convertDescriptionTimestampsToMediaExtended()` and the transcript through `formatTranscript(..., { format: 'mediaExtended' })`, matching the rule that every timestamp in a Media Extended note uses Media Extended links. [`upsertMarkdownSection()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) replaces the section (heading through the next level-1 heading, including any `##` subheadings) or inserts it before the earliest anchor (`Transcript`/`Related` for the description, `Related` for the transcript), else appends it; sections are separated by one empty line. The write uses `vault.process()`.
+
+---
+
+### Q19: Where do the video stats in summary note frontmatter come from, and how is aspect ratio determined?
+
+**Context**: User requested `duration`, `published_at`, `view_count`, `like_count`, and `aspect_ratio` in video summary notes if easily available from the YouTube API, without jumping through hoops for aspect ratio. Separately: `# Description` must always come before `# Transcript` in Media Extended notes.
+
+**Answer**:
+1. **Sources (no new requests)**: `duration`, `published_at`, `view_count`, and `like_count` were already collected by `extractMetadataFromPlayerData()` in [`youtube.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/youtube.ts) (InnerTube player data, YouTube Data API when a key is set, watch page fallback) for Media Extended notes. `aspect_ratio` comes from `getAspectRatioFromPlayerData()`: the largest `streamingData` format's width/height, reduced by GCD into CSS form (`16 / 9`, `4 / 3`, `9 / 16`). The ANDROID client response used for transcripts includes these dimensions (verified 2026-10-02 against `dQw4w9WgXcQ` → 3840×2160 and `jNQXAC9IVRw` → 320×240). If none are present, `aspect_ratio` is omitted.
+2. **Frontmatter**: [`videoStatsFrontmatter()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) maps metadata to `FrontmatterData`; `buildVideoStatsLines()` is shared by `buildFrontmatter()` and `mergeFrontmatter()` so new and upgraded notes match. Formats mirror Media Extended notes (seconds, unquoted `YYYY-MM-DD` so Obsidian treats it as a date, unquoted `W / H`). Missing or malformed values are omitted; zero counts are kept. All six `FrontmatterData` builders in `main.ts` spread `videoStatsFrontmatter()`.
+3. **Upgrade detection unchanged**: `isNoteMissingFrontmatter()` does not require the new keys, so batch upgrades don't re-fetch every existing note; the stats are written whenever an upgrade runs on a note for another reason (or via *Upgrade current note*).
+4. **Media Extended aspect ratio**: `createMediaExtendedCompanionNote()` passes the detected ratio; `buildMediaExtendedFrontmatter()` still falls back to `427 / 240`.
+5. **Description before Transcript**: after `upsertMarkdownSection()`, the add-section commands run [`ensureSectionOrder(content, 'Description', 'Transcript')`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts), which moves `# Description` directly above `# Transcript` if a note has them reversed. New companion notes are already built in order by `buildMediaExtendedNote()`.
+
+---
+
+### Q20: How does "Refresh video metadata" decide what to update, and how does it avoid clobbering notes?
+
+**Context**: User asked for a reusable command for both Media Extended notes and video summary notes that refreshes metadata, for individual notes or a folder, so future metadata fields (or fixes like the Media Extended `cover` URL) can be applied to existing notes.
+
+**Answer**:
+1. **Entry points** ([`main.ts`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/main.ts)): `refresh-video-metadata-current-note`, `refresh-video-metadata-folder` (folder picker), and `file-menu` items for a note (`refreshVideoMetadataInNote()`) and a folder (`refreshVideoMetadataInFolder()`, using `BatchProgressTracker` with a 300 ms delay between notes). Both share `refreshNoteVideoMetadata()`.
+2. **Classification**: [`getVideoNoteKind()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) returns `mediaExtended` (`isMediaExtendedCompanionNote()`), `summary` (frontmatter has a `video_url` URL), or `null`. Notes that merely contain a YouTube link are skipped, so folder runs never add summary frontmatter to unrelated notes.
+3. **Summary notes**: builds `FrontmatterData` like *Upgrade current note*, but with `excludeTags: true` (tags preserved), the existing `thumbnail_text` (from `metadataCache`, so no AI call), the note's own `video_url` (may carry playlist parameters), and `description` only when *Add description to frontmatter* is on; merged with `updateNoteContentWithFrontmatter()`. Thumbnail uses `getAvailableThumbnailUrl()`.
+4. **Media Extended notes**: [`refreshMediaExtendedNoteContent()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) builds fresh Media Extended frontmatter (keeping the existing `mx-uid`, cover from `getCoverUrl()`), then [`mergeYamlBlocks()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/utils/frontmatter.ts) replaces matching top-level key blocks in place (including multi-line `description: |-`), appends new keys, and keeps every other key and comment. Notes that use `media:` instead of `video:` don't get a duplicate `video:`. The body is untouched, and refreshing is idempotent.
+5. **Extending later**: add a field to `videoStatsFrontmatter()` / `buildVideoStatsLines()` (summary notes) or `buildMediaExtendedFrontmatter()` (Media Extended notes), and the refresh commands will backfill it.

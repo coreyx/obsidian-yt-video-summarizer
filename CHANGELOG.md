@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Commands: Refresh Video Metadata**: `Refresh video metadata in current note` and `Refresh video metadata in folder...`, plus File Explorer right-click items for notes and folders. Re-fetches each video's metadata and refreshes the frontmatter of video summary notes (title, channel, thumbnail, video stats, playlist, and description per settings) and Media Extended notes (all Media Extended fields, including `cover` and `aspect_ratio`, keeping `mx-uid`). Never changes the note body, tags, `thumbnail_text`, `video_url`, or unrelated properties, and uses no AI. Folder runs use the batch progress tracker and report.
+- **Commands: Add Description / Transcript to Media Extended Note**: `Add description to Media Extended note` and `Add transcript to Media Extended note` detect the video in the active Media Extended companion note and write a `# Description` or `# Transcript` section with Media Extended timestamp links, keeping the `# Description`, `# Transcript`, `# Related` order (`# Description` is moved above `# Transcript` if a note has them out of order). If the section already exists, you're asked before it's replaced. The description is copied from the note's frontmatter `description:` by default (the frontmatter itself is never changed); when that's missing or empty, or the new *Use frontmatter description for Media Extended notes* setting (on by default) is off, it's pulled from the YouTube Data API when an API key is set, with a no-key fallback to YouTube player metadata.
+- **Video Stats in Summary Note Frontmatter**: Video summary notes now include `duration` (seconds), `published_at` (YYYY-MM-DD), `view_count`, `like_count`, and `aspect_ratio` (e.g. `16 / 9`) when YouTube provides them, in the same formats Media Extended notes use. Applies to new summaries, the transcript command, and the upgrade commands (which refresh these values when they run).
+
+### Fixed
+- **Media Extended Cover Points to a Real Image**: The companion note `cover` was a wikilink to a local file that was never created (`[[mx-cover-youtube_<id>.jpg]]`). It's now the full thumbnail URL, `https://i.ytimg.com/vi_webp/<id>/maxresdefault.webp`, falling back to `hqdefault.webp` when YouTube has no max-resolution thumbnail (common for old or low-resolution videos).
+- **Missing Thumbnails in Summary Notes for Older Videos**: The video summary note `thumbnail` property and body image used `maxresdefault.jpg`, which doesn't exist for many old or low-resolution videos. They now fall back to `hqdefault.jpg` when the max-resolution thumbnail is missing. Applies to new summaries, the transcript command, and upgrade commands.
+
+### Changed
+- **Real Aspect Ratio in Media Extended Notes**: Companion notes use the video's actual aspect ratio (e.g. `9 / 16` for Shorts, `4 / 3` for older videos) instead of always `427 / 240`, which remains the fallback. The ratio comes from the stream dimensions already in the player data, with no extra request.
+- **Video Detection From Media Extended Frontmatter**: Notes are now matched to their video via the Media Extended `video:` / `media:` frontmatter keys (YouTube URLs only) in addition to `video_url:` and links in the note.
+
 ---
 
 ## [1.12.0] - 2026-10-02
