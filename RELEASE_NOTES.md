@@ -1,5 +1,29 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.12.0
+
+### Highlights
+
+YouTube Video Summarizer v1.12.0 changes where summaries go, so your existing notes stay as you wrote them:
+
+* 📂 **New Video Summaries Folder**: Choose a default / fallback folder for new summary notes (default `Video Summaries` in the vault root).
+* 🔗 **Summarize From Any Note**: Running the summarizer from a note that already has content or frontmatter now creates a new summary note in that folder and drops a link to it at your cursor. Your note is otherwise left untouched.
+* 🧭 **Keep Working While It Runs**: The summary is written to the right note when it's ready, even if you've switched to another note or tab.
+
+### What's Changed in v1.12.0
+
+#### 📂 Note Placement
+* **Blank note** → the summary is written into that note (as before); *Set note title from video* still renames it.
+* **Note with a body and/or frontmatter** → a new note is created in the *Video summaries folder* and linked at the cursor (after the selected URL, if you selected one). It's named after the video as soon as the title is fetched, and the link updates to match.
+* Links follow your Obsidian link format preference (wikilinks or markdown links).
+
+#### 🛟 Safer Runs
+* Summaries are written through the vault instead of the active editor, so changing focus mid-run can't send them to the wrong note.
+* If a run fails, the new note is moved to the trash and its link is removed from your note.
+* If you type into a blank note while it's being summarized, the summary is appended instead of overwriting your text.
+
+---
+
 ## v1.11.0
 
 ### Highlights
