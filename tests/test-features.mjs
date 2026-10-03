@@ -1168,7 +1168,7 @@ function generateMxUidHelper() {
 function buildMediaExtendedFrontmatterHelper(data) {
 	const mxUid = data.mxUid || generateMxUidHelper();
 	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
-	const cover = data.cover || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
+	const cover = getMediaExtendedCoverUrlHelper(data);
 	const aspectRatio = data.aspectRatio || '427 / 240';
 
 	const lines = ['---'];
@@ -1324,9 +1324,21 @@ function convertDescriptionTimestampsToYouTubeHelper(description, videoId) {
 	return convertTimestampsToLinksHelper(description, videoId, 'youtube');
 }
 
+function getMediaExtendedCoverUrlHelper(data) {
+	return data.cover?.replace(/^"|"$/g, '') || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
+}
+
+function buildCoverEmbedHelper(coverUrl) {
+	return `![Cover](${coverUrl})`;
+}
+
 function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink, options) {
 	const fm = buildMediaExtendedFrontmatterHelper(data);
 	const sections = [];
+
+	if (options?.embedCover) {
+		sections.push(buildCoverEmbedHelper(getMediaExtendedCoverUrlHelper(data)));
+	}
 
 	const includeDescription = options?.includeDescription ?? true;
 	if (includeDescription && data.description && data.description.trim()) {
@@ -4006,6 +4018,62 @@ assert(refreshedMediaKey.includes('media: https://www.youtube.com/watch?v=dQw4w9
 assert(refreshedMediaKey.endsWith('---\nBody\n'));
 
 console.log('✓ Refresh video metadata classification and frontmatter merging passed');
+
+// Test 35: Cover embed in Media Extended notes and "Insert video cover at cursor"
+console.log('Testing Media Extended cover embed...');
+
+const coverMeta = {
+	mxUid: 'test12345678901234567890',
+	videoId: 'dQw4w9WgXcQ',
+	title: 'Cover Test',
+	description: 'Desc\n0:00 Intro',
+	creator: 'Rick Astley',
+	cover: 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp',
+};
+const coverTranscript = '- [00:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Hello';
+
+// 35.1: Embed at the top of the body, above # Description, matching the frontmatter cover
+const withCover = buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note', { embedCover: true });
+const coverBody = withCover.slice(withCover.indexOf('\n---\n') + 5);
+assert(coverBody.startsWith('\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Description\n\n'));
+assert(withCover.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
+assert(withCover.trimEnd().endsWith('# Related\n\n- [[Summary Note]]'));
+
+// 35.2: Off → no embed (and the pure builder defaults to off)
+assert(!buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note', { embedCover: false }).includes('![Cover]'));
+assert(!buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note').includes('![Cover]'));
+
+// 35.3: Fallback cover (hqdefault) is used for both frontmatter and embed; default URL when no cover given
+const hqCover = buildMediaExtendedNoteHelper({ ...coverMeta, cover: 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp', videoId: 'jNQXAC9IVRw' }, '', undefined, { embedCover: true });
+assert(hqCover.includes('![Cover](https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp)'));
+assert(hqCover.includes('cover: "https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp"'));
+assert.strictEqual(getMediaExtendedCoverUrlHelper({ videoId: 'abc123XYZ00' }), 'https://i.ytimg.com/vi_webp/abc123XYZ00/maxresdefault.webp');
+assert.strictEqual(getMediaExtendedCoverUrlHelper({ videoId: 'x', cover: '"https://example.com/c.webp"' }), 'https://example.com/c.webp');
+
+// 35.4: Embed only, no description/transcript/related → frontmatter + embed
+const coverOnly = buildMediaExtendedNoteHelper({ ...coverMeta, description: '' }, '', undefined, { embedCover: true });
+assert(coverOnly.endsWith('---\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n'));
+
+// 35.5: Adding a description later keeps the embed at the top
+const coverThenDesc = upsertMarkdownSectionHelper(
+	buildMediaExtendedNoteHelper({ ...coverMeta, description: '' }, '', 'Summary Note', { embedCover: true }),
+	'Description', 'New description', ['Transcript', 'Related']
+);
+const coverThenDescBody = coverThenDesc.slice(coverThenDesc.indexOf('\n---\n') + 5);
+assert(coverThenDescBody.startsWith('\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Description\n\nNew description\n\n# Related'));
+
+// 35.6: Insert at cursor — inserts at the captured position with no duplicate check
+function insertCoverAtHelper(content, offset, coverUrl) {
+	const embed = buildCoverEmbedHelper(coverUrl);
+	return content.slice(0, offset) + embed + content.slice(offset);
+}
+const cursorNote = 'Line one\n\nLine two';
+const inserted = insertCoverAtHelper(cursorNote, cursorNote.indexOf('\n\nLine two') + 2, 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+assert.strictEqual(inserted, 'Line one\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)Line two');
+const insertedTwice = insertCoverAtHelper(inserted, 0, 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+assert.strictEqual((insertedTwice.match(/!\[Cover\]/g) || []).length, 2);
+
+console.log('✓ Media Extended cover embed passed');
 
 console.log('\nAll tests passed successfully!');
 

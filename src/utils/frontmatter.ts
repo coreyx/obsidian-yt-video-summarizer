@@ -763,12 +763,26 @@ export function generateMxUid(): string {
 }
 
 /**
+ * Returns the cover image URL for a Media Extended note: the given cover, or the max-resolution WebP thumbnail.
+ */
+export function getMediaExtendedCoverUrl(data: Pick<MediaExtendedMetadata, 'cover' | 'videoId'>): string {
+	return data.cover?.replace(/^"|"$/g, '') || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
+}
+
+/**
+ * Builds an inline markdown image embed for a video cover.
+ */
+export function buildCoverEmbed(coverUrl: string): string {
+	return `![Cover](${coverUrl})`;
+}
+
+/**
  * Builds YAML frontmatter specifically formatted for the Media Extended Obsidian plugin.
  */
 export function buildMediaExtendedFrontmatter(data: MediaExtendedMetadata): string {
 	const mxUid = data.mxUid || generateMxUid();
 	const videoUrl = `https://www.youtube.com/watch?v=${data.videoId}`;
-	const cover = data.cover || `https://i.ytimg.com/vi_webp/${data.videoId}/maxresdefault.webp`;
+	const cover = getMediaExtendedCoverUrl(data);
 	const aspectRatio = data.aspectRatio || '427 / 240';
 
 	const lines: string[] = ['---'];
@@ -972,6 +986,8 @@ export function addRelatedLink(content: string, linkTarget: string): string {
 
 export interface BuildMediaExtendedNoteOptions {
 	includeDescription?: boolean;
+	/** Adds the cover as an inline image at the top of the body (off unless requested) */
+	embedCover?: boolean;
 }
 
 /**
@@ -989,6 +1005,10 @@ export function buildMediaExtendedNote(
 ): string {
 	const fm = buildMediaExtendedFrontmatter(data);
 	const sections: string[] = [];
+
+	if (options?.embedCover) {
+		sections.push(buildCoverEmbed(getMediaExtendedCoverUrl(data)));
+	}
 
 	const includeDescription = options?.includeDescription ?? true;
 	if (includeDescription && data.description && data.description.trim()) {
