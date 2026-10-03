@@ -1,5 +1,28 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.14.0
+
+### Highlights
+
+YouTube Video Summarizer v1.14.0 puts the video's cover image right in your notes:
+
+* 🖼️ **Cover at the Top of Media Extended Notes**: New Media Extended notes now open with the video's cover image, above the description and transcript.
+* 📌 **Insert a Cover Anywhere**: A new command drops the video's cover image into any note at your cursor.
+
+### What's Changed in v1.14.0
+
+#### 🖼️ Cover Embed in Media Extended Notes
+* New setting **Embed cover in Media Extended notes** (on by default) adds `![Cover](https://i.ytimg.com/...)` at the top of the body of new companion notes.
+* The image uses the same URL as the note's `cover` property, including the high-quality fallback for older videos.
+* Adding a description or transcript later keeps the cover at the top, and refreshing metadata never moves or duplicates it. Existing notes aren't changed; use the new command to add a cover to them.
+
+#### 📌 Insert Video Cover at Cursor
+* Run **Insert video cover at cursor** in any note with a YouTube video to insert `![Cover](url)` where your cursor is.
+* Uses the note's `cover` property when it's a URL, otherwise the YouTube thumbnail (so older notes with a broken cover still get a working image).
+* Doesn't check for an existing cover image, so you can place it wherever you like.
+
+---
+
 ## v1.13.0
 
 ### Highlights
