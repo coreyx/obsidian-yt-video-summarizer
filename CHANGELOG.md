@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.15.0] - 2026-10-02
+
 ### Added
 - **Command: Add Description to Video Summary Note**: Adds the video description to a video summary note body as a `## Description` section (before `# Related`) with every timestamp converted into a clickable YouTube link. Asks before replacing an existing `## Description`. Uses the frontmatter description first (per *Use frontmatter description when adding description to body*), otherwise fetches it from YouTube.
 

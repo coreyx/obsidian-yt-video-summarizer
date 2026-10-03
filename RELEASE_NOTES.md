@@ -1,5 +1,28 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.15.0
+
+### Highlights
+
+YouTube Video Summarizer v1.15.0 keeps summary notes lean and makes new notes work the way you'd expect:
+
+* 📝 **Description on Demand**: Add the video description to a summary note only when you want it, with clickable chapter timestamps.
+* 🗒️ **Smarter Blank Notes**: A new "Untitled" note that only has tags (for example, from a template) now gets the summary written into it.
+
+### What's Changed in v1.15.0
+
+#### 📝 Add Description to Video Summary Note
+* New command **Add description to video summary note** adds a `## Description` section (before `# Related`) with every timestamp as a clickable YouTube link.
+* If the note already has a `## Description`, you're asked before it's replaced.
+* Uses the note's frontmatter description first, otherwise fetches it from YouTube. The setting is now called **Use frontmatter description when adding description to body** and applies to both "Add description" commands (your existing choice is kept).
+* **Removed** the *Include video description in summary note* setting: summaries no longer copy the description into the body. It's still saved in frontmatter, where you can always find it.
+
+#### 🗒️ Untitled Notes With Only Tags Count as Blank
+* The summary is written into the current note when its name starts with "Untitled", it has no body, and `tags` is its only frontmatter. Your tags are kept and merged with any new ones.
+* Any other note with content still gets a new summary note in your video summaries folder, linked at the cursor.
+
+---
+
 ## v1.14.0
 
 ### Highlights
