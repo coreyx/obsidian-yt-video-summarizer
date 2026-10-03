@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Video Summaries Folder Setting**: New default / fallback folder for new video summary notes (`Video Summaries` in the vault root by default).
+
+### Changed
+- **Summaries From Existing Notes Go to a New Note**: Summarizing from a note that already has a body and/or frontmatter now creates a new note in the video summaries folder, inserts a link to it at the cursor, and writes the summary to that note when it finishes, regardless of which note is focused. Previously the summary was inserted into the existing note. Summarizing from a blank note still writes into that note. On failure the new note is moved to the trash and the link removed.
+
 ---
 
 ## [1.11.0] - 2026-10-02

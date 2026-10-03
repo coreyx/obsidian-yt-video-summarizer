@@ -282,10 +282,23 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        // Default / fallback folder for new video summary notes
+        new Setting(containerEl)
+            .setName('Video summaries folder')
+            .setDesc('Default / fallback folder for new video summary notes (defaults to "Video Summaries" in the vault root). When you summarize from a blank note, the summary is written into that note. When you summarize from a note that already has content or frontmatter, a new note is created in this folder and a link to it is inserted at the cursor.')
+            .addText(text =>
+                text
+                    .setPlaceholder('Video Summaries')
+                    .setValue(this.settings.getVideoSummaryFolder())
+                    .onChange(async (value) => {
+                        await this.settings.updateVideoSummaryFolder(value.trim() || 'Video Summaries');
+                    })
+            );
+
         // Set note title from video title
         new Setting(containerEl)
             .setName('Set note title from video')
-            .setDesc('Automatically rename the active note to the sanitized YouTube video title')
+            .setDesc('Automatically rename the active note to the sanitized YouTube video title when summarizing into a blank note (new notes in the video summaries folder are always named after the video)')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getSetNoteTitleFromVideo())

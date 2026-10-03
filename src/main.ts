@@ -41,6 +41,15 @@ import {
 } from './utils/frontmatter';
 import { buildVaultTagData } from './utils/vaultTags';
 import { VaultTagData } from './types';
+import { VIDEO_ID_REGEX } from './constants';
+
+/** A new summary note created when summarizing from a non-blank note, and the link inserted for it */
+interface PendingSummaryNote {
+	file: TFile;
+	sourceFile: TFile | null;
+	link?: string;
+	linkPrefix?: string;
+}
 
 /**
  * Represents the YouTube Summarizer Plugin.
@@ -454,6 +463,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * @param customPrompt - Optional custom prompt instructions.
 	 * @param mediaExtendedOptions - Optional per-run Media Extended options (defaults to permanent settings).
 	 * @returns {Promise<void>} A promise that resolves when the video is summarized.
+	 *
+	 * When triggered from a blank note, the summary is written into that note. Otherwise a new note is
+	 * created in the video summaries folder, linked at the cursor, and filled in when the summary is done.
+	 * All writes go through the vault, so the user can switch notes while the summary is generated.
 	 */
 	private async summarizeVideo(
 		url: string,
@@ -468,6 +481,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice('Already processing a video, please wait...');
 			return;
 		}
+
+		let pendingNote: PendingSummaryNote | null = null;
+		let succeeded = false;
 
 		try {
 			this.isProcessing = true;
@@ -492,6 +508,17 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				return;
 			}
 
+			// Step 0: Decide where the summary goes. A blank note receives it directly; a note with a body
+			// and/or frontmatter gets a link at the cursor to a new note in the video summaries folder.
+			const sourceFile = view?.file ?? null;
+			let targetFile: TFile;
+			if (sourceFile && editor.getValue().trim() === '') {
+				targetFile = sourceFile;
+			} else {
+				pendingNote = await this.createPendingSummaryNote(url, editor, sourceFile);
+				targetFile = pendingNote.file;
+			}
+
 			// Step 1: Fetch the video transcript & metadata
 			new Notice('Fetching video transcript...');
 			let transcript: TranscriptResponse;
@@ -508,6 +535,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const thumbnailUrl = YouTubeService.getThumbnailUrl(
 				transcript.videoId
 			);
+
+			// Step 1.5: New notes are always named after the video as soon as the title is known
+			if (pendingNote) {
+				await this.renamePendingSummaryNote(pendingNote, transcript.title);
+			}
 
 			// Step 2: Build the prompt for LLM
 			const prompt = this.buildPrompt(transcript.lines.map((line) => line.text).join(' '), customPrompt);
@@ -575,9 +607,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags, ...topicTags]);
 
-			// Step 5: Optionally rename the note based on the sanitized video title
-			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
-				await this.setNoteTitle(view.file, transcript.title);
+			// Step 5: Optionally rename the blank note the user started from based on the sanitized video title
+			if (!pendingNote && this.settings.getSetNoteTitleFromVideo()) {
+				await this.setNoteTitle(targetFile, transcript.title);
 			}
 
 			// Step 6: Prepare tags for body and frontmatter
@@ -602,7 +634,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			if (mediaExtendedOptions.createNote) {
 
 				try {
-					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file, mediaExtendedOptions);
+					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, targetFile, mediaExtendedOptions);
 					if (mediaNote) {
 						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 						const mediaLink = mediaFolder ? `${mediaFolder}/${mediaNote.basename}` : mediaNote.basename;
@@ -613,7 +645,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				}
 			}
 
-			// Step 8: Apply frontmatter and insert body content
+			// Step 8: Apply frontmatter and write the body to the target note
 			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
 			const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
 				? playlist.title.trim()
@@ -635,22 +667,119 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				playlist_count: playlist?.count,
 			};
 
-			const isEditorEmpty = editor.getValue().trim() === '';
-			if (isEditorEmpty) {
-				const frontmatterString = buildFrontmatter(fmData);
-				editor.setValue(`${frontmatterString}\n\n${bodyContent}`);
-			} else {
-				editor.replaceSelection(bodyContent);
-				applyFrontmatter(editor, fmData);
-			}
+			// Written through the vault (not the editor) so it lands in the right note regardless of focus.
+			// If the user typed into the blank note meanwhile, append and merge frontmatter instead.
+			await this.app.vault.process(targetFile, (current) =>
+				pendingNote || current.trim() === ''
+					? `${buildFrontmatter(fmData)}\n\n${bodyContent}`
+					: updateNoteContentWithFrontmatter(`${current.trimEnd()}\n\n${bodyContent}`, fmData)
+			);
+			succeeded = true;
 
-			new Notice('Summary generated successfully!');
+			new Notice(pendingNote
+				? `Summary saved to "${targetFile.basename}"`
+				: 'Summary generated successfully!');
 		} catch (error) {
 			new Notice(`Error: ${error.message}`);
 			console.error('Summary generation failed:', error);
 		} finally {
+			if (pendingNote && !succeeded) {
+				await this.discardPendingSummaryNote(pendingNote);
+			}
 			// Reset the processing flag
 			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Returns the normalized default / fallback folder for new video summary notes.
+	 */
+	private getVideoSummaryFolderPath(): string {
+		return this.settings.getVideoSummaryFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Video Summaries';
+	}
+
+	/**
+	 * Returns a vault path for `baseName` in `folderPath` that doesn't collide with an existing file,
+	 * appending " (1)", " (2)", ... as needed. `currentPath` is treated as free (for renames).
+	 */
+	private getAvailableNotePath(folderPath: string, baseName: string, currentPath?: string, extension = 'md'): string {
+		const parentDir = folderPath && folderPath !== '/' ? `${folderPath}/` : '';
+		let targetPath = `${parentDir}${baseName}.${extension}`;
+		let counter = 1;
+		while (this.app.vault.getAbstractFileByPath(targetPath) && targetPath !== currentPath) {
+			targetPath = `${parentDir}${baseName} (${counter}).${extension}`;
+			counter++;
+		}
+		return targetPath;
+	}
+
+	/**
+	 * Creates a placeholder note in the video summaries folder and, when started from a note,
+	 * inserts a link to it at the cursor of that note.
+	 */
+	private async createPendingSummaryNote(url: string, editor: Editor, sourceFile: TFile | null): Promise<PendingSummaryNote> {
+		const folderPath = this.getVideoSummaryFolderPath();
+		await this.ensureFolderExists(folderPath);
+
+		const videoId = url.match(VIDEO_ID_REGEX)?.[1] ?? 'video';
+		const path = this.getAvailableNotePath(folderPath, `YouTube Summary ${videoId}`);
+		const file = await this.app.vault.create(path, `Summarizing ${url}…\n`);
+
+		const pending: PendingSummaryNote = { file, sourceFile };
+		if (sourceFile) {
+			const link = this.app.fileManager.generateMarkdownLink(file, sourceFile.path);
+			// Keep a selected URL intact and put the link after it
+			const linkPrefix = editor.somethingSelected() ? ' ' : '';
+			const insertAt = editor.getCursor('to');
+			editor.replaceRange(`${linkPrefix}${link}`, insertAt);
+			editor.setCursor(editor.offsetToPos(editor.posToOffset(insertAt) + linkPrefix.length + link.length));
+			pending.link = link;
+			pending.linkPrefix = linkPrefix;
+		}
+		return pending;
+	}
+
+	/**
+	 * Renames a pending summary note to the sanitized video title and updates the link in the source note.
+	 * The link is updated directly so it doesn't depend on the "Automatically update internal links" preference.
+	 */
+	private async renamePendingSummaryNote(pending: PendingSummaryNote, title: string): Promise<void> {
+		const sanitizedTitle = sanitizeFileName(title);
+		const folderPath = pending.file.parent?.path ?? this.getVideoSummaryFolderPath();
+		const targetPath = this.getAvailableNotePath(folderPath, sanitizedTitle, pending.file.path);
+		if (targetPath === pending.file.path) {
+			return;
+		}
+
+		try {
+			await this.app.fileManager.renameFile(pending.file, targetPath);
+		} catch (error) {
+			console.error('Failed to rename new summary note:', error);
+			return;
+		}
+
+		const { sourceFile, link: oldLink } = pending;
+		if (sourceFile && oldLink) {
+			const newLink = this.app.fileManager.generateMarkdownLink(pending.file, sourceFile.path);
+			if (newLink !== oldLink) {
+				await this.app.vault.process(sourceFile, (content) => content.replace(oldLink, () => newLink));
+			}
+			pending.link = newLink;
+		}
+	}
+
+	/**
+	 * Removes a pending summary note (to the trash) and its link in the source note after a failed run.
+	 */
+	private async discardPendingSummaryNote(pending: PendingSummaryNote): Promise<void> {
+		try {
+			const { sourceFile, link, linkPrefix = '' } = pending;
+			if (sourceFile && link) {
+				await this.app.vault.process(sourceFile, (content) => content.replace(`${linkPrefix}${link}`, ''));
+			}
+			await this.app.fileManager.trashFile(pending.file);
+		} catch (error) {
+			console.error('Failed to clean up new summary note after error:', error);
 		}
 	}
 
@@ -728,15 +857,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 
-		const parentDir = file.parent?.path && file.parent.path !== '/' ? `${file.parent.path}/` : '';
-		const extension = file.extension || 'md';
-		let targetPath = `${parentDir}${sanitizedTitle}.${extension}`;
-		let counter = 1;
-
-		while (this.app.vault.getAbstractFileByPath(targetPath) && targetPath !== file.path) {
-			targetPath = `${parentDir}${sanitizedTitle} (${counter}).${extension}`;
-			counter++;
-		}
+		const targetPath = this.getAvailableNotePath(file.parent?.path ?? '', sanitizedTitle, file.path, file.extension || 'md');
 
 		if (targetPath !== file.path) {
 			try {

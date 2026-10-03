@@ -154,7 +154,9 @@ If the summary is truncated (i.e., it hit the token limit), the plugin appends a
 **Temperature**: Adjust this value to control how deterministic or creative your summaries will be.
 Lower values (closer to 0) produce more consistent and focused summaries, while higher values introduce more creativity and variation.
 
-**Set Note Title from Video**: Automatically renames the active note to the sanitized title of the YouTube video, ensuring safe filenames across Windows, macOS, Linux, and Obsidian wikilinks.
+**Video Summaries Folder**: Default / fallback folder for new video summary notes, used when you summarize from a note that already has content or frontmatter. Defaults to `Video Summaries` in the vault root.
+
+**Set Note Title from Video**: When summarizing into a blank note, automatically renames it to the sanitized title of the YouTube video, ensuring safe filenames across Windows, macOS, Linux, and Obsidian wikilinks. New notes created in the video summaries folder are always named after the video.
 
 **Include Title in Note Body**: Includes the video title as a heading (`# Title`) in the note body. Disabled by default since the title is already preserved in the note filename and YAML frontmatter.
 
@@ -195,6 +197,8 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 Model pricing is displayed in the settings UI — next to each model in the provider accordions and in the active model dropdown.
 
 ## Usage
+
+**Where the summary goes**: Run the summarizer from a **blank note** and the summary is written into that note. Run it from a note that already has a body and/or frontmatter, and a new note is created in the *Video summaries folder* (default `Video Summaries/`), a link to it is inserted at your cursor, and the summary is written to the new note when it's ready — you can keep working in other notes in the meantime. If the summary fails, the new note is moved to the trash and the link is removed.
 
 ### Method 1: Command Palette
 
