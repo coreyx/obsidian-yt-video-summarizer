@@ -4329,6 +4329,83 @@ assert(regenerated.trimEnd().endsWith('## Summary\n\nNew summary'));
 
 console.log('✓ Companion note creation in both directions passed');
 
+// Test 40: Media Extended is optional — plugin detection, default off, and grouped settings
+console.log('Testing Media Extended plugin detection, default, and settings grouping...');
+
+const MEDIA_EXTENDED_PLUGIN_ID_HELPER = 'media-extended';
+function resolveMediaExtendedPluginStatusHelper(registry) {
+	if (!registry || (!registry.manifests && !registry.enabledPlugins && !registry.plugins)) return 'unknown';
+	if (registry.plugins?.[MEDIA_EXTENDED_PLUGIN_ID_HELPER] || registry.enabledPlugins?.has(MEDIA_EXTENDED_PLUGIN_ID_HELPER)) return 'enabled';
+	if (registry.manifests?.[MEDIA_EXTENDED_PLUGIN_ID_HELPER]) return 'disabled';
+	return 'not-installed';
+}
+
+// 40.1: Detection from Obsidian's community plugin registry
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(['media-extended']), plugins: { 'media-extended': {} } }), 'enabled');
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(), plugins: {} }), 'disabled');
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'dataview': {} }, enabledPlugins: new Set(['dataview']), plugins: { dataview: {} } }), 'not-installed');
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: {}, enabledPlugins: new Set(), plugins: {} }), 'not-installed');
+// Registry unavailable → unknown (never prompts or blocks)
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper(undefined), 'unknown');
+assert.strictEqual(resolveMediaExtendedPluginStatusHelper({}), 'unknown');
+
+// 40.2: Prompt only when turning the setting on and the plugin is missing or disabled
+const shouldPromptToInstall = (turnedOn, status) => turnedOn && (status === 'not-installed' || status === 'disabled');
+assert.strictEqual(shouldPromptToInstall(true, 'not-installed'), true);
+assert.strictEqual(shouldPromptToInstall(true, 'disabled'), true);
+assert.strictEqual(shouldPromptToInstall(true, 'enabled'), false);
+assert.strictEqual(shouldPromptToInstall(true, 'unknown'), false);
+assert.strictEqual(shouldPromptToInstall(false, 'not-installed'), false);
+
+// 40.3: Creating Media Extended notes is off by default; the note-content options keep their defaults
+const defaultsNow = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
+assert.match(defaultsNow, /DEFAULT_CREATE_MEDIA_EXTENDED_NOTES = false;/);
+assert.match(defaultsNow, /DEFAULT_MEDIA_EXTENDED_INCLUDE_DESCRIPTION = true;/);
+assert.match(defaultsNow, /DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true;/);
+assert.match(defaultsNow, /DEFAULT_MEDIA_EXTENDED_EMBED_COVER = true;/);
+
+// 40.4: The plugin source never calls into the Media Extended plugin (detection lives in one helper)
+const srcFiles = ['main.ts', 'utils/frontmatter.ts', 'services/youtube.ts', 'services/settingsManager.ts'];
+for (const file of srcFiles) {
+	const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
+	assert.doesNotMatch(source, /\.plugins\b|enabledPlugins|getPlugin\(/, `${file} should not touch the plugin registry`);
+}
+
+// 40.5: Every Media Extended setting lives in the Media Extended settings tab, and nowhere else
+const settingsSource = readFileSync(new URL('../src/ui/settings.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const sectionBody = (name) => {
+	const start = settingsSource.indexOf(`private ${name}(`);
+	assert(start >= 0, `${name} should exist`);
+	const next = settingsSource.indexOf('\n    private ', start + 1);
+	return settingsSource.slice(start, next < 0 ? undefined : next);
+};
+const mediaExtendedTab = sectionBody('displayMediaExtendedSection');
+const mediaExtendedSettingCalls = [
+	'updateCreateMediaExtendedNotes',
+	'updateMediaExtendedFolder',
+	'updateMediaExtendedIncludeDescription',
+	'updateMediaExtendedIncludeTranscript',
+	'updateMediaExtendedEmbedCover',
+	'promptCreateMediaExtendedNotes',
+	'createMediaExtendedInVault',
+];
+for (const call of mediaExtendedSettingCalls) {
+	assert(mediaExtendedTab.includes(call), `${call} should be in the Media Extended tab`);
+	assert.strictEqual(settingsSource.split(call).length - 1, 1, `${call} should appear in exactly one place`);
+}
+for (const other of ['displaySummarySection', 'displayTagsAndMetadataSection', 'displayMaintenanceSection']) {
+	assert(!/MediaExtended(Folder|Include|EmbedCover)|CreateMediaExtended/.test(sectionBody(other)), `${other} should have no Media Extended settings`);
+}
+// Turning the create toggle on triggers the install prompt
+assert.match(mediaExtendedTab, /updateCreateMediaExtendedNotes\(value\);\s*if \(value\) \{\s*await this\.promptToInstallMediaExtended\(\);/);
+// Five tabs in a sensible order
+assert.deepStrictEqual(
+	[...settingsSource.matchAll(/\{ name: '([^']+)', id: '[^']+', render:/g)].map((m) => m[1]),
+	['AI Providers', 'Summary', 'Media Extended', 'Tags & Metadata', 'Maintenance']
+);
+
+console.log('✓ Media Extended plugin detection, default, and settings grouping passed');
+
 console.log('\nAll tests passed successfully!');
 
 

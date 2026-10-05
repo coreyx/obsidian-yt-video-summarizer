@@ -12,14 +12,15 @@ export class ConfirmModal extends Modal {
 		private title: string,
 		private message: string,
 		private confirmText: string,
-		private onDone: (confirmed: boolean) => void
+		private onDone: (confirmed: boolean) => void,
+		private cancelText = 'Cancel'
 	) {
 		super(app);
 	}
 
-	static confirm(app: App, title: string, message: string, confirmText = 'Continue'): Promise<boolean> {
+	static confirm(app: App, title: string, message: string, confirmText = 'Continue', cancelText = 'Cancel'): Promise<boolean> {
 		return new Promise((resolve) => {
-			new ConfirmModal(app, title, message, confirmText, resolve).open();
+			new ConfirmModal(app, title, message, confirmText, resolve, cancelText).open();
 		});
 	}
 
@@ -41,7 +42,7 @@ export class ConfirmModal extends Modal {
 					})
 			)
 			.addButton((btn: ButtonComponent) =>
-				btn.setButtonText('Cancel').onClick(() => {
+				btn.setButtonText(this.cancelText).onClick(() => {
 					this.close();
 				})
 			);

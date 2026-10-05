@@ -21,7 +21,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
 -   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
 -   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable timestamps, with zero AI token cost. Video summary notes use standard YouTube links (`[01:05](https://www.youtube.com/watch?v=...&t=65s)`); Media Extended companion notes use Media Extended playback links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`).
--   🎬 **Media Extended Companion Notes**: Automatically creates separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a configurable folder (defaults to `Media Library`) with bidirectional wikilinks in a `# Related` section.
+-   🎬 **Media Extended Companion Notes (Optional)**: Can create separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a configurable folder (defaults to `Media Library`) with bidirectional wikilinks in a `# Related` section. Off by default; Media Extended is not required for anything else.
 -   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
 -   ⚙️ **Fully Customizable**: Tweak prompts, tokens, temperature, and toggle individual metadata fields to fit your workflow.
 
@@ -57,6 +57,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
     -   OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
     -   Anthropic API key ([Get one here](https://console.anthropic.com/settings/keys))
     -   Key for any LLM provider, offering OpenAI or Antropic compatible API
+-   Optional: the [Media Extended](https://github.com/aidenlx/media-extended) plugin, only if you want to play videos inside Obsidian from Media Extended companion notes. The plugin works fully without it.
 
 ## Configuration
 
@@ -138,9 +139,13 @@ At the top of the **AI Providers** tab, the **Active Model** dropdown displays a
 
 Select any model from this dropdown to make it active. All video summarization commands will use the selected active model until you switch it.
 
-### Summary Settings
+### Settings Tabs
 
-The Summary Settings tab provides several options for customizing how your video summaries are generated:
+Settings are organized into five tabs: **AI Providers** (above), **Summary**, **Media Extended**, **Tags & Metadata**, and **Maintenance**.
+
+### Summary
+
+The Summary tab controls how summaries are generated and where summary notes go.
 
 **Summary Prompt**: Allows you to customize the instructions sent to the AI model.
 This is useful if you need specialized summary formats or want to focus on specific aspects of videos.
@@ -154,31 +159,35 @@ If the summary is truncated (i.e., it hit the token limit), the plugin appends a
 **Temperature**: Adjust this value to control how deterministic or creative your summaries will be.
 Lower values (closer to 0) produce more consistent and focused summaries, while higher values introduce more creativity and variation.
 
+**Generate Wikilinks for Technical Terms**: Formats extracted technical terms with Obsidian `[[wikilinks]]` (e.g. `- **[[Term]]**: explanation`). Enabled by default. When disabled, terms are retained as bold text without wikilinks (`- **Term**: explanation`).
+
 **Video Summaries Folder**: Default / fallback folder for new video summary notes, used when you summarize from a note that already has content or frontmatter. Defaults to `Video Summaries` in the vault root.
 
 **Set Note Title from Video**: When summarizing into a blank note, automatically renames it to the sanitized title of the YouTube video, ensuring safe filenames across Windows, macOS, Linux, and Obsidian wikilinks. New notes created in the video summaries folder are always named after the video.
 
 **Include Title in Note Body**: Includes the video title as a heading (`# Title`) in the note body. Disabled by default since the title is already preserved in the note filename and YAML frontmatter.
 
-**Generate Wikilinks for Technical Terms**: Formats extracted technical terms with Obsidian `[[wikilinks]]` (e.g. `- **[[Term]]**: explanation`). Enabled by default. When disabled, terms are retained as bold text without wikilinks (`- **Term**: explanation`).
-
-**Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
-
 **Include Transcript in Summary Note**: Appends the full video transcript under a `## Transcript` section when generating an AI summary note, with each timestamp linked to the video (e.g. `[01:05](https://www.youtube.com/watch?v=...&t=65s)`). Disabled by default.
 
 **Timestamp links**: Every timestamp written to a video summary note (transcript, description, or AI summary) is linked to the original YouTube video in standard YouTube format (`&t=SECONDSs`). Every timestamp written to a Media Extended companion note is linked in Media Extended format (`&t=SECONDS#t=mm:ss.ms`).
 
-**Create Media Extended Notes**: Automatically creates a separate companion note formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin whenever a YouTube video is ingested. Enabled by default.
+### Media Extended
+
+Everything about the optional [Media Extended](https://github.com/aidenlx/media-extended) companion notes lives in this tab. **Media Extended is not required**: this plugin never calls it, the companion notes are regular Markdown, and their timestamp links open in your browser when Media Extended isn't installed. The tab shows whether Media Extended is installed and enabled, with a button to open its page in Community plugins.
+
+**Create Media Extended Notes**: Automatically creates a separate companion note formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin whenever a YouTube video is ingested. **Disabled by default.** When you turn it on and Media Extended isn't installed (or is disabled), you're asked whether to open its page in Community plugins; the setting stays on either way. You can also choose per video in the summary popup.
+
+**Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
+
+**Embed Cover in Media Extended Notes**: Adds the video cover as an inline image (`![Cover](https://i.ytimg.com/...)`) at the top of the body of new Media Extended companion notes, using the same URL as the `cover` frontmatter. Enabled by default.
 
 **Include Description in Media Extended Note**: Includes the video description under `# Description` in the companion note, with timestamps converted into Media Extended playback links. Enabled by default.
 
 **Include Transcript in Media Extended Note**: Includes the timestamped transcript under `# Transcript` in the companion note. Enabled by default.
 
-**Embed Cover in Media Extended Notes**: Adds the video cover as an inline image (`![Cover](https://i.ytimg.com/...)`) at the top of the body of new Media Extended companion notes, using the same URL as the `cover` frontmatter. Enabled by default.
+**Create Missing Media Extended Notes**: Buttons to create companion notes for existing video summary notes in a folder or the whole vault.
 
-**Use Frontmatter Description When Adding Description to Body**: When running `Add description to video summary note` or `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
-
-**Media Extended Notes Folder**: Vault folder where separate Media Extended companion notes will be created. Defaults to `"Media Library"` in the vault root.
+### Tags & Metadata
 
 **Generate Semantic Topic Tags**: Uses AI semantic analysis and inference with your configured AI model to infer relevant topic tags and identify obvious missing tags. When enabled, the plugin automatically indexes your entire vault's existing tag taxonomy into a compressed in-memory cache prior to inference, providing the model with your vault's existing tags and established group prefixes (e.g. `ai/`, `dev/`). The prompt strictly enforces reusing existing tags whenever semantically appropriate, formatting new tags in lowercase kebab-case, and nesting specific concepts under established group prefixes (e.g. `ai/machine-learning` instead of `ai-machine-learning`). See [AI_TAGGING.md](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/AI_TAGGING.md) for full architectural documentation. *Note: This feature is semantic and inferred, adds your vault's tag list to the AI context, and may increase the context window size and token usage.*
 
@@ -186,15 +195,29 @@ Lower values (closer to 0) produce more consistent and focused summaries, while 
 
 **Extract Tags from YouTube Data API**: Extracts the complete set of creator video tags/keywords from YouTube metadata / Data API and applies them as Obsidian tags. Enabled by default.
 
-**YouTube Data API Key (Optional)**: Optional Google Cloud YouTube Data API v3 key. When omitted, tags are extracted automatically from YouTube player metadata with no key required.
-
-**Discover Playlist from Creator**: Automatically discovers if the video belongs to a creator playlist (via URL parameters, video description links, or YouTube Data API channel lookup) and records playlist metadata (`playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, `playlist_count`) in the YAML frontmatter and note body. Enabled by default.
-
 **Add Tags to Frontmatter**: Inserts tags into the YAML frontmatter `tags:` property.
 
 **Add Inline Tags**: Inserts tags inline in the note body formatted as `**Tags:** #tag1 #tag2`.
 
+**Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
+
+**Use Frontmatter Description When Adding Description to Body**: When running `Add description to video summary note` or `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
+
+**Discover Playlist from Creator**: Automatically discovers if the video belongs to a creator playlist (via URL parameters, video description links, or YouTube Data API channel lookup) and records playlist metadata (`playlist_title`, `playlist_url`, `playlist_id`, `playlist_index`, `playlist_count`) in the YAML frontmatter and note body. Enabled by default.
+
+**YouTube Data API Key (Optional)**: Optional Google Cloud YouTube Data API v3 key. When omitted, tags are extracted automatically from YouTube player metadata with no key required.
+
+### Maintenance
+
+Batch tools for notes you already have, plus the report from the last batch run. These never re-generate summaries.
+
+**Video Notes Folders to Scan (Optional)**: Comma-separated vault folders where your video notes live. When set, batch operations target these folders instead of the whole vault.
+
 **Upgrade Previous Notes**: Scans your vault and automatically adds missing frontmatter metadata to existing YouTube notes without altering summaries, generating tags, or running AI inference.
+
+**Upgrade Tags & Description Frontmatter** and **Upgrade Playlist Frontmatter**: Add YouTube tags and descriptions, or creator playlist properties, to existing notes that lack them (see Methods 7 and 8).
+
+**Batch Operation Status & Logs**: Summary of the last batch run, with a button to open the full report (see Method 10).
 
 Model pricing is displayed in the settings UI — next to each model in the provider accordions and in the active model dropdown.
 

@@ -4,7 +4,13 @@ import { SettingsEventHandlers, UICallbacks } from './handlers/SettingsEventHand
 
 import { SettingsModalsFactory } from './modals/SettingsModalsFactory';
 import { SettingsUIComponents } from './components/SettingsUIComponents';
+import { ConfirmModal } from './modals/ConfirmModal';
 import { YouTubeSummarizerPlugin } from '../main';
+import {
+    getMediaExtendedPluginStatus,
+    MediaExtendedPluginStatus,
+    openMediaExtendedPluginPage,
+} from '../utils/mediaExtendedPlugin';
 
 /**
  * Represents the settings tab for the YouTube Summarizer Plugin.
@@ -86,29 +92,32 @@ export class SettingsTab extends PluginSettingTab {
         const tabList = tabs.createEl('nav', { cls: 'yt-summarizer-settings__tab-list' });
         const tabContent = tabs.createEl('div', { cls: 'yt-summarizer-settings__tab-content' });
 
-        const aiProvidersContent = tabContent.createDiv({ cls: 'yt-summarizer-settings__content' });
-        const summarySettingsContent = tabContent.createDiv({ cls: 'yt-summarizer-settings__content' });
-
-        // Hide inactive tab content
-        aiProvidersContent.style.display = this.currentTab === 'ai-providers' ? 'block' : 'none';
-        summarySettingsContent.style.display = this.currentTab === 'summary-settings' ? 'block' : 'none';
-
         // Create tab buttons
         this.createTabButtons(tabList);
 
-        // Display sections
-        this.displayAIProvidersSection(aiProvidersContent);
-        this.displaySummarySettingsSection(summarySettingsContent);
+        // Render each tab's section, showing only the active one
+        for (const tab of this.getTabs()) {
+            const content = tabContent.createDiv({ cls: 'yt-summarizer-settings__content' });
+            content.style.display = this.currentTab === tab.id ? 'block' : 'none';
+            tab.render(content);
+        }
+
         this.displaySponsorSection(containerEl);
     }
 
-    private createTabButtons(tabList: HTMLElement): void {
-        const tabs = [
-            { name: 'AI Providers', id: 'ai-providers' },
-            { name: 'Summary Settings', id: 'summary-settings' }
+    /** The settings tabs, in display order */
+    private getTabs(): { name: string; id: string; render: (containerEl: HTMLElement) => void }[] {
+        return [
+            { name: 'AI Providers', id: 'ai-providers', render: (el) => this.displayAIProvidersSection(el) },
+            { name: 'Summary', id: 'summary', render: (el) => this.displaySummarySection(el) },
+            { name: 'Media Extended', id: 'media-extended', render: (el) => this.displayMediaExtendedSection(el) },
+            { name: 'Tags & Metadata', id: 'tags-metadata', render: (el) => this.displayTagsAndMetadataSection(el) },
+            { name: 'Maintenance', id: 'maintenance', render: (el) => this.displayMaintenanceSection(el) },
         ];
+    }
 
-        tabs.forEach(({ name, id }) => {
+    private createTabButtons(tabList: HTMLElement): void {
+        this.getTabs().forEach(({ name, id }) => {
             const tab = this.uiComponents.createTabButton(name, id, this.currentTab === id);
             tab.addEventListener('click', () => {
                 this.currentTab = id;
@@ -228,7 +237,8 @@ export class SettingsTab extends PluginSettingTab {
         this.openedProviderName = providerName;
     }
 
-    private displaySummarySettingsSection(containerEl: HTMLElement): void {
+    /** Summary tab: the prompt, AI generation options, and how summary notes are created */
+    private displaySummarySection(containerEl: HTMLElement): void {
         // Summary Prompt Setting - Heading
         new Setting(containerEl)
             .setName('Summary prompt')
@@ -250,6 +260,11 @@ export class SettingsTab extends PluginSettingTab {
             );
 
         textareaSetting.settingEl.addClass('yt-summarizer-settings__setting-item-no-header');
+
+        new Setting(containerEl)
+            .setName('Generation')
+            .setDesc('How the AI model writes the summary')
+            .setHeading();
 
         // Max Tokens Setting
         new Setting(containerEl)
@@ -281,6 +296,23 @@ export class SettingsTab extends PluginSettingTab {
                         await this.settings.updateTemperature(Number(value));
                     })
             );
+
+        // Wikilinks in technical terms
+        new Setting(containerEl)
+            .setName('Generate wikilinks for technical terms')
+            .setDesc('Format extracted technical terms with Obsidian [[wikilinks]] (e.g. **[[Term]]**). When disabled, terms are kept in bold text without wikilinks (**Term**).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getLinkTechnicalTerms())
+                    .onChange(async (value) => {
+                        await this.settings.updateLinkTechnicalTerms(value);
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('Summary notes')
+            .setDesc('Where summaries are saved and what goes in the note')
+            .setHeading();
 
         // Default / fallback folder for new video summary notes
         new Setting(containerEl)
@@ -319,30 +351,6 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // Wikilinks in technical terms
-        new Setting(containerEl)
-            .setName('Generate wikilinks for technical terms')
-            .setDesc('Format extracted technical terms with Obsidian [[wikilinks]] (e.g. **[[Term]]**). When disabled, terms are kept in bold text without wikilinks (**Term**).')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getLinkTechnicalTerms())
-                    .onChange(async (value) => {
-                        await this.settings.updateLinkTechnicalTerms(value);
-                    })
-            );
-
-        // Add description to frontmatter
-        new Setting(containerEl)
-            .setName('Add description to frontmatter')
-            .setDesc('Include the full YouTube video description in the YAML frontmatter (enabled by default)')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getAddDescriptionToFrontmatter())
-                    .onChange(async (value) => {
-                        await this.settings.updateAddDescriptionToFrontmatter(value);
-                    })
-            );
-
         // Include transcript in summary
         new Setting(containerEl)
             .setName('Include transcript in summary note')
@@ -354,16 +362,78 @@ export class SettingsTab extends PluginSettingTab {
                         await this.settings.updateDumpTranscriptInSummary(value);
                     })
             );
+    }
+
+    /** Media Extended tab: everything about the optional Media Extended companion notes */
+    private displayMediaExtendedSection(containerEl: HTMLElement): void {
+        new Setting(containerEl)
+            .setName('Media Extended notes')
+            .setDesc('Optional companion notes for the Media Extended plugin, which plays videos inside Obsidian and jumps to timestamps. This plugin works without Media Extended: the notes are regular Markdown, and their timestamp links open in your browser.')
+            .setHeading();
+
+        // Media Extended plugin status
+        const status = getMediaExtendedPluginStatus(this.app);
+        const statusDescriptions: Record<MediaExtendedPluginStatus, string> = {
+            'enabled': 'Installed and enabled.',
+            'disabled': 'Installed but disabled. Enable it in Community plugins to play videos from these notes.',
+            'not-installed': 'Not installed. Install it from Community plugins to play videos from these notes.',
+            'unknown': 'Could not check whether it is installed.',
+        };
+        const statusSetting = new Setting(containerEl)
+            .setName('Media Extended plugin')
+            .setDesc(statusDescriptions[status]);
+        if (status !== 'enabled') {
+            statusSetting.addButton(button =>
+                button
+                    .setButtonText('Open plugin page')
+                    .onClick(() => {
+                        openMediaExtendedPluginPage();
+                    })
+            );
+        }
 
         // Create Media Extended notes
         new Setting(containerEl)
             .setName('Create Media Extended notes')
-            .setDesc('Automatically create a separate companion note formatted for the Media Extended plugin for each ingested video (enabled by default)')
+            .setDesc('Automatically create a separate companion note formatted for the Media Extended plugin for each ingested video (disabled by default). You can still choose per video in the summary popup.')
             .addToggle(toggle =>
                 toggle
                     .setValue(this.settings.getCreateMediaExtendedNotes())
                     .onChange(async (value) => {
                         await this.settings.updateCreateMediaExtendedNotes(value);
+                        if (value) {
+                            await this.promptToInstallMediaExtended();
+                        }
+                    })
+            );
+
+        // Media Extended notes folder
+        new Setting(containerEl)
+            .setName('Media Extended notes folder')
+            .setDesc('Vault folder where separate Media Extended companion notes will be created (defaults to "Media Library" in the vault root)')
+            .addText(text =>
+                text
+                    .setPlaceholder('Media Library')
+                    .setValue(this.settings.getMediaExtendedFolder())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedFolder(value.trim() || 'Media Library');
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('Note contents')
+            .setDesc('What goes into new Media Extended notes, however they are created')
+            .setHeading();
+
+        // Embed the cover image at the top of new Media Extended notes
+        new Setting(containerEl)
+            .setName('Embed cover in Media Extended notes')
+            .setDesc('Add the video cover as an inline image (![Cover](https://i.ytimg.com/...)) at the top of the body of new Media Extended companion notes (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedEmbedCover())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedEmbedCover(value);
                     })
             );
 
@@ -391,42 +461,9 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // Embed the cover image at the top of new Media Extended notes
         new Setting(containerEl)
-            .setName('Embed cover in Media Extended notes')
-            .setDesc('Add the video cover as an inline image (![Cover](https://i.ytimg.com/...)) at the top of the body of new Media Extended companion notes (enabled by default)')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getMediaExtendedEmbedCover())
-                    .onChange(async (value) => {
-                        await this.settings.updateMediaExtendedEmbedCover(value);
-                    })
-            );
-
-        // Use frontmatter description for the "Add description to ..." commands
-        new Setting(containerEl)
-            .setName('Use frontmatter description when adding description to body')
-            .setDesc('When running "Add description to video summary note" or "Add description to Media Extended note", copy the note\'s frontmatter description into the body instead of fetching it from YouTube. Falls back to fetching when the frontmatter description is missing or empty (enabled by default).')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getMediaExtendedDescriptionFromFrontmatter())
-                    .onChange(async (value) => {
-                        await this.settings.updateMediaExtendedDescriptionFromFrontmatter(value);
-                    })
-            );
-
-        // Media Extended notes folder
-        new Setting(containerEl)
-            .setName('Media Extended notes folder')
-            .setDesc('Vault folder where separate Media Extended companion notes will be created (defaults to "Media Library" in the vault root)')
-            .addText(text =>
-                text
-                    .setPlaceholder('Media Library')
-                    .setValue(this.settings.getMediaExtendedFolder())
-                    .onChange(async (value) => {
-                        await this.settings.updateMediaExtendedFolder(value.trim() || 'Media Library');
-                    })
-            );
+            .setName('Existing notes')
+            .setHeading();
 
         // Create missing Media Extended companion notes
         new Setting(containerEl)
@@ -446,7 +483,40 @@ export class SettingsTab extends PluginSettingTab {
                         await this.plugin.createMediaExtendedInVault();
                     })
             );
+    }
 
+    /**
+     * When Media Extended note creation is turned on but the Media Extended plugin isn't installed
+     * (or is disabled), offers to open its page in Community plugins. The setting stays on either way,
+     * since the notes work as regular Markdown.
+     */
+    private async promptToInstallMediaExtended(): Promise<void> {
+        const status = getMediaExtendedPluginStatus(this.app);
+        if (status !== 'not-installed' && status !== 'disabled') {
+            return;
+        }
+
+        const notInstalled = status === 'not-installed';
+        const openPage = await ConfirmModal.confirm(
+            this.app,
+            notInstalled ? 'Media Extended is not installed' : 'Media Extended is disabled',
+            notInstalled
+                ? 'Media Extended notes are made for the Media Extended plugin, which plays videos inside Obsidian and jumps to timestamps. It is not installed in this vault. The notes will still be created as regular notes, and their timestamp links will open in your browser. Open its page in Community plugins to install it?'
+                : 'Media Extended notes are made for the Media Extended plugin, which plays videos inside Obsidian and jumps to timestamps. It is installed but disabled. The notes will still be created as regular notes, and their timestamp links will open in your browser. Open its page in Community plugins to enable it?',
+            'Open plugin page',
+            'Not now'
+        );
+        if (openPage) {
+            openMediaExtendedPluginPage();
+        }
+    }
+
+    /** Tags & Metadata tab: tags, the video description, and YouTube data sources */
+    private displayTagsAndMetadataSection(containerEl: HTMLElement): void {
+        new Setting(containerEl)
+            .setName('Tags')
+            .setDesc('Where tags come from and where they are written')
+            .setHeading();
 
         // Semantic Topic tags
         new Setting(containerEl)
@@ -486,31 +556,6 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
-        // YouTube Data API key (optional)
-        new Setting(containerEl)
-            .setName('YouTube Data API key (optional)')
-            .setDesc('Optional Google Cloud YouTube Data API v3 key. If omitted, tags are extracted automatically from YouTube player metadata with no key required.')
-            .addText(text =>
-                text
-                    .setPlaceholder('AIzaSy...')
-                    .setValue(this.settings.getYoutubeApiKey())
-                    .onChange(async (value) => {
-                        await this.settings.updateYoutubeApiKey(value.trim());
-                    })
-            );
-
-        // Discover playlist from creator
-        new Setting(containerEl)
-            .setName('Discover playlist from creator')
-            .setDesc('Detect if the video is part of a playlist from the creator (via YouTube Data API, URL parameters, or video description) and inject playlist metadata into the frontmatter and note body (enabled by default)')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.settings.getDiscoverPlaylist())
-                    .onChange(async (value) => {
-                        await this.settings.updateDiscoverPlaylist(value);
-                    })
-            );
-
         // Tags in frontmatter
         new Setting(containerEl)
             .setName('Add tags to frontmatter')
@@ -534,6 +579,71 @@ export class SettingsTab extends PluginSettingTab {
                         await this.settings.updateAddInlineTags(value);
                     })
             );
+
+        new Setting(containerEl)
+            .setName('Video description')
+            .setHeading();
+
+        // Add description to frontmatter
+        new Setting(containerEl)
+            .setName('Add description to frontmatter')
+            .setDesc('Include the full YouTube video description in the YAML frontmatter (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getAddDescriptionToFrontmatter())
+                    .onChange(async (value) => {
+                        await this.settings.updateAddDescriptionToFrontmatter(value);
+                    })
+            );
+
+        // Use frontmatter description for the "Add description to ..." commands
+        new Setting(containerEl)
+            .setName('Use frontmatter description when adding description to body')
+            .setDesc('When running "Add description to video summary note" or "Add description to Media Extended note", copy the note\'s frontmatter description into the body instead of fetching it from YouTube. Falls back to fetching when the frontmatter description is missing or empty (enabled by default).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getMediaExtendedDescriptionFromFrontmatter())
+                    .onChange(async (value) => {
+                        await this.settings.updateMediaExtendedDescriptionFromFrontmatter(value);
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('YouTube')
+            .setHeading();
+
+        // Discover playlist from creator
+        new Setting(containerEl)
+            .setName('Discover playlist from creator')
+            .setDesc('Detect if the video is part of a playlist from the creator (via YouTube Data API, URL parameters, or video description) and inject playlist metadata into the frontmatter and note body (enabled by default)')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getDiscoverPlaylist())
+                    .onChange(async (value) => {
+                        await this.settings.updateDiscoverPlaylist(value);
+                    })
+            );
+
+        // YouTube Data API key (optional)
+        new Setting(containerEl)
+            .setName('YouTube Data API key (optional)')
+            .setDesc('Optional Google Cloud YouTube Data API v3 key. If omitted, tags are extracted automatically from YouTube player metadata with no key required.')
+            .addText(text =>
+                text
+                    .setPlaceholder('AIzaSy...')
+                    .setValue(this.settings.getYoutubeApiKey())
+                    .onChange(async (value) => {
+                        await this.settings.updateYoutubeApiKey(value.trim());
+                    })
+            );
+    }
+
+    /** Maintenance tab: batch tools for existing notes and the last batch report */
+    private displayMaintenanceSection(containerEl: HTMLElement): void {
+        new Setting(containerEl)
+            .setName('Batch upgrades')
+            .setDesc('Update notes you already have. These tools never re-generate summaries. You can also right-click a folder or note in the File Explorer.')
+            .setHeading();
 
         // Scan folders setting
         new Setting(containerEl)
@@ -605,6 +715,10 @@ export class SettingsTab extends PluginSettingTab {
                     })
             );
 
+        new Setting(containerEl)
+            .setName('Last batch run')
+            .setHeading();
+
         // Last batch operation status & logs
         const lastReport = this.plugin.getLastBatchReport();
         const durationText = lastReport && lastReport.endTime
@@ -635,7 +749,6 @@ export class SettingsTab extends PluginSettingTab {
             );
         }
     }
-
 
     private displaySponsorSection(containerEl: HTMLElement): void {
         containerEl.createEl('hr');
