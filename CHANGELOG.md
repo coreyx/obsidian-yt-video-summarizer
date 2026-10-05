@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Media Extended Plugin Detection**: The new Media Extended settings tab shows whether the Media Extended plugin is installed and enabled, with a button to open its page in Community plugins. Turning on *Create Media Extended notes* when it isn't installed (or is disabled) asks whether to open that page; the setting stays on either way, since the notes work as regular Markdown.
+
+### Changed
+- **Create Media Extended Notes Is Off by Default**: New installs no longer create Media Extended companion notes unless you turn the setting on (or choose it per video in the summary popup). Existing saved settings are kept. The plugin doesn't depend on Media Extended.
+- **Reorganized Settings**: Settings are now grouped into five tabs with section headings: *AI Providers*, *Summary* (prompt, generation, summary notes), *Media Extended* (all Media Extended settings in one place), *Tags & Metadata* (tags, video description, YouTube), and *Maintenance* (batch upgrades and the last batch report). No settings were removed or renamed.
+
 ---
 
 ## [1.16.0] - 2026-10-02
