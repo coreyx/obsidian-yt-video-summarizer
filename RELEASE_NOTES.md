@@ -1,5 +1,31 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.17.0
+
+### Highlights
+
+YouTube Video Summarizer v1.17.0 makes Media Extended clearly optional and tidies up the settings screen:
+
+* 🧩 **Media Extended Is Optional**: The plugin works fully without Media Extended. Companion notes are now off by default, and the settings tell you whether Media Extended is installed.
+* 🗂️ **Reorganized Settings**: Settings are grouped into five tabs with section headings, with every Media Extended setting in one place.
+
+### What's Changed in v1.17.0
+
+#### 🧩 Media Extended
+* **Create Media Extended notes** is now **off by default** for new installs. Your existing setting is kept, and you can still choose per video in the summary popup.
+* The new **Media Extended** settings tab shows whether the Media Extended plugin is installed and enabled, with a button to open its page in Community plugins.
+* Turning the setting on without Media Extended installed (or with it disabled) asks whether you'd like to open that page. The setting stays on either way: companion notes are regular Markdown, and their timestamp links open in your browser.
+
+#### 🗂️ Settings
+* **AI Providers**: unchanged.
+* **Summary**: the prompt, generation options, and where summary notes go.
+* **Media Extended**: plugin status, the create toggle, folder, note contents (cover, description, transcript), and creating missing notes.
+* **Tags & Metadata**: tags, the video description, playlist discovery, and the YouTube Data API key.
+* **Maintenance**: batch upgrades and the last batch report.
+* No settings were removed or renamed; they've only moved.
+
+---
+
 ## v1.16.0
 
 ### Highlights
