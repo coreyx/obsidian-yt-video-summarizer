@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.17.0] - 2026-10-05
+
 ### Added
 - **Media Extended Plugin Detection**: The new Media Extended settings tab shows whether the Media Extended plugin is installed and enabled, with a button to open its page in Community plugins. Turning on *Create Media Extended notes* when it isn't installed (or is disabled) asks whether to open that page; the setting stays on either way, since the notes work as regular Markdown.
 
