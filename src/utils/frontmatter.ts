@@ -28,6 +28,37 @@ export interface FrontmatterOptions {
 }
 
 /**
+ * Checkbox properties every video summary note starts with, for the user to tick.
+ * They are written as `false` and never overwritten once a note has them.
+ */
+export const USER_FLAG_KEYS = ['watch_later', 'favorite'];
+
+/**
+ * Adds the checkbox properties a note's frontmatter doesn't have yet, as `false`, and changes nothing
+ * else. They go where new notes have them (before `description` / `tags`), or at the end of the
+ * frontmatter. Returns the content as-is when there is no frontmatter or nothing is missing.
+ */
+export function addMissingUserFlags(content: string): string {
+	const match = content.match(/^---\r?\n([\s\S]*?\r?\n)---(?:\r?\n|$)/);
+	if (!match) {
+		return content;
+	}
+
+	const yaml = match[1];
+	const missing = USER_FLAG_KEYS.filter((key) => !new RegExp(`^${key}:`, 'm').test(yaml));
+	if (missing.length === 0) {
+		return content;
+	}
+
+	const eol = yaml.endsWith('\r\n') ? '\r\n' : '\n';
+	const yamlStart = match[0].indexOf('\n') + 1;
+	const anchor = yaml.search(/^(?:description|tags):/m);
+	const insertAt = yamlStart + (anchor === -1 ? yaml.length : anchor);
+	const added = missing.map((key) => `${key}: false${eol}`).join('');
+	return content.slice(0, insertAt) + added + content.slice(insertAt);
+}
+
+/**
  * Maps fetched video metadata to the video stats frontmatter properties.
  */
 export function videoStatsFrontmatter(metadata: {
@@ -101,6 +132,10 @@ export function buildFrontmatter(data: FrontmatterData): string {
 		lines.push(`playlist_count: ${data.playlist_count}`);
 	}
 
+	for (const key of USER_FLAG_KEYS) {
+		lines.push(`${key}: false`);
+	}
+
 	if (data.description !== undefined && data.description !== null) {
 		if (data.description.trim()) {
 			lines.push('description: |-');
@@ -133,8 +168,10 @@ export function mergeFrontmatter(
 	data: FrontmatterData,
 	options?: FrontmatterOptions
 ): string {
-	const lines = rawYaml.split(/\r?\n/);
+	// Trailing blank lines would otherwise end up in front of any properties appended below
+	const lines = rawYaml.replace(/\s+$/, '').split(/\r?\n/);
 	const updatedKeys = new Set<string>();
+	const existingKeys = new Set<string>();
 	const newLines: string[] = [];
 
 	const targetKeys: Record<string, string> = {
@@ -195,6 +232,7 @@ export function mergeFrontmatter(
 
 		if (keyMatch) {
 			const key = keyMatch[1];
+			existingKeys.add(key);
 
 			if (key === 'tags') {
 				inTagsBlock = true;
@@ -250,6 +288,13 @@ export function mergeFrontmatter(
 	for (const [key, line] of Object.entries(targetKeys)) {
 		if (!updatedKeys.has(key)) {
 			newLines.push(line);
+		}
+	}
+
+	// Add the user's checkbox properties if the note doesn't have them yet; existing values are kept
+	for (const key of USER_FLAG_KEYS) {
+		if (!existingKeys.has(key)) {
+			newLines.push(`${key}: false`);
 		}
 	}
 
@@ -375,27 +420,6 @@ export function extractYouTubeUrlFromNote(content: string): string | null {
 }
 
 /**
- * Checks if a note is missing any of the standard frontmatter fields.
- */
-export function isNoteMissingFrontmatter(content: string): boolean {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return true;
-
-	const yaml = fmMatch[1];
-	const requiredFields = [
-		'title:',
-		'channel_name:',
-		'channel_username:',
-		'channel_url:',
-		'video_url:',
-		'thumbnail:',
-		'thumbnail_text:',
-	];
-
-	return requiredFields.some(field => !yaml.includes(field));
-}
-
-/**
  * Checks if a note is a Media Extended companion note (has mx-uid in frontmatter or is in mediaFolder).
  */
 export function isMediaExtendedCompanionNote(
@@ -451,64 +475,6 @@ export function hasRelatedMediaExtendedLink(
 
 	return false;
 }
-
-/**
- * Checks if a note is missing the description property in its frontmatter.
- */
-export function isNoteMissingDescriptionFrontmatter(content: string): boolean {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) {
-		return true;
-	}
-	const yaml = fmMatch[1];
-	return !/^description:\s*/m.test(yaml);
-}
-
-/**
- * Checks if a note is missing playlist properties (playlist_title, playlist_url, etc.) in its frontmatter,
- * or if it only has the generic placeholder "Playlist" as its playlist_title.
- */
-export function isNoteMissingPlaylistFrontmatter(content: string): boolean {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) {
-		return true;
-	}
-	const yaml = fmMatch[1];
-	if (!/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml)) {
-		return true;
-	}
-	// If the note has playlist_title: "Playlist", it was affected by the placeholder bug and needs upgrade
-	if (/^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml)) {
-		return true;
-	}
-	return false;
-}
-
-/**
- * Returns true if the note has playlist frontmatter but playlist_title is the generic "Playlist" placeholder.
- * Unlike isNoteMissingPlaylistFrontmatter, this does NOT match notes that are entirely missing playlist fields —
- * it specifically targets notes that were previously written with the placeholder bug.
- */
-export function hasPlaylistTitlePlaceholder(content: string): boolean {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return false;
-	const yaml = fmMatch[1];
-	// Must already have playlist fields (playlist_id at minimum)
-	if (!/^playlist_id:\s*.+/m.test(yaml)) return false;
-	return /^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml);
-}
-
-/**
- * Extracts the playlist_id value from a note's YAML frontmatter.
- * Returns undefined if not present or blank.
- */
-export function extractPlaylistIdFromFrontmatter(content: string): string | undefined {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return undefined;
-	const m = fmMatch[1].match(/^playlist_id:\s*["']?([^"'\r\n]+?)["']?\s*$/m);
-	return m?.[1]?.trim() || undefined;
-}
-
 
 /**
  * Extracts hashtags from text (such as YouTube video titles and descriptions).
@@ -1340,18 +1306,6 @@ export function ensureSectionOrder(content: string, first: string, second: strin
 	const head = remaining.slice(0, secondSection.start).join('\n').replace(/\s+$/, '');
 	const tail = remaining.slice(secondSection.start).join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
 	return `${[head, moved, tail].filter(Boolean).join('\n\n')}\n`;
-}
-
-/**
- * Parses a comma- or newline-separated string of folder paths into normalized folder paths.
- * Normalizes backslashes to forward slashes and strips leading/trailing slashes.
- */
-export function parseFolderList(foldersStr: string): string[] {
-	if (!foldersStr || !foldersStr.trim()) return [];
-	return foldersStr
-		.split(/[\n,]/)
-		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
-		.filter((f) => f.length > 0);
 }
 
 /**

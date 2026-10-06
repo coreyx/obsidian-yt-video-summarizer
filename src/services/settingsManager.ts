@@ -26,13 +26,11 @@ import {
     DEFAULT_MEDIA_EXTENDED_EMBED_COVER,
     DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
     DEFAULT_DISCOVER_PLAYLIST,
-    DEFAULT_SCAN_FOLDERS,
     DEFAULT_LM_STUDIO_URL,
     RETIRED_GEMINI_MODELS,
     RETIRED_ANTHROPIC_MODELS,
     RETIRED_OPENAI_MODELS,
 } from "src/defaults";
-import { parseFolderList } from "src/utils/frontmatter";
 import { normalizeOpenAIBaseUrl } from "src/services/lmStudio";
 
 
@@ -70,7 +68,6 @@ export class SettingsManager implements PluginSettings {
             mediaExtendedEmbedCover: DEFAULT_MEDIA_EXTENDED_EMBED_COVER,
             addDescriptionToFrontmatter: DEFAULT_ADD_DESCRIPTION_TO_FRONTMATTER,
             discoverPlaylist: DEFAULT_DISCOVER_PLAYLIST,
-            scanFolders: DEFAULT_SCAN_FOLDERS,
             lmStudioUrl: DEFAULT_LM_STUDIO_URL,
         };
     }
@@ -114,7 +111,6 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedEmbedCover: rawSettings.mediaExtendedEmbedCover ?? this.settings.mediaExtendedEmbedCover,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
-                scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
                 lmStudioUrl: rawSettings.lmStudioUrl ?? this.settings.lmStudioUrl,
             };
 
@@ -160,7 +156,6 @@ export class SettingsManager implements PluginSettings {
                 mediaExtendedEmbedCover: rawSettings.mediaExtendedEmbedCover ?? this.settings.mediaExtendedEmbedCover,
                 addDescriptionToFrontmatter: rawSettings.addDescriptionToFrontmatter ?? this.settings.addDescriptionToFrontmatter,
                 discoverPlaylist: rawSettings.discoverPlaylist ?? this.settings.discoverPlaylist,
-                scanFolders: rawSettings.scanFolders ?? this.settings.scanFolders,
                 lmStudioUrl: rawSettings.lmStudioUrl ?? this.settings.lmStudioUrl,
             };
 
@@ -550,19 +545,6 @@ export class SettingsManager implements PluginSettings {
     updateDiscoverPlaylist(value: boolean): void {
         this.settings.discoverPlaylist = value;
         this.saveData();
-    }
-
-    getScanFolders(): string {
-        return this.settings.scanFolders ?? DEFAULT_SCAN_FOLDERS;
-    }
-
-    getScanFolderList(): string[] {
-        return parseFolderList(this.getScanFolders());
-    }
-
-    async updateScanFolders(value: string): Promise<void> {
-        this.settings.scanFolders = value;
-        await this.saveData();
     }
 
     getLmStudioUrl(): string {

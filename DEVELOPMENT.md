@@ -235,9 +235,8 @@ npm test
 6. `parseTopics`: Topic extraction from LLM responses.
 7. `extractTagsFromText`: Hashtag regex detection in titles and descriptions.
 8. `extractYouTubeUrlFromNote`: URL detection in existing notes.
-9. `isNoteMissingFrontmatter`: Identifying upgrade candidates.
 10. `mergeFrontmatter with excludeTags`: Safe batch upgrading without overwriting tags.
-11. Folder filtering & sorting for folder-scoped upgrades.
+11. Folder filtering & sorting for folder-scoped batch operations.
 12. Gemini model retirement and auto-migration.
 13. Anthropic & OpenAI model retirement and auto-migration.
 14. OpenAI parameter construction (`max_completion_tokens` vs `max_tokens`).
@@ -248,13 +247,12 @@ npm test
 19. Media Extended companion note formatting and bidirectional links.
 20. YouTube description frontmatter block and cross-source tag deduplication.
 21. Creator playlist discovery, frontmatter serialization, and header formatting.
-22. Missing companion note detection and missing description frontmatter upgrade.
-23. Folder parsing, folder filtering, and folder-scoped discovery.
+22. Missing companion note detection.
+23. Folder filtering and folder-scoped discovery.
 24. Summary prompt Media Extended checkbox and per-run override resolution.
 25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
 26. Media Extended note description, timestamp conversion, section headings, and empty line formatting.
     - 26b. Summary note YouTube timestamp links (description, transcript, AI summary), code/wikilink protection, per-run Media Extended description/transcript options, and body defaults.
-27. Playlist frontmatter detection, YouTube Data API playlist upgrading, candidate filtering, and tag preservation.
 28. Vault tag caching, compression, group prefix detection, AI topic tagging prompt, and grouped tag deduplication.
 
 ---

@@ -14,6 +14,7 @@ import { ProvidersFactory } from './services/providers/providersFactory';
 import { detectLMStudioServer } from './services/lmStudio';
 import { AIModelProvider } from './types';
 import {
+	addMissingUserFlags,
 	addRelatedLink,
 	addTagsToNoteContent,
 	applyFrontmatter,
@@ -25,7 +26,6 @@ import {
 	deduplicateTags,
 	ensureSectionOrder,
 	extractFrontmatterTags,
-	extractPlaylistIdFromFrontmatter,
 	extractVideoIdFromUrl,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
@@ -36,21 +36,17 @@ import {
 	frontmatterMatchesVideo,
 	getVideoNoteKind,
 	hasMarkdownSection,
-	hasPlaylistTitlePlaceholder,
 	isBlankNoteForSummary,
 	hasRelatedMediaExtendedLink,
 	isMediaExtendedCompanionNote,
-	isNoteMissingDescriptionFrontmatter,
-	isNoteMissingFrontmatter,
-	isNoteMissingPlaylistFrontmatter,
 	keepExtraFrontmatter,
 	MediaExtendedMetadata,
 	refreshMediaExtendedNoteContent,
 	sanitizeFileName,
-	sanitizeTag,
 	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
 	upsertMarkdownSection,
+	USER_FLAG_KEYS,
 	videoStatsFrontmatter,
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
@@ -100,42 +96,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					if (file instanceof TFolder) {
 						menu.addItem((item) => {
 							item
-								.setTitle('Upgrade YouTube notes in this folder')
-								.setIcon('youtube')
-								.onClick(async () => {
-									await this.upgradeNotesInFolder(file);
-								});
-						});
-						menu.addItem((item) => {
-							item
 								.setTitle('Create missing Media Extended notes in this folder')
 								.setIcon('youtube')
 								.onClick(async () => {
 									await this.createMediaExtendedInFolder(file);
-								});
-						});
-						menu.addItem((item) => {
-							item
-								.setTitle('Upgrade video notes with tags and description in this folder')
-								.setIcon('youtube')
-								.onClick(async () => {
-									await this.upgradeNotesWithTagsAndDescriptionInFolder(file);
-								});
-						});
-						menu.addItem((item) => {
-							item
-								.setTitle('Upgrade video notes with playlist in this folder')
-								.setIcon('youtube')
-								.onClick(async () => {
-									await this.upgradeNotesWithPlaylistInFolder(file);
-								});
-						});
-						menu.addItem((item) => {
-							item
-								.setTitle('Fix playlist title placeholder in this folder')
-								.setIcon('youtube')
-								.onClick(async () => {
-									await this.fixPlaylistTitlePlaceholderInFolder(file);
 								});
 						});
 						menu.addItem((item) => {
@@ -407,120 +371,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			},
 		});
 
-		// Command to upgrade the current note's frontmatter
-		this.addCommand({
-			id: 'upgrade-youtube-note',
-			name: 'Upgrade current note with YouTube frontmatter',
-			editorCallback: async (editor: Editor, view: MarkdownView) => {
-				await this.upgradeCurrentNote(editor, view);
-			},
-		});
-
-		// Command to upgrade YouTube notes in a specific folder
-		this.addCommand({
-			id: 'upgrade-folder-youtube-notes',
-			name: 'Upgrade YouTube notes in folder...',
-			callback: () => {
-				this.promptFolderUpgrade();
-			},
-		});
-
-		// Command to upgrade all YouTube notes in the vault
-		this.addCommand({
-			id: 'upgrade-all-youtube-notes',
-			name: 'Upgrade all YouTube notes in vault',
-			callback: async () => {
-				await this.upgradeVaultNotes();
-			},
-		});
-
 		// Command to create Media Extended notes for video summaries in a specific folder
 		this.addCommand({
 			id: 'create-missing-media-extended-notes-folder',
 			name: 'Create Media Extended notes for video summaries in folder...',
 			callback: () => {
 				this.promptCreateMediaExtendedNotes();
-			},
-		});
-
-		// Command to create Media Extended notes for video summaries in the entire vault
-		this.addCommand({
-			id: 'create-missing-media-extended-notes-vault',
-			name: 'Create Media Extended notes for video summaries in entire vault',
-			callback: async () => {
-				await this.createMediaExtendedInVault();
-			},
-		});
-
-		// Command to create Media Extended notes for video summaries without matching companion note
-		this.addCommand({
-			id: 'create-missing-media-extended-notes',
-			name: 'Create Media Extended notes for video summaries without companion note',
-			callback: async () => {
-				await this.createMediaExtendedForMissingNotes();
-			},
-		});
-
-		// Command to upgrade video summary notes with tags and description in a specific folder
-		this.addCommand({
-			id: 'upgrade-notes-with-tags-and-description-folder',
-			name: 'Upgrade video summary notes with tags and description in folder...',
-			callback: () => {
-				this.promptUpgradeNotesWithTagsAndDescription();
-			},
-		});
-
-		// Command to upgrade video summary notes with tags and description in the entire vault
-		this.addCommand({
-			id: 'upgrade-notes-with-tags-and-description-vault',
-			name: 'Upgrade video summary notes with tags and description in entire vault',
-			callback: async () => {
-				await this.upgradeNotesWithTagsAndDescriptionInVault();
-			},
-		});
-
-		// Command to upgrade video summary notes with tags and description frontmatter
-		this.addCommand({
-			id: 'upgrade-notes-with-tags-and-description',
-			name: 'Upgrade video summary notes with tags and description frontmatter',
-			callback: async () => {
-				await this.upgradeNotesWithTagsAndDescription();
-			},
-		});
-
-		// Command to upgrade video summary notes with playlist from YouTube Data API in a specific folder
-		this.addCommand({
-			id: 'upgrade-notes-with-playlist-folder',
-			name: 'Upgrade video summary notes with playlist in folder...',
-			callback: () => {
-				this.promptUpgradeNotesWithPlaylist();
-			},
-		});
-
-		// Command to upgrade video summary notes with playlist in the entire vault
-		this.addCommand({
-			id: 'upgrade-notes-with-playlist-vault',
-			name: 'Upgrade video summary notes with playlist in entire vault',
-			callback: async () => {
-				await this.upgradeNotesWithPlaylistInVault();
-			},
-		});
-
-		// Command to upgrade video summary notes with playlist from YouTube Data API
-		this.addCommand({
-			id: 'upgrade-notes-with-playlist',
-			name: 'Upgrade video summary notes with playlist from YouTube Data API',
-			callback: async () => {
-				await this.upgradeNotesWithPlaylist();
-			},
-		});
-
-		// Command to fix notes where playlist_title is the generic "Playlist" placeholder
-		this.addCommand({
-			id: 'fix-playlist-title-placeholder',
-			name: 'Fix playlist title placeholder in folder...',
-			callback: () => {
-				this.promptFixPlaylistTitlePlaceholder();
 			},
 		});
 
@@ -539,8 +395,17 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			id: 'refresh-video-metadata-folder',
 			name: 'Refresh video metadata in folder...',
 			callback: () => {
+				this.promptRefreshVideoMetadata();
+			},
+		});
+
+		// Command to add frontmatter properties introduced by newer plugin versions, without fetching anything
+		this.addCommand({
+			id: 'upgrade-video-summary-frontmatter-folder',
+			name: 'Upgrade video summary frontmatter in folder...',
+			callback: () => {
 				new FolderSuggestModal(this.app, async (folder) => {
-					await this.refreshVideoMetadataInFolder(folder);
+					await this.upgradeVideoSummaryFrontmatterInFolder(folder);
 				}).open();
 			},
 		});
@@ -1598,277 +1463,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Upgrades the currently active note by fetching missing YouTube metadata
-	 * and updating frontmatter without re-running summary inference or generating tags.
-	 */
-	public async upgradeCurrentNote(editor: Editor, view: MarkdownView): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
-			return;
-		}
-
-		const content = editor.getValue();
-		const url = extractYouTubeUrlFromNote(content);
-
-		if (!url) {
-			new Notice('No YouTube video URL found in this note.');
-			return;
-		}
-
-		try {
-			this.isProcessing = true;
-			new Notice('Upgrading note with YouTube metadata...');
-
-			const metadata = await this.youtubeService.fetchVideoMetadata(
-				url,
-				this.settings.getYoutubeApiKey()
-			);
-			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
-
-			let thumbnailText = '';
-			if (this.provider?.extractThumbnailText) {
-				try {
-					const buffer = await YouTubeService.fetchThumbnailBuffer(metadata.videoId);
-					if (buffer) {
-						thumbnailText = await this.provider.extractThumbnailText(
-							arrayBufferToBase64(buffer),
-							'image/jpeg'
-						);
-					}
-				} catch (e) {
-					console.warn('Thumbnail text extraction skipped during upgrade:', e);
-				}
-			}
-
-			// Extract tags from title & description and/or YouTube Data API if enabled
-			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-				? [
-						...extractTagsFromText(metadata.title),
-						...extractTagsFromText(metadata.description || ''),
-				  ]
-				: [];
-
-			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
-				? metadata.tags
-				: [];
-
-			const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
-
-			const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
-			const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
-				? playlist.title.trim()
-				: undefined;
-			const fmData: FrontmatterData = {
-				title: metadata.title,
-				channel_name: metadata.author,
-				channel_username: metadata.channelUsername || '',
-				channel_url: metadata.channelUrl,
-				video_url: metadata.url,
-				...videoStatsFrontmatter(metadata),
-				thumbnail: thumbnailUrl,
-				thumbnail_text: thumbnailText,
-				description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
-				tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-				playlist_title: pTitle,
-				playlist_url: playlist?.url,
-				playlist_id: playlist?.id,
-				playlist_index: playlist?.index,
-				playlist_count: playlist?.count,
-			};
-
-			applyFrontmatter(editor, fmData);
-			new Notice('Note frontmatter upgraded successfully!');
-		} catch (error) {
-			new Notice(`Failed to upgrade note: ${error.message}`);
-			console.error('Failed to upgrade note:', error);
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Upgrades a collection of markdown files containing YouTube videos by adding
-	 * missing frontmatter metadata without re-generating summaries or tags.
-	 * @param files The markdown files to inspect and upgrade.
-	 * @param scopeDescription A human-readable description of the target scope.
-	 */
-	private async upgradeNotes(files: TFile[], scopeDescription: string): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
-			return;
-		}
-
-		try {
-			this.isProcessing = true;
-			new Notice(`Scanning ${scopeDescription} for YouTube notes to upgrade...`);
-
-			const candidates: { file: TFile; url: string }[] = [];
-
-			for (const file of files) {
-				const content = await this.app.vault.read(file);
-				if (isNoteMissingFrontmatter(content)) {
-					const url = extractYouTubeUrlFromNote(content);
-					if (url) {
-						candidates.push({ file, url });
-					}
-				}
-			}
-
-			if (candidates.length === 0) {
-				BatchProgressTracker.finishEmpty(
-					this,
-					'Upgrade previous notes',
-					scopeDescription,
-					`All YouTube notes in ${scopeDescription} already have up-to-date frontmatter!`
-				);
-				return;
-			}
-
-			const tracker = new BatchProgressTracker(
-				this,
-				'Upgrade previous notes',
-				scopeDescription,
-				candidates.length
-			);
-
-			for (let i = 0; i < candidates.length; i++) {
-				const { file, url } = candidates[i];
-				try {
-					const metadata = await this.youtubeService.fetchVideoMetadata(
-						url,
-						this.settings.getYoutubeApiKey()
-					);
-					const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
-
-					let thumbnailText = '';
-					if (this.provider?.extractThumbnailText) {
-						try {
-							const buffer = await YouTubeService.fetchThumbnailBuffer(metadata.videoId);
-							if (buffer) {
-								thumbnailText = await this.provider.extractThumbnailText(
-									arrayBufferToBase64(buffer),
-									'image/jpeg'
-								);
-							}
-						} catch (e) {
-							console.warn(`Thumbnail OCR skipped for ${file.path}:`, e);
-						}
-					}
-
-					// Extract tags from title & description and/or YouTube Data API if enabled
-					const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-						? [
-								...extractTagsFromText(metadata.title),
-								...extractTagsFromText(metadata.description || ''),
-						  ]
-						: [];
-
-					const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
-						? metadata.tags
-						: [];
-
-					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
-
-					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
-					const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
-						? playlist.title.trim()
-						: undefined;
-					const fmData: FrontmatterData = {
-						title: metadata.title,
-						channel_name: metadata.author,
-						channel_username: metadata.channelUsername || '',
-						channel_url: metadata.channelUrl,
-						video_url: metadata.url,
-						...videoStatsFrontmatter(metadata),
-						thumbnail: thumbnailUrl,
-						thumbnail_text: thumbnailText,
-						description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
-						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-						playlist_title: pTitle,
-						playlist_url: playlist?.url,
-						playlist_id: playlist?.id,
-						playlist_index: playlist?.index,
-						playlist_count: playlist?.count,
-					};
-
-					const currentContent = await this.app.vault.read(file);
-					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
-					await this.app.vault.modify(file, updatedContent);
-
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url,
-						status: 'success',
-						message: `Upgraded frontmatter (${metadata.title})${thumbnailText ? ' with OCR text' : ''}`
-					});
-				} catch (error) {
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url,
-						status: 'error',
-						message: error.message || String(error)
-					});
-				}
-
-				if (i < candidates.length - 1) {
-					await new Promise((res) => setTimeout(res, 300));
-				}
-			}
-
-			tracker.finish();
-		} catch (error) {
-			new Notice(`Upgrade failed: ${error.message}`);
-			console.error(`Upgrade notes in ${scopeDescription} failed:`, error);
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Scans all notes in the vault for YouTube videos missing new frontmatter and upgrades them.
-	 */
-	public async upgradeVaultNotes(): Promise<void> {
-		const files = this.app.vault.getMarkdownFiles();
-		await this.upgradeNotes(files, 'vault');
-	}
-
-	/**
-	 * Scans notes within a specific folder (and its subfolders) for YouTube videos missing
-	 * new frontmatter and upgrades them.
-	 * @param folder The folder to scan.
-	 */
-	public async upgradeNotesInFolder(folder: TFolder): Promise<void> {
-		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
-		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
-		await this.upgradeNotes(files, scopeDescription);
-	}
-
-	/**
-	 * Scans notes within user-configured folders for YouTube videos missing new frontmatter.
-	 */
-	public async upgradeNotesInConfiguredFolders(): Promise<void> {
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length === 0) {
-			this.promptFolderUpgrade();
-			return;
-		}
-		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
-		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
-		await this.upgradeNotes(files, scopeDescription);
-	}
-
-	/**
-	 * Opens a folder selection modal and triggers an upgrade for the selected folder.
-	 */
-	public promptFolderUpgrade(): void {
-		new FolderSuggestModal(this.app, async (folder) => {
-			await this.upgradeNotesInFolder(folder);
-		}).open();
-	}
-
-	/**
 	 * Processes a list of markdown files, creating Media Extended companion notes for any
 	 * that lack one, and adds the bidirectional link.
 	 * @param files The files to scan.
@@ -2009,584 +1603,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Scans notes within user-configured folders for video summary notes without companion notes.
-	 */
-	public async createMediaExtendedInConfiguredFolders(): Promise<void> {
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length === 0) {
-			this.promptCreateMediaExtendedNotes();
-			return;
-		}
-		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
-		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
-		await this.processMediaExtendedNotes(files, scopeDescription);
-	}
-
-	/**
 	 * Opens a folder selection modal to create companion notes in the chosen folder.
 	 */
 	public promptCreateMediaExtendedNotes(): void {
 		new FolderSuggestModal(this.app, async (folder) => {
 			await this.createMediaExtendedInFolder(folder);
-		}).open();
-	}
-
-	/**
-	 * Entry point for creating missing Media Extended notes.
-	 * If folder is specified, runs on that folder.
-	 * If scanFolders setting is configured, runs on configured folders.
-	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
-	 */
-	public async createMediaExtendedForMissingNotes(folder?: TFolder): Promise<void> {
-		if (folder) {
-			await this.createMediaExtendedInFolder(folder);
-			return;
-		}
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length > 0) {
-			await this.createMediaExtendedInConfiguredFolders();
-			return;
-		}
-		this.promptCreateMediaExtendedNotes();
-	}
-
-	/**
-	 * Processes a list of markdown files, upgrading video summary notes that lack description frontmatter.
-	 * @param files The files to scan.
-	 * @param scopeDescription Human-readable label for progress notifications.
-	 */
-	public async processNotesWithTagsAndDescription(files: TFile[], scopeDescription: string): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
-			return;
-		}
-
-		try {
-			this.isProcessing = true;
-			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-			new Notice(`Scanning ${scopeDescription} for video summary notes missing description frontmatter...`);
-
-			const candidates: { file: TFile; url: string }[] = [];
-
-			for (const file of files) {
-				const content = await this.app.vault.read(file);
-
-				// Skip companion notes
-				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
-					continue;
-				}
-
-				const url = extractYouTubeUrlFromNote(content);
-				if (!url) {
-					continue;
-				}
-
-				if (isNoteMissingDescriptionFrontmatter(content)) {
-					candidates.push({ file, url });
-				}
-			}
-
-			if (candidates.length === 0) {
-				BatchProgressTracker.finishEmpty(
-					this,
-					'Upgrade tags & description frontmatter',
-					scopeDescription,
-					`All video summary notes in ${scopeDescription} already have description frontmatter!`
-				);
-				return;
-			}
-
-			const tracker = new BatchProgressTracker(
-				this,
-				'Upgrade tags & description frontmatter',
-				scopeDescription,
-				candidates.length
-			);
-
-			for (let i = 0; i < candidates.length; i++) {
-				const { file, url } = candidates[i];
-				try {
-					const metadata = await this.youtubeService.fetchVideoMetadata(
-						url,
-						this.settings.getYoutubeApiKey()
-					);
-					const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(metadata.videoId);
-
-					const currentContent = await this.app.vault.read(file);
-					const fmMatch = currentContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-					let thumbnailText = '';
-					if (fmMatch) {
-						const tMatch = fmMatch[1].match(/^thumbnail_text:\s*["']?([^"'\r\n]*)["']?/m);
-						if (tMatch) thumbnailText = tMatch[1].trim();
-					}
-
-					// Extract tags from title & description and/or YouTube Data API
-					const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-						? [
-								...extractTagsFromText(metadata.title),
-								...extractTagsFromText(metadata.description || ''),
-						  ]
-						: [];
-
-					const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && metadata.tags)
-						? metadata.tags
-						: [];
-
-					const newTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
-					const playlist = this.settings.getDiscoverPlaylist() ? metadata.playlist : undefined;
-					const pTitle = playlist?.title && playlist.title.trim().toLowerCase() !== 'playlist'
-						? playlist.title.trim()
-						: undefined;
-
-					const fmData: FrontmatterData = {
-						title: metadata.title,
-						channel_name: metadata.author,
-						channel_username: metadata.channelUsername || '',
-						channel_url: metadata.channelUrl,
-						video_url: metadata.url,
-						...videoStatsFrontmatter(metadata),
-						thumbnail: thumbnailUrl,
-						thumbnail_text: thumbnailText,
-						description: metadata.description,
-						tags: this.settings.getAddTagsToFrontmatter() ? newTags : undefined,
-						playlist_title: pTitle,
-						playlist_url: playlist?.url,
-						playlist_id: playlist?.id,
-						playlist_index: playlist?.index,
-						playlist_count: playlist?.count,
-					};
-
-					const updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData);
-					await this.app.vault.modify(file, updatedContent);
-
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url,
-						status: 'success',
-						message: `Added description (${(metadata.description || '').length} chars) and ${newTags.length} tag(s)`
-					});
-				} catch (error) {
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url,
-						status: 'error',
-						message: error.message || String(error)
-					});
-				}
-
-				if (i < candidates.length - 1) {
-					await new Promise((res) => setTimeout(res, 300));
-				}
-			}
-
-			tracker.finish();
-		} catch (error) {
-			new Notice(`Failed to upgrade notes: ${error.message}`);
-			console.error('Failed to upgrade notes with tags and description:', error);
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Scans all notes in the vault for video summary notes missing description frontmatter and upgrades them.
-	 */
-	public async upgradeNotesWithTagsAndDescriptionInVault(): Promise<void> {
-		const files = this.app.vault.getMarkdownFiles();
-		await this.processNotesWithTagsAndDescription(files, 'vault');
-	}
-
-	/**
-	 * Scans notes within a specific folder (and its subfolders) for video summary notes missing description frontmatter.
-	 */
-	public async upgradeNotesWithTagsAndDescriptionInFolder(folder: TFolder): Promise<void> {
-		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
-		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
-		await this.processNotesWithTagsAndDescription(files, scopeDescription);
-	}
-
-	/**
-	 * Scans notes within user-configured folders for video summary notes missing description frontmatter.
-	 */
-	public async upgradeNotesWithTagsAndDescriptionInConfiguredFolders(): Promise<void> {
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length === 0) {
-			this.promptUpgradeNotesWithTagsAndDescription();
-			return;
-		}
-		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
-		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
-		await this.processNotesWithTagsAndDescription(files, scopeDescription);
-	}
-
-	/**
-	 * Opens a folder selection modal to upgrade notes missing description frontmatter in the chosen folder.
-	 */
-	public promptUpgradeNotesWithTagsAndDescription(): void {
-		new FolderSuggestModal(this.app, async (folder) => {
-			await this.upgradeNotesWithTagsAndDescriptionInFolder(folder);
-		}).open();
-	}
-
-	/**
-	 * Entry point for upgrading notes with tags & description frontmatter.
-	 * If folder is specified, runs on that folder.
-	 * If scanFolders setting is configured, runs on configured folders.
-	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
-	 */
-	public async upgradeNotesWithTagsAndDescription(folder?: TFolder): Promise<void> {
-		if (folder) {
-			await this.upgradeNotesWithTagsAndDescriptionInFolder(folder);
-			return;
-		}
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length > 0) {
-			await this.upgradeNotesWithTagsAndDescriptionInConfiguredFolders();
-			return;
-		}
-		this.promptUpgradeNotesWithTagsAndDescription();
-	}
-
-	/**
-	 * Processes a list of markdown files, checking each for YouTube video summary notes
-	 * that lack playlist properties in their frontmatter, querying YouTube Data API for playlist membership,
-	 * and merging playlist metadata into the frontmatter.
-	 */
-	public async processNotesWithPlaylist(files: TFile[], scopeDescription: string): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
-			return;
-		}
-
-		try {
-			this.isProcessing = true;
-			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-			new Notice(`Scanning ${scopeDescription} for video summary notes missing playlist frontmatter...`);
-
-			const candidates: { file: TFile; url: string }[] = [];
-
-			for (const file of files) {
-				const content = await this.app.vault.read(file);
-
-				// Skip companion notes
-				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
-					continue;
-				}
-
-				const url = extractYouTubeUrlFromNote(content);
-				if (!url) {
-					continue;
-				}
-
-				if (isNoteMissingPlaylistFrontmatter(content)) {
-					candidates.push({ file, url });
-				}
-			}
-
-			if (candidates.length === 0) {
-				BatchProgressTracker.finishEmpty(
-					this,
-					'Upgrade playlist frontmatter',
-					scopeDescription,
-					`All video summary notes in ${scopeDescription} already have playlist frontmatter!`
-				);
-				return;
-			}
-
-			const tracker = new BatchProgressTracker(
-				this,
-				'Upgrade playlist frontmatter',
-				scopeDescription,
-				candidates.length
-			);
-
-			for (let i = 0; i < candidates.length; i++) {
-				const { file, url } = candidates[i];
-				try {
-					const metadata = await this.youtubeService.fetchVideoMetadata(
-						url,
-						this.settings.getYoutubeApiKey()
-					);
-
-					if (metadata.playlist) {
-						const currentContent = await this.app.vault.read(file);
-						const fmMatch = currentContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-						let thumbnailText = '';
-						if (fmMatch) {
-							const tMatch = fmMatch[1].match(/^thumbnail_text:\s*["']?([^"'\r\n]*)["']?/m);
-							if (tMatch) thumbnailText = tMatch[1].trim();
-						}
-
-						const pTitle = metadata.playlist.title && metadata.playlist.title.trim().toLowerCase() !== 'playlist'
-							? metadata.playlist.title.trim()
-							: undefined;
-
-						const fmData: FrontmatterData = {
-							title: metadata.title,
-							channel_name: metadata.author,
-							channel_username: metadata.channelUsername || '',
-							channel_url: metadata.channelUrl,
-							video_url: metadata.url,
-							...videoStatsFrontmatter(metadata),
-							thumbnail: await YouTubeService.getAvailableThumbnailUrl(metadata.videoId),
-							thumbnail_text: thumbnailText,
-							description: this.settings.getAddDescriptionToFrontmatter() ? metadata.description : undefined,
-							playlist_title: pTitle,
-							playlist_url: metadata.playlist.url,
-							playlist_id: metadata.playlist.id,
-							playlist_index: metadata.playlist.index,
-							playlist_count: metadata.playlist.count,
-						};
-
-						let updatedContent = updateNoteContentWithFrontmatter(currentContent, fmData, { excludeTags: true });
-						if (pTitle) {
-							// Update any legacy "Playlist: Playlist" links in the note body
-							updatedContent = updatedContent.replace(
-								/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
-								`[Playlist: ${pTitle}$1]`
-							);
-						}
-						await this.app.vault.modify(file, updatedContent);
-
-						tracker.recordItem({
-							filePath: file.path,
-							fileName: file.basename,
-							url,
-							status: 'success',
-							message: pTitle
-								? `Added playlist: "${pTitle}" (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
-								: `Added playlist: ${metadata.playlist.id} (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
-						});
-					} else {
-						tracker.recordItem({
-							filePath: file.path,
-							fileName: file.basename,
-							url,
-							status: 'skipped',
-							message: 'Video is not part of a playlist on YouTube'
-						});
-					}
-				} catch (error) {
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url,
-						status: 'error',
-						message: error.message || String(error)
-					});
-				}
-
-				if (i < candidates.length - 1) {
-					await new Promise((res) => setTimeout(res, 300));
-				}
-			}
-
-			tracker.finish();
-		} catch (error) {
-			new Notice(`Failed to upgrade notes with playlist: ${error.message}`);
-			console.error('Failed to upgrade notes with playlist:', error);
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Scans all notes in the vault for video summary notes missing playlist frontmatter and upgrades them.
-	 */
-	public async upgradeNotesWithPlaylistInVault(): Promise<void> {
-		const files = this.app.vault.getMarkdownFiles();
-		await this.processNotesWithPlaylist(files, 'vault');
-	}
-
-	/**
-	 * Scans notes within a specific folder (and its subfolders) for video summary notes missing playlist frontmatter.
-	 */
-	public async upgradeNotesWithPlaylistInFolder(folder: TFolder): Promise<void> {
-		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
-		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
-		await this.processNotesWithPlaylist(files, scopeDescription);
-	}
-
-	/**
-	 * Scans notes within user-configured folders for video summary notes missing playlist frontmatter.
-	 */
-	public async upgradeNotesWithPlaylistInConfiguredFolders(): Promise<void> {
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length === 0) {
-			this.promptUpgradeNotesWithPlaylist();
-			return;
-		}
-		const files = filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), configuredFolders);
-		const scopeDescription = `folders (${configuredFolders.join(', ')})`;
-		await this.processNotesWithPlaylist(files, scopeDescription);
-	}
-
-	/**
-	 * Opens a folder selection modal to upgrade notes missing playlist frontmatter in the chosen folder.
-	 */
-	public promptUpgradeNotesWithPlaylist(): void {
-		new FolderSuggestModal(this.app, async (folder) => {
-			await this.upgradeNotesWithPlaylistInFolder(folder);
-		}).open();
-	}
-
-	/**
-	 * Entry point for upgrading notes with playlist frontmatter from YouTube Data API.
-	 * If folder is specified, runs on that folder.
-	 * If scanFolders setting is configured, runs on configured folders.
-	 * Otherwise prompts folder selection modal to prevent unintended vault-wide scans.
-	 */
-	public async upgradeNotesWithPlaylist(folder?: TFolder): Promise<void> {
-		if (folder) {
-			await this.upgradeNotesWithPlaylistInFolder(folder);
-			return;
-		}
-		const configuredFolders = this.settings.getScanFolderList();
-		if (configuredFolders.length > 0) {
-			await this.upgradeNotesWithPlaylistInConfiguredFolders();
-			return;
-		}
-		this.promptUpgradeNotesWithPlaylist();
-	}
-
-	/**
-	 * Processes a list of markdown files, finding those where playlist_title is the generic "Playlist"
-	 * placeholder and re-fetching the real playlist title (using the stored playlist_id — no full
-	 * video metadata fetch required). Updates both frontmatter and body link text.
-	 */
-	public async processFixPlaylistTitlePlaceholder(files: TFile[], scopeDescription: string): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
-			return;
-		}
-
-		try {
-			this.isProcessing = true;
-			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-			new Notice(`Scanning ${scopeDescription} for notes with placeholder playlist titles...`);
-
-			const candidates: { file: TFile; playlistId: string }[] = [];
-
-			for (const file of files) {
-				const content = await this.app.vault.read(file);
-
-				// Skip companion notes
-				if (isMediaExtendedCompanionNote(content, file.path, mediaFolder)) {
-					continue;
-				}
-
-				if (hasPlaylistTitlePlaceholder(content)) {
-					const playlistId = extractPlaylistIdFromFrontmatter(content);
-					if (playlistId) {
-						candidates.push({ file, playlistId });
-					}
-				}
-			}
-
-			if (candidates.length === 0) {
-				BatchProgressTracker.finishEmpty(
-					this,
-					'Fix playlist title placeholder',
-					scopeDescription,
-					`No notes with a placeholder playlist title found in ${scopeDescription}.`
-				);
-				return;
-			}
-
-			const tracker = new BatchProgressTracker(
-				this,
-				'Fix playlist title placeholder',
-				scopeDescription,
-				candidates.length
-			);
-
-			for (let i = 0; i < candidates.length; i++) {
-				const { file, playlistId } = candidates[i];
-				try {
-					// Fetch the real title directly — no full video metadata fetch needed
-					const details = await YouTubeService.fetchPlaylistDetails(
-						playlistId,
-						this.settings.getYoutubeApiKey() || undefined
-					);
-
-					const pTitle = details.title && details.title.trim().toLowerCase() !== 'playlist'
-						? details.title.trim()
-						: undefined;
-
-					if (pTitle) {
-						const currentContent = await this.app.vault.read(file);
-
-						// Replace only the playlist_title line — leave all other frontmatter untouched
-						let updatedContent = currentContent.replace(
-							/^(playlist_title:\s*)["']?Playlist["']?\s*$/im,
-							`playlist_title: ${JSON.stringify(pTitle)}`
-						);
-
-						// Also fix any legacy "Playlist: Playlist" body link text
-						updatedContent = updatedContent.replace(
-							/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
-							`[Playlist: ${pTitle}$1]`
-						);
-
-						await this.app.vault.modify(file, updatedContent);
-
-						tracker.recordItem({
-							filePath: file.path,
-							fileName: file.basename,
-							url: `https://www.youtube.com/playlist?list=${playlistId}`,
-							status: 'success',
-							message: `Playlist title fixed → "${pTitle}"`,
-						});
-					} else {
-						tracker.recordItem({
-							filePath: file.path,
-							fileName: file.basename,
-							url: `https://www.youtube.com/playlist?list=${playlistId}`,
-							status: 'skipped',
-							message: 'Could not determine real playlist title from YouTube',
-						});
-					}
-				} catch (error) {
-					tracker.recordItem({
-						filePath: file.path,
-						fileName: file.basename,
-						url: `https://www.youtube.com/playlist?list=${playlistId}`,
-						status: 'error',
-						message: error.message || String(error),
-					});
-				}
-
-				if (i < candidates.length - 1) {
-					await new Promise((res) => setTimeout(res, 300));
-				}
-			}
-
-			tracker.finish();
-		} catch (error) {
-			new Notice(`Failed to fix playlist title placeholders: ${error.message}`);
-			console.error('Failed to fix playlist title placeholders:', error);
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Fixes playlist_title placeholders within a specific folder (and its subfolders).
-	 */
-	public async fixPlaylistTitlePlaceholderInFolder(folder: TFolder): Promise<void> {
-		const files = filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder);
-		const scopeDescription = folder.isRoot() ? 'vault root' : `folder "${folder.path}"`;
-		await this.processFixPlaylistTitlePlaceholder(files, scopeDescription);
-	}
-
-	/**
-	 * Opens a folder selection modal for the fix-playlist-title-placeholder command.
-	 */
-	public promptFixPlaylistTitlePlaceholder(): void {
-		new FolderSuggestModal(this.app, async (folder) => {
-			await this.fixPlaylistTitlePlaceholderInFolder(folder);
 		}).open();
 	}
 
@@ -2679,6 +1700,63 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		} finally {
 			this.isProcessing = false;
 		}
+	}
+
+	/**
+	 * Adds the frontmatter properties that newer plugin versions introduced (`watch_later`, `favorite`)
+	 * to every video summary note in a folder (and its subfolders) that doesn't have them yet.
+	 * Nothing is fetched, and no existing frontmatter or note content is changed.
+	 */
+	public async upgradeVideoSummaryFrontmatterInFolder(folder: TFolder): Promise<void> {
+		if (this.isProcessing) {
+			new Notice('Already processing a video or upgrading notes, please wait...');
+			return;
+		}
+
+		const scopeDescription = folder.isRoot() ? 'the vault' : `folder "${folder.path}"`;
+
+		try {
+			this.isProcessing = true;
+			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
+
+			let summaryNotes = 0;
+			let upgraded = 0;
+			for (const file of filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder)) {
+				const content = await this.app.vault.read(file);
+				if (getVideoNoteKind(content, file.path, mediaFolder) !== 'summary') {
+					continue;
+				}
+				summaryNotes++;
+				if (addMissingUserFlags(content) === content) {
+					continue;
+				}
+				// Re-applied to the current content in case the note changed since it was read
+				await this.app.vault.process(file, (current) => addMissingUserFlags(current));
+				upgraded++;
+			}
+
+			if (summaryNotes === 0) {
+				new Notice(`No video summary notes found in ${scopeDescription}.`);
+			} else if (upgraded === 0) {
+				new Notice(`All ${summaryNotes} video summary note(s) in ${scopeDescription} are already up to date.`);
+			} else {
+				new Notice(`Added ${USER_FLAG_KEYS.join(' / ')} to ${upgraded} of ${summaryNotes} video summary note(s) in ${scopeDescription}.`);
+			}
+		} catch (error) {
+			new Notice(`Failed to upgrade video summary frontmatter: ${error.message}`);
+			console.error('Failed to upgrade video summary frontmatter:', error);
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Opens a folder selection modal to refresh video metadata in the chosen folder.
+	 */
+	public promptRefreshVideoMetadata(): void {
+		new FolderSuggestModal(this.app, async (folder) => {
+			await this.refreshVideoMetadataInFolder(folder);
+		}).open();
 	}
 
 	/**

@@ -59,7 +59,6 @@ export interface StoredSettings {
 	mediaExtendedEmbedCover?: boolean;
 	addDescriptionToFrontmatter?: boolean;
 	discoverPlaylist?: boolean;
-	scanFolders?: string;
 	lmStudioUrl?: string;
 }
 
@@ -183,9 +182,6 @@ export interface PluginSettings {
 	getDiscoverPlaylist(): boolean;
 	updateDiscoverPlaylist(value: boolean): void;
 
-	getScanFolders(): string;
-	updateScanFolders(value: string): Promise<void>;
-	getScanFolderList(): string[];
 
 	getLmStudioUrl(): string;
 	updateLmStudioUrl(value: string): Promise<void>;
