@@ -354,51 +354,7 @@ const noteWithNoUrl = `# Just a regular note with no links`;
 assert.strictEqual(extractYouTubeUrlFromNote(noteWithNoUrl), null);
 console.log('✓ extractYouTubeUrlFromNote passed');
 
-// Test 9: isNoteMissingFrontmatter
-function isNoteMissingFrontmatter(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return true;
-
-	const yaml = fmMatch[1];
-	const requiredFields = [
-		'title:',
-		'channel_name:',
-		'channel_username:',
-		'channel_url:',
-		'video_url:',
-		'thumbnail:',
-		'thumbnail_text:',
-	];
-
-	return requiredFields.some(field => !yaml.includes(field));
-}
-
-console.log('Testing isNoteMissingFrontmatter...');
-const legacyNote = `# Video Note
-👤 [Author](...)  🔗 [Watch video](...)`;
-assert.strictEqual(isNoteMissingFrontmatter(legacyNote), true);
-
-const partialFmNote = `---
-title: "Some Title"
-video_url: "https://..."
----
-# Video Note`;
-assert.strictEqual(isNoteMissingFrontmatter(partialFmNote), true);
-
-const completeFmNote = `---
-title: "Full"
-channel_name: "Author"
-channel_username: "@author"
-channel_url: "https://..."
-video_url: "https://..."
-thumbnail: "https://..."
-thumbnail_text: "TEXT"
----
-# Video Note`;
-assert.strictEqual(isNoteMissingFrontmatter(completeFmNote), false);
-console.log('✓ isNoteMissingFrontmatter passed');
-
-// Test 10: mergeFrontmatter with excludeTags (for upgrades)
+// Test 10: mergeFrontmatter with excludeTags (for metadata refresh)
 function mergeFrontmatterWithExclude(rawYaml, data, options) {
 	const lines = rawYaml.split(/\r?\n/);
 	const updatedKeys = new Set();
@@ -2006,8 +1962,8 @@ assert.strictEqual(
 
 console.log('✓ Creator playlist discovery, frontmatter, and body formatting passed');
 
-// Test 22: Detection of missing companion notes and missing description frontmatter upgrade
-console.log('Testing missing companion note detection and description frontmatter upgrade...');
+// Test 22: Detection of missing companion notes
+console.log('Testing missing companion note detection...');
 
 function isMediaExtendedCompanionNoteHelper(content, filePath, mediaFolder = 'Media Library') {
 	if (filePath) {
@@ -2050,15 +2006,6 @@ function hasRelatedMediaExtendedLinkHelper(content, mediaFolder = 'Media Library
 	}
 
 	return false;
-}
-
-function isNoteMissingDescriptionFrontmatterHelper(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) {
-		return true;
-	}
-	const yaml = fmMatch[1];
-	return !/^description:\s*/m.test(yaml);
 }
 
 // Case 1: isMediaExtendedCompanionNote identification
@@ -2119,74 +2066,10 @@ assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithCompanionLink, '
 assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithDifferentRelatedLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
 assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithNoRelated, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
 
-// Case 3: isNoteMissingDescriptionFrontmatter detection
-const noteWithoutDesc = `---
-title: "Old Video Summary"
-channel_name: "Channel"
-video_url: "https://www.youtube.com/watch?v=123"
-tags:
-  - ai
----
+console.log('✓ Missing companion note detection passed');
 
-## Summary`;
-
-const noteWithDescBlock = `---
-title: "Video Summary"
-channel_name: "Channel"
-description: |-
-  Line 1 of description
-  Line 2 of description
-video_url: "https://www.youtube.com/watch?v=123"
----
-
-## Summary`;
-
-const noteWithEmptyDesc = `---
-title: "Video Summary"
-description: ""
-video_url: "https://www.youtube.com/watch?v=123"
----
-
-## Summary`;
-
-const noteWithoutAnyFrontmatter = `## Summary
-No frontmatter at all.`;
-
-assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithoutDesc), true);
-assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithDescBlock), false);
-assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithEmptyDesc), false);
-assert.strictEqual(isNoteMissingDescriptionFrontmatterHelper(noteWithoutAnyFrontmatter), true);
-
-// Case 4: Upgrading a note missing description with YouTube Data API tags & description frontmatter
-const upgradeMetadata = {
-	title: 'Old Video Summary',
-	channel_name: 'Channel',
-	channel_username: '@channel',
-	channel_url: 'https://youtube.com/@channel',
-	video_url: 'https://www.youtube.com/watch?v=123',
-	thumbnail: 'https://img.youtube.com/vi/123/maxresdefault.jpg',
-	thumbnail_text: 'EXISTING OCR',
-	description: 'This is the newly fetched description from YouTube Data API!\nContains multiple lines.',
-	tags: ['ai', 'machine-learning', 'youtube-api']
-};
-
-const mergedUpgradedNote = mergeFrontmatterWithDesc(noteWithoutDesc, upgradeMetadata);
-assert(mergedUpgradedNote.includes('description: |-\n  This is the newly fetched description from YouTube Data API!\n  Contains multiple lines.'));
-assert(mergedUpgradedNote.includes('tags:\n  - ai\n  - machine-learning\n  - youtube-api'));
-assert(mergedUpgradedNote.includes('channel_name: "Channel"'));
-
-console.log('✓ Missing companion note detection and description frontmatter upgrade passed');
-
-// Test 23: Folder parsing, folder filtering, and folder-scoped discovery
-console.log('Testing folder parsing, folder filtering, and folder-scoped discovery...');
-
-function testParseFolderList(foldersStr) {
-	if (!foldersStr || !foldersStr.trim()) return [];
-	return foldersStr
-		.split(/[\n,]/)
-		.map((f) => f.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
-		.filter((f) => f.length > 0);
-}
+// Test 23: Folder filtering and folder-scoped discovery
+console.log('Testing folder filtering and folder-scoped discovery...');
 
 function testFilterFilesByFolderPaths(files, targetFolders) {
 	if (!targetFolders || targetFolders.length === 0) {
@@ -2219,19 +2102,7 @@ function testFilterFilesByFolder(files, folder) {
 	});
 }
 
-// Case 1: parseFolderList
-assert.deepStrictEqual(
-	testParseFolderList('YouTube, Notes/Videos, Archive/2026'),
-	['YouTube', 'Notes/Videos', 'Archive/2026']
-);
-assert.deepStrictEqual(
-	testParseFolderList(' /YouTube/ \n \\Notes\\Videos\\ , , \n   '),
-	['YouTube', 'Notes/Videos']
-);
-assert.deepStrictEqual(testParseFolderList(''), []);
-assert.deepStrictEqual(testParseFolderList('   '), []);
-
-// Case 2: filterFilesByFolderPaths
+// Case 1: filterFilesByFolderPaths
 const mockVaultFiles = [
 	{ path: 'YouTube/Rick Astley.md' },
 	{ path: 'YouTube/Tutorials/Agent.md' },
@@ -2250,7 +2121,7 @@ assert.deepStrictEqual(
 // Empty folder list returns all files
 assert.strictEqual(testFilterFilesByFolderPaths(mockVaultFiles, []).length, 5);
 
-// Case 3: filterFilesByFolder (single folder or root)
+// Case 2: filterFilesByFolder (single folder or root)
 const mockSubFolder = { path: 'YouTube', isRoot: () => false };
 const vaultRootFolder = { path: '/', isRoot: () => true };
 
@@ -2265,7 +2136,7 @@ const filteredByRoot = testFilterFilesByFolder(mockVaultFiles, vaultRootFolder);
 assert.strictEqual(filteredByRoot.length, 5);
 
 
-console.log('✓ Folder parsing, folder filtering, and folder-scoped discovery passed');
+console.log('✓ Folder filtering and folder-scoped discovery passed');
 
 // Test 24: Summary prompt Media Extended checkbox and per-run override resolution
 console.log('Testing summary prompt Media Extended checkbox override resolution...');
@@ -2706,268 +2577,6 @@ assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_INCLUDE_TRANSCRIPT = true;/
 
 console.log('✓ Summary note YouTube timestamp links, per-run Media Extended options, and defaults passed');
 
-// Test 27: Playlist frontmatter detection and YouTube Data API playlist upgrade
-console.log('Testing playlist frontmatter detection and YouTube Data API playlist upgrade...');
-
-function isNoteMissingPlaylistFrontmatterHelper(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) {
-		return true;
-	}
-	const yaml = fmMatch[1];
-	return !/^playlist(_[a-zA-Z0-9_-]*)?:\s*/m.test(yaml);
-}
-
-function updateNoteContentWithFrontmatterHelper(fullText, data, options) {
-	const match = fullText.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (match) {
-		const rawYaml = match[1];
-		const merged = mergeFrontmatterWithPlaylist(rawYaml, data);
-		const afterFrontmatter = fullText.slice(match[0].length);
-		return `---\n${merged}\n---\n${afterFrontmatter.startsWith('\n') ? afterFrontmatter.slice(1) : afterFrontmatter}`;
-	} else {
-		return `---\ntitle: ${JSON.stringify(data.title)}\n---\n\n${fullText}`;
-	}
-}
-
-// 27.1: isNoteMissingPlaylistFrontmatterHelper tests
-const noteWithoutFm = '# Just Markdown\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ';
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithoutFm), true);
-
-const noteWithoutPlaylist = `---
-title: "Sample Video"
-channel_name: "Tech Channel"
-video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-description: "A great tech tutorial"
-tags:
-  - tech
-  - coding
----
-# Summary
-Content here.`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithoutPlaylist), true);
-
-// Note with playlist_title
-const noteWithPlaylistTitle = `---
-title: "Sample Video"
-playlist_title: "Full Web Dev Course"
-playlist_id: "PL12345"
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistTitle), false);
-
-// Note with playlist_id only
-const noteWithPlaylistId = `---
-title: "Sample Video"
-playlist_id: "PL12345"
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistId), false);
-
-// Note with playlist_url only
-const noteWithPlaylistUrl = `---
-title: "Sample Video"
-playlist_url: "https://www.youtube.com/playlist?list=PL12345"
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistUrl), false);
-
-// Note with playlist_index only
-const noteWithPlaylistIndex = `---
-title: "Sample Video"
-playlist_index: 3
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistIndex), false);
-
-// Note with playlist_count only
-const noteWithPlaylistCount = `---
-title: "Sample Video"
-playlist_count: 12
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistCount), false);
-
-// Note with "playlist_title" inside multiline description (indented) must still be missing top-level playlist property
-const noteWithPlaylistInDesc = `---
-title: "Sample Video"
-description: |-
-  Check out my playlist_title here in description
-tags:
-  - web
----
-# Summary`;
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(noteWithPlaylistInDesc), true);
-
-// 27.2: Upgrading note frontmatter with playlist metadata while preserving existing properties
-const originalNote = `---
-title: "TypeScript Deep Dive"
-channel_name: "Code Academy"
-channel_username: "@codeacademy"
-channel_url: "https://www.youtube.com/@codeacademy"
-video_url: "https://www.youtube.com/watch?v=xyz123abc"
-thumbnail: "https://i.ytimg.com/vi/xyz123abc/maxresdefault.jpg"
-thumbnail_text: "TypeScript OCR Text"
-description: |-
-  Complete TypeScript course from beginner to advanced.
-custom_rating: 5
-tags:
-  - typescript
-  - javascript
----
-
-# TypeScript Deep Dive
-
-## Summary
-Comprehensive guide to modern TypeScript.`;
-
-const playlistData = {
-	title: "TypeScript Deep Dive",
-	channel_name: "Code Academy",
-	channel_username: "@codeacademy",
-	channel_url: "https://www.youtube.com/@codeacademy",
-	video_url: "https://www.youtube.com/watch?v=xyz123abc",
-	thumbnail: "https://i.ytimg.com/vi/xyz123abc/maxresdefault.jpg",
-	thumbnail_text: "TypeScript OCR Text",
-	description: "Complete TypeScript course from beginner to advanced.",
-	playlist_title: "Full TypeScript Mastery Series",
-	playlist_url: "https://www.youtube.com/playlist?list=PLtsMastery123",
-	playlist_id: "PLtsMastery123",
-	playlist_index: 4,
-	playlist_count: 20
-};
-
-const upgradedNote = updateNoteContentWithFrontmatterHelper(originalNote, playlistData, { excludeTags: true });
-
-// Verify playlist properties are serialized into YAML frontmatter
-assert(upgradedNote.includes('playlist_title: "Full TypeScript Mastery Series"'));
-assert(upgradedNote.includes('playlist_url: "https://www.youtube.com/playlist?list=PLtsMastery123"'));
-assert(upgradedNote.includes('playlist_id: "PLtsMastery123"'));
-assert(upgradedNote.includes('playlist_index: 4'));
-assert(upgradedNote.includes('playlist_count: 20'));
-
-// Verify existing tags and custom frontmatter properties are preserved
-assert(upgradedNote.includes('custom_rating: 5'));
-assert(upgradedNote.includes('- typescript'));
-assert(upgradedNote.includes('- javascript'));
-assert(upgradedNote.includes('thumbnail_text: "TypeScript OCR Text"'));
-
-// Verify body was not mutated or corrupted
-assert(upgradedNote.includes('# TypeScript Deep Dive\n\n## Summary\nComprehensive guide to modern TypeScript.'));
-
-// Verify note is no longer missing playlist frontmatter
-assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(upgradedNote), false);
-
-// 27.3: Candidate scanning & filtering simulation
-const mockVaultNotes = [
-	// Candidate 1: Missing playlist frontmatter
-	{
-		path: 'Notes/Video 1.md',
-		content: `---
-title: "Video 1"
-video_url: "https://www.youtube.com/watch?v=vid1"
----
-# Summary`,
-		hasPlaylistOnYT: true,
-		playlistInfo: {
-			title: 'Course Playlist',
-			url: 'https://www.youtube.com/playlist?list=PLCourse',
-			id: 'PLCourse',
-			index: 1,
-			count: 5
-		}
-	},
-	// Candidate 2: Missing playlist frontmatter, but standalone video (no playlist on YouTube)
-	{
-		path: 'Notes/Video 2.md',
-		content: `---
-title: "Video 2"
-video_url: "https://www.youtube.com/watch?v=vid2"
----
-# Summary`,
-		hasPlaylistOnYT: false
-	},
-	// Should be skipped: Already has playlist frontmatter
-	{
-		path: 'Notes/Video 3.md',
-		content: `---
-title: "Video 3"
-video_url: "https://www.youtube.com/watch?v=vid3"
-playlist_title: "Existing Series"
-playlist_id: "PL999"
----
-# Summary`,
-		hasPlaylistOnYT: true
-	},
-	// Should be skipped: Media Extended companion note
-	{
-		path: 'Media Library/Video 1.md',
-		content: `---
-mx-uid: abcdef123456789012345678
-video: https://www.youtube.com/watch?v=vid1
----
-- [00:00](...) Intro`,
-		hasPlaylistOnYT: true
-	},
-	// Should be skipped: Non-YouTube markdown note
-	{
-		path: 'Notes/Regular Note.md',
-		content: '# Regular Note\nJust personal thoughts.',
-		hasPlaylistOnYT: false
-	}
-];
-
-const mediaFolder = 'Media Library';
-const scanCandidates = [];
-
-for (const note of mockVaultNotes) {
-	if (isMediaExtendedCompanionNoteHelper(note.content, note.path, mediaFolder)) {
-		continue;
-	}
-	const url = extractYouTubeUrlFromNote(note.content);
-	if (!url) {
-		continue;
-	}
-	if (isNoteMissingPlaylistFrontmatterHelper(note.content)) {
-		scanCandidates.push(note);
-	}
-}
-
-// Exactly Video 1 and Video 2 should be identified as candidates
-assert.strictEqual(scanCandidates.length, 2);
-assert.strictEqual(scanCandidates[0].path, 'Notes/Video 1.md');
-assert.strictEqual(scanCandidates[1].path, 'Notes/Video 2.md');
-
-// Simulation of upgrade loop
-let upgradedCount = 0;
-let noPlaylistCount = 0;
-
-for (const candidate of scanCandidates) {
-	if (candidate.hasPlaylistOnYT) {
-		const fmData = {
-			title: 'Video 1',
-			channel_name: 'Channel',
-			video_url: 'https://www.youtube.com/watch?v=vid1',
-			thumbnail: 'https://i.ytimg.com/vi/vid1/default.jpg',
-			playlist_title: candidate.playlistInfo.title,
-			playlist_url: candidate.playlistInfo.url,
-			playlist_id: candidate.playlistInfo.id,
-			playlist_index: candidate.playlistInfo.index,
-			playlist_count: candidate.playlistInfo.count
-		};
-		const updated = updateNoteContentWithFrontmatterHelper(candidate.content, fmData, { excludeTags: true });
-		assert.strictEqual(isNoteMissingPlaylistFrontmatterHelper(updated), false);
-		upgradedCount++;
-	} else {
-		noPlaylistCount++;
-	}
-}
-
-assert.strictEqual(upgradedCount, 1);
-assert.strictEqual(noPlaylistCount, 1);
-
-console.log('✓ Playlist frontmatter detection and YouTube Data API playlist upgrade passed');
-
 // Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
 console.log('Testing vault tag caching, AI topic tagging prompt, and grouped tag deduplication...');
 
@@ -3353,7 +2962,7 @@ class MockHost {
 
 // 29.1: Basic recording and tallies
 const host1 = new MockHost();
-const tracker1 = new MockBatchProgressTracker(host1, 'Upgrade playlist frontmatter', 'vault', 3);
+const tracker1 = new MockBatchProgressTracker(host1, 'Refresh video metadata', 'vault', 3);
 
 tracker1.recordItem({
 	filePath: 'Notes/Video 1.md',
@@ -3399,7 +3008,7 @@ assert.deepStrictEqual(tracker1.updates, [
 const host2 = new MockHost();
 const emptyReport = MockBatchProgressTracker.finishEmpty(
 	host2,
-	'Upgrade playlist frontmatter',
+	'Refresh video metadata',
 	'folder "Podcasts"',
 	'All notes already up-to-date!'
 );
@@ -3411,13 +3020,13 @@ assert.strictEqual(emptyReport.items.length, 0);
 assert.strictEqual(host2.lastReport, emptyReport);
 
 const emptyMarkdown = formatBatchReportAsMarkdownHelper(emptyReport);
-assert(emptyMarkdown.includes('# Batch Operation Report: Upgrade playlist frontmatter'));
+assert(emptyMarkdown.includes('# Batch Operation Report: Refresh video metadata'));
 assert(emptyMarkdown.includes('- **Total Notes:** 0'));
 assert(emptyMarkdown.includes('No notes were processed.'));
 
 // 29.4: formatBatchReportAsMarkdown output verification
 const markdownOutput = formatBatchReportAsMarkdownHelper(report1);
-assert(markdownOutput.includes('# Batch Operation Report: Upgrade playlist frontmatter'));
+assert(markdownOutput.includes('# Batch Operation Report: Refresh video metadata'));
 assert(markdownOutput.includes('- **Scope:** vault'));
 assert(markdownOutput.includes('- **Total Notes:** 3'));
 assert(markdownOutput.includes('- **Succeeded:** 1'));
@@ -3449,179 +3058,7 @@ const pipeItemReport = {
 const pipeMarkdown = formatBatchReportAsMarkdownHelper(pipeItemReport);
 assert(pipeMarkdown.includes('Param A \\| Param B \\| Param C'));
 
-// 29.5: Playlist Upgrade simulation across diverse states
-function simulatePlaylistUpgradeBatch(candidates, mockApi) {
-	const host = new MockHost();
-	const tracker = new MockBatchProgressTracker(host, 'Upgrade playlist frontmatter', 'vault', candidates.length);
-
-	for (const candidate of candidates) {
-		try {
-			const metadata = mockApi(candidate.url);
-			if (metadata.playlist) {
-				tracker.recordItem({
-					filePath: candidate.filePath,
-					fileName: candidate.fileName,
-					url: candidate.url,
-					status: 'success',
-					message: `Added playlist: "${metadata.playlist.title}" (Index ${metadata.playlist.index || '?'}/${metadata.playlist.count || '?'})`
-				});
-			} else {
-				tracker.recordItem({
-					filePath: candidate.filePath,
-					fileName: candidate.fileName,
-					url: candidate.url,
-					status: 'skipped',
-					message: 'Video is not part of a playlist on YouTube'
-				});
-			}
-		} catch (error) {
-			tracker.recordItem({
-				filePath: candidate.filePath,
-				fileName: candidate.fileName,
-				url: candidate.url,
-				status: 'error',
-				message: error.message || String(error)
-			});
-		}
-	}
-
-	return tracker.finish();
-}
-
-const mockCandidates = [
-	{ filePath: 'Videos/A.md', fileName: 'A', url: 'https://youtu.be/a' },
-	{ filePath: 'Videos/B.md', fileName: 'B', url: 'https://youtu.be/b' },
-	{ filePath: 'Videos/C.md', fileName: 'C', url: 'https://youtu.be/c' }
-];
-
-const mockApi = (url) => {
-	if (url === 'https://youtu.be/a') {
-		return { playlist: { title: 'Deep Learning 101', index: 2, count: 8 } };
-	}
-	if (url === 'https://youtu.be/b') {
-		return { playlist: null };
-	}
-	throw new Error('Network timeout');
-};
-
-const simReport = simulatePlaylistUpgradeBatch(mockCandidates, mockApi);
-assert.strictEqual(simReport.total, 3);
-assert.strictEqual(simReport.succeeded, 1);
-assert.strictEqual(simReport.skipped, 1);
-assert.strictEqual(simReport.failed, 1);
-assert.strictEqual(simReport.items[0].message, 'Added playlist: "Deep Learning 101" (Index 2/8)');
-assert.strictEqual(simReport.items[1].message, 'Video is not part of a playlist on YouTube');
-assert.strictEqual(simReport.items[2].message, 'Network timeout');
-
 console.log('✓ Batch operation progress tracking, item logging, and markdown reporting passed');
-
-// ─── Test 30: hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-title regex ───
-console.log('Testing hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-playlist-title-placeholder logic...');
-
-function hasPlaylistTitlePlaceholder(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return false;
-	const yaml = fmMatch[1];
-	if (!/^playlist_id:\s*.+/m.test(yaml)) return false;
-	return /^playlist_title:\s*["']?Playlist["']?\s*$/im.test(yaml);
-}
-
-function extractPlaylistIdFromFrontmatter(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return undefined;
-	const m = fmMatch[1].match(/^playlist_id:\s*["']?([^"'\r\n]+?)["']?\s*$/m);
-	return m?.[1]?.trim() || undefined;
-}
-
-// Note with placeholder title and a known playlist_id
-const placeholderNote = `---
-title: "Some Video"
-playlist_title: "Playlist"
-playlist_id: "PLxyz123"
-playlist_url: "https://www.youtube.com/playlist?list=PLxyz123"
----
-
-Some content here.`;
-
-// Note with a real title (should NOT match)
-const realTitleNote = `---
-title: "Some Video"
-playlist_title: "My Real Playlist"
-playlist_id: "PLxyz123"
-playlist_url: "https://www.youtube.com/playlist?list=PLxyz123"
----`;
-
-// Note with no playlist fields at all (should NOT match hasPlaylistTitlePlaceholder but IS missing)
-const noPlaylistNote = `---
-title: "No Playlist"
-channel_name: "Channel"
----`;
-
-// Note with single-quoted placeholder
-const singleQuotedNote = `---
-playlist_title: 'Playlist'
-playlist_id: PLabc
----`;
-
-// Note with unquoted placeholder
-const unquotedNote = `---
-playlist_title: Playlist
-playlist_id: PLdef
----`;
-
-assert.strictEqual(hasPlaylistTitlePlaceholder(placeholderNote), true, 'double-quoted Playlist should match');
-assert.strictEqual(hasPlaylistTitlePlaceholder(singleQuotedNote), true, 'single-quoted Playlist should match');
-assert.strictEqual(hasPlaylistTitlePlaceholder(unquotedNote), true, 'unquoted Playlist should match');
-assert.strictEqual(hasPlaylistTitlePlaceholder(realTitleNote), false, 'real title should not match');
-assert.strictEqual(hasPlaylistTitlePlaceholder(noPlaylistNote), false, 'note without playlist_id should not match');
-
-assert.strictEqual(extractPlaylistIdFromFrontmatter(placeholderNote), 'PLxyz123');
-assert.strictEqual(extractPlaylistIdFromFrontmatter(singleQuotedNote), 'PLabc');
-assert.strictEqual(extractPlaylistIdFromFrontmatter(unquotedNote), 'PLdef');
-assert.strictEqual(extractPlaylistIdFromFrontmatter(noPlaylistNote), undefined);
-
-// Simulate the targeted regex replacement used in processFixPlaylistTitlePlaceholder
-function fixPlaylistTitleInContent(content, realTitle) {
-	// Step 1: fix frontmatter
-	let updated = content.replace(
-		/^(playlist_title:\s*)["']?Playlist["']?\s*$/im,
-		`playlist_title: ${JSON.stringify(realTitle)}`
-	);
-	// Step 2: fix body link text
-	updated = updated.replace(
-		/\[Playlist:\s*Playlist(\s*\([^)]*\))?\]/gi,
-		`[Playlist: ${realTitle}$1]`
-	);
-	return updated;
-}
-
-const noteWithBodyLink = `---
-playlist_title: "Playlist"
-playlist_id: PLxyz123
-playlist_url: https://www.youtube.com/playlist?list=PLxyz123
----
-
-Body content.
-
-📋 [Playlist: Playlist (3/10)](https://www.youtube.com/playlist?list=PLxyz123)`;
-
-const fixed = fixPlaylistTitleInContent(noteWithBodyLink, 'Deep Learning 101');
-assert.ok(fixed.includes('playlist_title: "Deep Learning 101"'), 'frontmatter should be updated');
-assert.ok(fixed.includes('[Playlist: Deep Learning 101 (3/10)]'), 'body link should be updated');
-assert.ok(!fixed.includes('Playlist: Playlist'), 'old placeholder should be gone');
-
-// Edge: no body link, only frontmatter fix
-const fmOnlyNote = `---
-playlist_title: Playlist
-playlist_id: PLabc
----
-
-No body link here.`;
-const fmFixed = fixPlaylistTitleInContent(fmOnlyNote, 'Intro to TypeScript');
-assert.ok(fmFixed.includes('playlist_title: "Intro to TypeScript"'), 'frontmatter updated without body link');
-assert.ok(fmFixed.includes('No body link here.'), 'body content preserved');
-
-console.log('✓ hasPlaylistTitlePlaceholder, extractPlaylistIdFromFrontmatter, and fix-playlist-title-placeholder logic passed');
 
 // Test 31: Video summary note placement (blank note vs. new note in fallback folder)
 console.log('Testing video summary note placement, fallback folder paths, and source note link handling...');
@@ -4515,6 +3952,153 @@ assert(mainSource.includes("await this.replaceInNote(sourceFile, `${linkPrefix}$
 assert(!/vault\.process\(sourceFile,/.test(mainSource));
 
 console.log('✓ Summary link update against unsaved editor content passed');
+
+// Test 42: watch_later / favorite checkbox properties in video summary frontmatter
+console.log('Testing watch_later and favorite frontmatter properties...');
+
+// Runs against the real src/utils/frontmatter.ts (its obsidian import is type-only)
+const { build: esbuildBuild } = await import('esbuild');
+const { fileURLToPath } = await import('node:url');
+const frontmatterBundle = await esbuildBuild({
+	entryPoints: [fileURLToPath(new URL('../src/utils/frontmatter.ts', import.meta.url))],
+	bundle: true,
+	format: 'esm',
+	write: false,
+	external: ['obsidian'],
+	logLevel: 'silent',
+});
+const realFrontmatter = await import(
+	`data:text/javascript;base64,${Buffer.from(frontmatterBundle.outputFiles[0].text).toString('base64')}`
+);
+
+const flagData = {
+	title: 'Flag Test',
+	channel_name: 'Channel',
+	channel_username: '@channel',
+	channel_url: 'https://www.youtube.com/@channel',
+	video_url: 'https://www.youtube.com/watch?v=MdxaU0l3FzI',
+	thumbnail: 'https://img.youtube.com/vi/MdxaU0l3FzI/maxresdefault.jpg',
+	thumbnail_text: '',
+	description: 'Line one\nwatch_later: true',
+	tags: ['topic'],
+};
+
+// 42.1: New notes get both properties as unquoted YAML booleans, before description and tags
+const flagLines = realFrontmatter.buildFrontmatter(flagData).split('\n');
+assert(flagLines.includes('watch_later: false'));
+assert(flagLines.includes('favorite: false'));
+assert.strictEqual(flagLines.indexOf('favorite: false'), flagLines.indexOf('watch_later: false') + 1);
+assert(flagLines.indexOf('favorite: false') < flagLines.indexOf('description: |-'));
+assert(flagLines.indexOf('favorite: false') < flagLines.indexOf('tags:'));
+assert.strictEqual(flagLines[0], '---');
+assert.strictEqual(flagLines[flagLines.length - 1], '---');
+
+// 42.2: Merging into a note without them adds both once
+const mergedMissing = realFrontmatter.mergeFrontmatter('title: "Old"\nrating: 5\ntags:\n  - mine\n', flagData).split('\n');
+assert.strictEqual(mergedMissing.filter((l) => l === 'watch_later: false').length, 1);
+assert.strictEqual(mergedMissing.filter((l) => l === 'favorite: false').length, 1);
+assert(mergedMissing.includes('rating: 5'));
+assert(!mergedMissing.includes(''), 'appended properties should not be preceded by a blank line');
+assert(mergedMissing.indexOf('favorite: false') < mergedMissing.indexOf('tags:'));
+
+// 42.3: Values the user set are never overwritten or duplicated (refresh, regenerate)
+const mergedSet = realFrontmatter.mergeFrontmatter('title: "Old"\nwatch_later: true\nfavorite: true\n', flagData);
+assert(mergedSet.includes('watch_later: true'));
+assert(mergedSet.includes('favorite: true'));
+assert(!mergedSet.includes('watch_later: false'));
+assert(!mergedSet.includes('favorite: false'));
+const mergedPartial = realFrontmatter.mergeFrontmatter('favorite: true\n', flagData, { excludeTags: true });
+assert(mergedPartial.includes('favorite: true'));
+assert(mergedPartial.includes('watch_later: false'));
+assert(!mergedPartial.includes('favorite: false'));
+
+// 42.4: A second merge is stable, and text inside the description doesn't count as the property
+const mergedOnce = realFrontmatter.mergeFrontmatter('title: "Old"\n', flagData);
+assert.strictEqual(mergedOnce.split('\n').filter((l) => l === 'watch_later: false').length, 1);
+assert(mergedOnce.includes('  watch_later: true')); // the indented description line
+assert.strictEqual(realFrontmatter.mergeFrontmatter(`${mergedOnce}\n`, flagData), mergedOnce);
+
+// 42.5: Whole-note update keeps a ticked box and the body
+const flaggedNote = '---\ntitle: "Old"\nwatch_later: true\n---\n\nBody text\n';
+const updatedFlaggedNote = realFrontmatter.updateNoteContentWithFrontmatter(flaggedNote, flagData);
+assert(updatedFlaggedNote.includes('\nwatch_later: true\n'));
+assert(updatedFlaggedNote.includes('\nfavorite: false\n'));
+assert(updatedFlaggedNote.endsWith('\nBody text\n'));
+
+console.log('✓ watch_later and favorite frontmatter properties passed');
+
+// Test 43: "Upgrade video summary frontmatter" adds only the missing properties (real frontmatter.ts)
+console.log('Testing frontmatter-only upgrade of video summary notes...');
+
+const { addMissingUserFlags } = realFrontmatter;
+
+// 43.1: Inserted before description/tags; every other character of the note is untouched
+const legacySummary = [
+	'---',
+	'title: "Old: \\"quoted\\""',
+	'video_url: "https://www.youtube.com/watch?v=MdxaU0l3FzI"',
+	'my_rating:   5   ',
+	'playlist_count: 12',
+	'description: |-',
+	'  First line',
+	'',
+	'  favorite: true (inside the description)',
+	'tags:',
+	'  - mine',
+	'---',
+	'',
+	'# Body',
+	'watch_later: true (in the body)',
+	'',
+].join('\n');
+const upgradedSummary = addMissingUserFlags(legacySummary);
+assert.strictEqual(
+	upgradedSummary,
+	legacySummary.replace('description: |-', 'watch_later: false\nfavorite: false\ndescription: |-')
+);
+
+// 43.2: Running it again changes nothing
+assert.strictEqual(addMissingUserFlags(upgradedSummary), upgradedSummary);
+
+// 43.3: Existing values are kept; only the missing property is added
+const tickedSummary = '---\ntitle: "T"\nfavorite: true\ntags:\n  - a\n---\nBody\n';
+assert.strictEqual(
+	addMissingUserFlags(tickedSummary),
+	'---\ntitle: "T"\nfavorite: true\nwatch_later: false\ntags:\n  - a\n---\nBody\n'
+);
+const bothSet = '---\nwatch_later: true\nfavorite: false\n---\nBody\n';
+assert.strictEqual(addMissingUserFlags(bothSet), bothSet);
+
+// 43.4: No description or tags: appended at the end of the frontmatter
+assert.strictEqual(
+	addMissingUserFlags('---\ntitle: "T"\nvideo_url: "https://youtu.be/x"\n---\n\nBody'),
+	'---\ntitle: "T"\nvideo_url: "https://youtu.be/x"\nwatch_later: false\nfavorite: false\n---\n\nBody'
+);
+
+// 43.5: Windows line endings are preserved, and a note that ends at the closing --- works
+assert.strictEqual(
+	addMissingUserFlags('---\r\ntitle: "T"\r\ntags:\r\n  - a\r\n---\r\nBody\r\n'),
+	'---\r\ntitle: "T"\r\nwatch_later: false\r\nfavorite: false\r\ntags:\r\n  - a\r\n---\r\nBody\r\n'
+);
+assert.strictEqual(addMissingUserFlags('---\ntitle: "T"\n---'), '---\ntitle: "T"\nwatch_later: false\nfavorite: false\n---');
+
+// 43.6: Notes without frontmatter are left alone (a --- rule in the body is not frontmatter)
+for (const untouched of ['', 'Just text\n', 'Intro\n\n---\ntitle: "T"\n---\n', '---\n---\nBody\n']) {
+	assert.strictEqual(addMissingUserFlags(untouched), untouched);
+}
+
+// 43.7: The command only touches video summary notes and never fetches or merges metadata
+const upgradeSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const upgradeBody = upgradeSource.slice(
+	upgradeSource.indexOf('public async upgradeVideoSummaryFrontmatterInFolder('),
+	upgradeSource.indexOf('public promptRefreshVideoMetadata(')
+);
+assert(upgradeBody.includes("getVideoNoteKind(content, file.path, mediaFolder) !== 'summary'"));
+assert(upgradeBody.includes('addMissingUserFlags(current)'));
+assert(!/youtubeService|YouTubeService|provider|updateNoteContentWithFrontmatter|mergeFrontmatter/.test(upgradeBody));
+assert(upgradeSource.includes("id: 'upgrade-video-summary-frontmatter-folder'"));
+
+console.log('✓ Frontmatter-only upgrade of video summary notes passed');
 
 console.log('\nAll tests passed successfully!');
 

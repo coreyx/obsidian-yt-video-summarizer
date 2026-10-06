@@ -641,77 +641,19 @@ export class SettingsTab extends PluginSettingTab {
     /** Maintenance tab: batch tools for existing notes and the last batch report */
     private displayMaintenanceSection(containerEl: HTMLElement): void {
         new Setting(containerEl)
-            .setName('Batch upgrades')
+            .setName('Batch tools')
             .setDesc('Update notes you already have. These tools never re-generate summaries. You can also right-click a folder or note in the File Explorer.')
             .setHeading();
 
-        // Scan folders setting
+        // Refresh video metadata
         new Setting(containerEl)
-            .setName('Video notes folders to scan (optional)')
-            .setDesc('Comma-separated list of vault folders where your YouTube video notes are stored (e.g. "YouTube, Notes/Videos"). If specified, batch upgrade and companion note operations will target these folders instead of scanning the entire vault.')
-            .addText(text =>
-                text
-                    .setPlaceholder('e.g. YouTube, Notes/Videos')
-                    .setValue(this.settings.getScanFolders())
-                    .onChange(async (value) => {
-                        await this.settings.updateScanFolders(value.trim());
-                    })
-            );
-
-        // Upgrade previous notes
-        new Setting(containerEl)
-            .setName('Upgrade previous notes')
-            .setDesc('Re-process notes from YouTube videos to add all new frontmatter metadata (title, channel, handle, thumbnail, and vision OCR) without re-generating summaries or topic tags.')
+            .setName('Refresh video metadata')
+            .setDesc('Re-fetch video details (title, channel, stats, thumbnail, playlist) for every video summary and Media Extended note in a folder. Note bodies, tags, and thumbnail text are kept.')
             .addButton(button =>
                 button
-                    .setButtonText('Upgrade in Folder...')
+                    .setButtonText('Refresh in Folder...')
                     .onClick(() => {
-                        this.plugin.promptFolderUpgrade();
-                    })
-            )
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade All in Vault')
-                    .onClick(async () => {
-                        await this.plugin.upgradeVaultNotes();
-                    })
-            );
-
-        // Upgrade tags and description frontmatter
-        new Setting(containerEl)
-            .setName('Upgrade tags & description frontmatter')
-            .setDesc('Add YouTube tags and video descriptions to existing notes that lack the description frontmatter property')
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade in Folder...')
-                    .onClick(() => {
-                        this.plugin.promptUpgradeNotesWithTagsAndDescription();
-                    })
-            )
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade All in Vault')
-                    .onClick(async () => {
-                        await this.plugin.upgradeNotesWithTagsAndDescriptionInVault();
-                    })
-            );
-
-        // Upgrade playlist frontmatter
-        new Setting(containerEl)
-            .setName('Upgrade playlist frontmatter')
-            .setDesc('Query YouTube Data API to discover creator playlists for existing notes that lack playlist frontmatter properties')
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade in Folder...')
-                    .onClick(() => {
-                        this.plugin.promptUpgradeNotesWithPlaylist();
-                    })
-            )
-            .addButton(button =>
-                button
-                    .setButtonText('Upgrade All in Vault')
-                    .onClick(async () => {
-                        await this.plugin.upgradeNotesWithPlaylistInVault();
+                        this.plugin.promptRefreshVideoMetadata();
                     })
             );
 

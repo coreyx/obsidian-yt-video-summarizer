@@ -14,12 +14,12 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
 -   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, LM Studio, etc.).
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
--   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at`, `view_count`, `like_count`, `aspect_ratio`, `description`, and `tags`. Video stats are included when YouTube provides them.
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `video_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at`, `view_count`, `like_count`, `aspect_ratio`, `description`, and `tags`. Video stats are included when YouTube provides them. Every summary note also gets `watch_later` and `favorite` checkbox properties (unticked) for you to use.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Stores the creator's complete video description in frontmatter, and on demand adds it to the note body with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
 -   ✏️ **Automatic Note Renaming**: Automatically renames notes using sanitized, file-system-safe YouTube video titles with collision handling.
--   🔄 **Non-Destructive Note Upgrading**: One-click upgrade for active notes or entire vaults to populate missing frontmatter on older notes without altering summaries or re-running LLM inference.
+-   🔄 **Non-Destructive Metadata Refresh**: Re-fetch video details for one note or a whole folder to bring frontmatter up to date without altering summaries or tags, and without running any AI model.
 -   📜 **Full Transcript Retrieval & Timestamps**: Extract complete video transcripts with clickable timestamps, with zero AI token cost. Video summary notes use standard YouTube links (`[01:05](https://www.youtube.com/watch?v=...&t=65s)`); Media Extended companion notes use Media Extended playback links (`[01:05](https://www.youtube.com/watch?v=...&t=66#t=01:05.61)`).
 -   🎬 **Media Extended Companion Notes (Optional)**: Can create separate companion notes formatted for the [Media Extended](https://github.com/aidenlx/media-extended) plugin in a configurable folder (defaults to `Media Library`) with bidirectional wikilinks in a `# Related` section. Off by default; Media Extended is not required for anything else.
 -   🔍 **Key Points & Technical Terms**: Automatically extracts key takeaways and links technical terms with `[[wikilinks]]`.
@@ -211,13 +211,9 @@ Everything about the optional [Media Extended](https://github.com/aidenlx/media-
 
 Batch tools for notes you already have, plus the report from the last batch run. These never re-generate summaries.
 
-**Video Notes Folders to Scan (Optional)**: Comma-separated vault folders where your video notes live. When set, batch operations target these folders instead of the whole vault.
+**Refresh Video Metadata**: Re-fetches video details for every video summary and Media Extended note in a folder you pick (see Method 9).
 
-**Upgrade Previous Notes**: Scans your vault and automatically adds missing frontmatter metadata to existing YouTube notes without altering summaries, generating tags, or running AI inference.
-
-**Upgrade Tags & Description Frontmatter** and **Upgrade Playlist Frontmatter**: Add YouTube tags and descriptions, or creator playlist properties, to existing notes that lack them (see Methods 7 and 8).
-
-**Batch Operation Status & Logs**: Summary of the last batch run, with a button to open the full report (see Method 10).
+**Batch Operation Status & Logs**: Summary of the last batch run, with a button to open the full report (see Method 7).
 
 Model pricing is displayed in the settings UI — next to each model in the provider accordions and in the active model dropdown.
 
@@ -257,53 +253,17 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 3. Paste the YouTube URL (or select a URL in your note, or run from an active note containing a URL)
 4. The full transcript with clickable YouTube timestamp links is inserted immediately — **no AI model or API key required**!
 
-### Method 5: Upgrade Previous Notes
-
-If you have notes created with previous versions of the plugin that lack the new frontmatter:
-
-- **Single Note**: Open the note and run `Upgrade current note with YouTube frontmatter` from the Command Palette (`Ctrl/Cmd + P`).
-- **Specific Folder**:
-  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade YouTube notes in this folder**.
-  - **Command Palette**: Run `Upgrade YouTube notes in folder...` and search/select the desired folder.
-  - **Settings Tab**: Click **Upgrade in Folder...** in the plugin settings under *Upgrade previous notes*.
-- **Entire Vault**: Run `Upgrade all YouTube notes in vault` from the Command Palette, or click **Upgrade All in Vault** in the plugin settings tab.
-
-This safely populates the new metadata (`title`, `channel_name`, `channel_username`, `channel_url`, `video_url`, `thumbnail`, and `thumbnail_text`) without altering your existing summaries, running LLM inference, or overwriting existing tags.
-
-### Method 6: Create Missing Media Extended Notes
+### Method 5: Create Missing Media Extended Notes
 
 - **Specific Folder**:
   - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Create missing Media Extended notes in this folder**.
   - **Command Palette**: Run `Create Media Extended notes for video summaries in folder...` and pick a folder.
   - **Settings Tab**: Click **Create in Folder...** under *Create missing Media Extended notes*.
-- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)** (e.g. `YouTube, Notes/Videos`). The default command `Create Media Extended notes for video summaries without companion note` will automatically target those folders without scanning the entire vault.
-- **Entire Vault**: Run `Create Media Extended notes for video summaries in entire vault` from the Command Palette, or click **Create All in Vault** in settings.
+- **Entire Vault**: Click **Create All in Vault** in settings.
 
 Scans the target scope (excluding notes already inside the configured Media Extended folder, default `Media Library/`) for video summary notes that do not have a matching Media Extended companion note (detected by checking for `# Related` and a wikilink to the companion note), automatically creates the companion note in `Media Library/` (configurable in settings) with timestamped transcripts, and links them bidirectionally.
 
-### Method 7: Upgrade Notes with Tags & Description Frontmatter
-
-- **Specific Folder**:
-  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade video notes with tags and description in this folder**.
-  - **Command Palette**: Run `Upgrade video summary notes with tags and description in folder...` and pick a folder.
-  - **Settings Tab**: Click **Upgrade Tags & Description in Folder...** under *Upgrade tags & description frontmatter*.
-- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)**. The default command `Upgrade video summary notes with tags and description frontmatter` will automatically target those folders without scanning the entire vault.
-- **Entire Vault**: Run `Upgrade video summary notes with tags and description in entire vault` from the Command Palette, or click **Upgrade Tags & Description in Vault** in settings.
-
-Identifies video summary notes in the selected scope that lack the `description` frontmatter property, queries YouTube metadata / Data API for creator tags and the full video description, and safely merges them into the YAML frontmatter without touching existing summaries.
-
-### Method 8: Upgrade Notes with Playlist from YouTube Data API
-
-- **Specific Folder**:
-  - **Context Menu**: Right-click any folder in the Obsidian File Explorer and select **Upgrade video notes with playlist in this folder**.
-  - **Command Palette**: Run `Upgrade video summary notes with playlist in folder...` and pick a folder.
-  - **Settings Tab**: Click **Upgrade in Folder...** under *Upgrade playlist frontmatter*.
-- **Configured Folders**: In Settings, configure **Video notes folders to scan (optional)**. The default command `Upgrade video summary notes with playlist from YouTube Data API` will automatically target those folders without scanning the entire vault.
-- **Entire Vault**: Run `Upgrade video summary notes with playlist in entire vault` from the Command Palette, or click **Upgrade All in Vault** under *Upgrade playlist frontmatter* in settings.
-
-Identifies video summary notes in the selected scope that lack `playlist_` frontmatter properties (`playlist_title`, `playlist_url`, `playlist_id`, etc.), queries YouTube Data API to check whether each video belongs to a creator playlist (via URL parameters, description playlist links, or channel playlists), and safely merges the playlist metadata into the YAML frontmatter without touching existing summaries or tags.
-
-### Method 9: Connect or Refresh LM Studio (Local LLMs)
+### Method 6: Connect or Refresh LM Studio (Local LLMs)
 
 - **Command Palette**: Run `Detect and connect local LM Studio instance` (`Ctrl/Cmd + P`).
 - **Settings Tab**: Open **AI Providers** → **LM Studio (Local LLM)** and click **Detect & Connect**.
@@ -311,21 +271,21 @@ Identifies video summary notes in the selected scope that lack `playlist_` front
 
 Automatically connects to your local LM Studio instance (`http://localhost:1234/v1` or `http://127.0.0.1:1234/v1`), detects loaded/available local models, updates the LM Studio provider, and sets the active model for 100% private, free summarization.
 
-### Method 10: Batch Operation Monitoring, Live Progress, & Logs
+### Method 7: Batch Operation Monitoring, Live Progress, & Logs
 
-Every batch upgrade operation (Playlist Upgrades, Description & Tags Upgrades, Companion Notes Generation, and Previous Notes Frontmatter Upgrades) features comprehensive real-time monitoring, error logging, and inspection:
+Every batch operation (refreshing video metadata in a folder and creating missing Media Extended notes) features comprehensive real-time monitoring, error logging, and inspection:
 
 - **Live Progress Notifications**: As a batch operation runs across your notes, a single in-place notification continuously updates with current note progress (`[i/N] (X%) Processing: ...`), preventing notification spam.
 - **Status Bar Indicator**: Obsidian's bottom status bar dynamically displays the ongoing operation and live percentage (`YT: [3/12] 25%`), automatically dismissing when complete.
 - **Detailed Activity & Error Logging**: Every file processed is categorized with its exact outcome:
-  - `✓ Success`: Upgraded with new metadata, playlist, companion note, or tags.
-  - `⊘ Skipped`: Note skipped with reasons (e.g. video is not part of a playlist on YouTube).
+  - `✓ Success`: Updated with new metadata or a companion note.
+  - `⊘ Skipped`: Note skipped with the reason (e.g. it already has a companion note).
   - `✕ Error`: Exact error message captured if network or API failures occurred.
 - **Diagnostics Report Modal**:
   - Run the command `View last batch operation report & logs` from the Command Palette (`Ctrl/Cmd + P`), or click **View Last Report & Logs** in plugin settings.
   - Displays summary metric pills (Total, Succeeded, Skipped, Failed), elapsed execution duration, interactive filter tabs, clickable note links to jump straight to notes in Obsidian, and a **Copy Log to Clipboard** button exporting a GitHub-flavored Markdown table.
 
-### Method 11: Add Description or Transcript to a Media Extended Note
+### Method 8: Add Description or Transcript to a Media Extended Note
 
 1. Open a Media Extended companion note (a note in your Media Extended notes folder, or with `mx-uid` frontmatter)
 2. Run `Add description to Media Extended note` or `Add transcript to Media Extended note` from the Command Palette
@@ -335,7 +295,7 @@ Every batch upgrade operation (Playlist Upgrades, Description & Tags Upgrades, C
 
 By default, the description is copied from the note's frontmatter `description:` (only the body gets the new `# Description` section; frontmatter is never changed). If the frontmatter description is missing or empty, or *Use frontmatter description when adding description to body* is off, it's fetched from the **YouTube Data API** when a YouTube Data API key is set, and from YouTube's player metadata otherwise (no key required). The transcript comes from the video's captions.
 
-### Method 12: Refresh Video Metadata
+### Method 9: Refresh Video Metadata
 
 Re-fetches a video's metadata from YouTube and refreshes the frontmatter of video summary notes and Media Extended notes. Use it to pick up newly supported metadata fields, current view/like counts, or to fix notes created with older versions (for example, Media Extended covers that pointed to a missing local image).
 
@@ -346,9 +306,9 @@ What gets refreshed:
 - **Video summary notes** (notes with `video_url` frontmatter): `title`, channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `description` (when *Add description to frontmatter* is on).
 - **Media Extended notes**: all Media Extended frontmatter fields, including `cover` and `aspect_ratio`, keeping the existing `mx-uid`.
 
-What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `video_url`, and any frontmatter properties the plugin doesn't manage. No AI model is used.
+What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `video_url`, your `watch_later` / `favorite` checkboxes (added unticked if the note doesn't have them yet), and any frontmatter properties the plugin doesn't manage. No AI model is used.
 
-### Method 13: Insert Video Cover at Cursor
+### Method 10: Insert Video Cover at Cursor
 
 1. Open any note with a YouTube video (in `video_url` / `video` / `media` frontmatter, or a YouTube link in the note)
 2. Place the cursor where the image should go
@@ -356,7 +316,7 @@ What's never changed: the note body, `tags`, AI-extracted `thumbnail_text`, `vid
 
 Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when it's a URL, otherwise the YouTube thumbnail (max resolution, or high quality for older videos). It doesn't check whether the note already has a cover image.
 
-### Method 14: Add Description to a Video Summary Note
+### Method 11: Add Description to a Video Summary Note
 
 1. Open a video summary note (a note with `video_url` frontmatter)
 2. Run `Add description to video summary note` from the Command Palette
@@ -365,7 +325,7 @@ Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when
 
 The description is always stored in frontmatter, where its timestamps aren't clickable; use this command when you want clickable chapter links. The description source follows *Use frontmatter description when adding description to body* (frontmatter first, then YouTube).
 
-### Method 15: Tag a Note With AI or YouTube
+### Method 12: Tag a Note With AI or YouTube
 
 Run either command from the Command Palette in a video summary or Media Extended note (any note with a YouTube video):
 
@@ -374,12 +334,18 @@ Run either command from the Command Palette in a video summary or Media Extended
 
 New tags are merged into the frontmatter `tags` with the same deduplication as summarizing (e.g. `ai/machine-learning` replaces `ai-machine-learning`, and `Music` / `#music` / `music` collapse into one). The rest of the frontmatter and the body aren't changed, and the note isn't touched if there's nothing new.
 
-### Method 16: Create the Companion Note for the Current Note
+### Method 13: Create the Companion Note for the Current Note
 
 - **From a video summary note**: run `Create Media Extended note for current note` (or right-click the note → **Create Media Extended note**). Creates the Media Extended note in your *Media Extended notes folder* with your Media Extended settings (description, transcript, cover embed) and links the two notes under `# Related`.
 - **From a Media Extended note** whose media is a YouTube video: run `Create video summary note for current note` (or right-click → **Create video summary note**). Generates the AI summary note in your *Video summaries folder*, exactly like summarizing, and links the two notes under `# Related`. Media Extended notes for local files or other sites are skipped.
 
 Each command looks for an existing note for the same video only in its target folder (and subfolders). If one exists, you're asked first: the Media Extended note is **rebuilt**, or the summary note is **regenerated**, in place. Frontmatter properties and tags you added are kept.
+
+### Method 14: Upgrade Video Summary Frontmatter
+
+Run `Upgrade video summary frontmatter in folder...` from the Command Palette and pick a folder (pick the vault root for every note). It adds the `watch_later` and `favorite` checkbox properties, unticked, to each video summary note that doesn't have them yet.
+
+Nothing is fetched and no AI model is used. Existing properties, values you've set, and the note body are left exactly as they are; the new lines go just before `description` / `tags`. Running it again changes nothing.
 
 ## Output Format
 
@@ -404,6 +370,8 @@ playlist_url: "https://www.youtube.com/playlist?list=PLAYLIST_ID"
 playlist_id: "PLAYLIST_ID"
 playlist_index: 3
 playlist_count: 12
+watch_later: false
+favorite: false
 description: |-
   Full video description and timestamps...
 tags:
