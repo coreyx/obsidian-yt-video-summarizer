@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.18.0] - 2026-10-06
+
+### Added
+- **`watch_later` and `favorite` Properties**: Video summary notes now include `watch_later: false` and `favorite: false` in their frontmatter, which Obsidian shows as checkboxes. Existing notes get them (unticked) the next time the plugin updates their frontmatter (refresh metadata, regenerate); a box you've ticked is never reset.
+- **Command: Upgrade Video Summary Frontmatter in Folder...**: Adds the `watch_later` and `favorite` properties to existing video summary notes in a folder (or the whole vault) that don't have them yet. Nothing is fetched and nothing else in the note is changed.
+
+### Changed
+- **Maintenance Settings Tab**: Now has a single *Refresh video metadata* row (**Refresh in Folder...**) in place of the three upgrade rows.
+
+### Removed
+- **One-Time Upgrade Commands**: Removed the commands, folder right-click items, and settings buttons that migrated notes from older plugin versions: *Upgrade current note with YouTube frontmatter*, *Upgrade YouTube notes in folder... / in vault*, the three *Upgrade video summary notes with tags and description* commands, the three *Upgrade video summary notes with playlist* commands, and *Fix playlist title placeholder in folder...*. Use *Refresh video metadata* (current note or folder) to bring frontmatter up to date, and *Tag with AI* / *Tag with YouTube* to add tags.
+- **Duplicate Media Extended Batch Commands**: *Create Media Extended notes for video summaries in entire vault* and *...without companion note* are gone from the Command Palette; *Create Media Extended notes for video summaries in folder...* remains, and the settings tab still has both **Create in Folder...** and **Create All in Vault**.
+- **Video Notes Folders to Scan Setting**: Only the removed commands used it.
+
+### Fixed
+- **No Stray Blank Line When Properties Are Added**: Adding new properties to an existing note's frontmatter no longer leaves a blank line in front of them.
+
+---
+
 ## [1.17.3] - 2026-10-05
 
 ### Fixed

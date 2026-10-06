@@ -1,5 +1,36 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.18.0
+
+### Highlights
+
+YouTube Video Summarizer v1.18.0 adds two checkboxes to your video notes and clears out commands that were only needed once:
+
+* ☑️ **Watch Later & Favorite**: Video summary notes now have `watch_later` and `favorite` checkbox properties.
+* 🧹 **Fewer Commands**: The one-time upgrade commands for notes from old plugin versions are gone, taking the Command Palette from 28 commands to 17.
+
+### What's Changed in v1.18.0
+
+#### ☑️ Watch Later & Favorite
+* New video summary notes include `watch_later: false` and `favorite: false` in their frontmatter. Obsidian shows them as checkboxes you can tick.
+* To add them to notes you already have, run **Upgrade video summary frontmatter in folder...** and pick a folder (pick the vault root for every note). It adds only the missing properties: nothing is fetched, no AI model is used, and the rest of each note is left exactly as it is.
+* A box you've ticked is never reset, including when you refresh metadata or regenerate a note.
+
+#### 🧹 Removed Commands
+* **Upgrade current note with YouTube frontmatter**, **Upgrade YouTube notes in folder...** and **Upgrade all YouTube notes in vault**.
+* The three **Upgrade video summary notes with tags and description** commands and the three **Upgrade video summary notes with playlist** commands.
+* **Fix playlist title placeholder in folder...**.
+* Their folder right-click items and settings buttons, and the **Video notes folders to scan** setting that only they used.
+* **Create Media Extended notes for video summaries** is now a single folder command in the Command Palette. The settings tab still has both **Create in Folder...** and **Create All in Vault**.
+
+If you still need what these did: **Refresh video metadata** (current note or folder) brings frontmatter up to date, and **Tag with AI** / **Tag with YouTube** add tags to a note.
+
+#### 🛠️ Other Changes
+* The **Maintenance** settings tab now has a single **Refresh video metadata** row with a **Refresh in Folder...** button.
+* Adding new properties to an existing note's frontmatter no longer leaves a blank line in front of them.
+
+---
+
 ## v1.17.3
 
 ### Highlights
