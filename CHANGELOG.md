@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.17.2] - 2026-10-05
+
+### Fixed
+- **LM Studio / Local Servers No Longer Blocked by CORS**: Summarizing with an OpenAI-compatible provider failed with `Connection error.` when the server didn't allow the `app://obsidian.md` origin (LM Studio's default, with *Enable CORS* off). OpenAI-type providers now send requests through Obsidian's `requestUrl`, which isn't subject to CORS, so no server-side CORS setting is needed.
+
+---
+
 ## [1.17.1] - 2026-10-05
 
 ### Fixed

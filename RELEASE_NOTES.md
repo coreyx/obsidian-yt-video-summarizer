@@ -1,5 +1,22 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.17.2
+
+### Highlights
+
+YouTube Video Summarizer v1.17.2 fixes summarizing with LM Studio and other local servers:
+
+* 🏠 **LM Studio Works Without Enabling CORS**: Summaries no longer fail with `Connection error.` when LM Studio's *Enable CORS* setting is off (its default).
+
+### What's Changed in v1.17.2
+
+#### 🏠 LM Studio & Local Servers
+* Requests to OpenAI-compatible providers were being blocked because the server didn't allow Obsidian as an origin (CORS). They now go through Obsidian's own request API, which isn't affected.
+* You don't need to change any setting in LM Studio. If you turned on *Enable CORS* as a workaround, you can leave it on or turn it off.
+* The same fix applies to other local OpenAI-compatible servers, such as Ollama and LocalAI.
+
+---
+
 ## v1.17.1
 
 ### Highlights
