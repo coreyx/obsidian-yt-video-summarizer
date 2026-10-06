@@ -607,7 +607,12 @@ export class SettingsManager implements PluginSettings {
 
         let newActiveModelId: string | null = null;
         if (models.length > 0) {
-            const preferredModel = models.find(m => m.isLoaded) || models[0];
+            // Prefer a loaded model. Keep the current selection when it is one of several
+            // loaded models, or when nothing is loaded but it is still available.
+            const providerName = provider.name;
+            const isCurrent = (m: { id: string }) => this.makeModelId(providerName, m.id) === this.settings.selectedModelId;
+            const loadedModels = models.filter(m => m.isLoaded);
+            const preferredModel = loadedModels.find(isCurrent) || loadedModels[0] || models.find(isCurrent) || models[0];
             newActiveModelId = this.makeModelId(provider.name, preferredModel.id);
             this.settings.selectedModelId = newActiveModelId;
         }

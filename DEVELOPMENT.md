@@ -143,7 +143,7 @@ npm install
   - **OpenAI**: `openai` SDK using `max_completion_tokens` (instead of deprecated `max_tokens`) to ensure compatibility with modern reasoning models (`o1`, `o3-mini`, `o4-mini`).
   - **Anthropic**: `@anthropic-ai/sdk` with system prompt separation.
   - **OpenAI-Compatible & Local Providers**: Any OpenAI-compatible server (LM Studio, Ollama, LocalAI, vLLM, OpenRouter, Groq). Base URLs are automatically normalized via [`normalizeOpenAIBaseUrl()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) (appending `/v1` if omitted and trimming trailing slashes). Empty API keys fall back to `'not-needed'` to satisfy client SDK constructors for local offline servers.
-  - **LM Studio Local Auto-Discovery**: [`detectLMStudioServer()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) queries `GET /v1/models` across dual-stack candidate addresses (`localhost:1234` and `127.0.0.1:1234`), parses loaded and available models, registers the provider, and updates the active model with zero manual configuration.
+  - **LM Studio Local Auto-Discovery**: [`detectLMStudioServer()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts) queries LM Studio's native `GET /api/v0/models` (falling back to `GET /v1/models`, which has no load state) across dual-stack candidate addresses (`localhost:1234` and `127.0.0.1:1234`), parses loaded and available models, registers the provider, and updates the active model with zero manual configuration.
 * **Automatic Retirement Migration**:
   When providers deprecate or shut down models, lists in `src/defaults.ts` (`RETIRED_GEMINI_MODELS`, `RETIRED_OPENAI_MODELS`, `RETIRED_ANTHROPIC_MODELS`) automatically prune obsolete entries from user settings on startup and re-point the active selection to supported models.
 
@@ -466,11 +466,11 @@ This section preserves technical and design questions asked during development f
 2. **LM Studio One-Click Auto-Detection & Connection**:
    - **Discovery Pipeline**: Implemented in [`detectLMStudioServer()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts).
      - Tests the target URL with dual-stack candidate resolution (`localhost:1234` and `127.0.0.1:1234`) using Obsidian's `requestUrl` (bypassing Electron CORS restrictions) with `fetch` fallback.
-     - Fetches `GET /v1/models` and parses model entries via [`parseLMStudioModels()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts).
-     - Identifies loaded models (`state === 'loaded'`) and sorts them to the top of the candidate list.
+     - Fetches `GET /api/v0/models` (LM Studio's native REST API, the only list that reports `state` and `type`), falling back to `GET /v1/models` for older versions and other servers, and parses model entries via [`parseLMStudioModels()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/lmStudio.ts).
+     - Identifies loaded models (`state === 'loaded'`), sorts them to the top of the candidate list, and drops embedding models (`type === 'embeddings'`).
    - **Settings Synchronization**: Implemented in [`syncLMStudioProvider()`](file:///c:/Users/corey/dev/github.com/coreyx/obsidian-yt-video-summarizer/src/services/settingsManager.ts).
      - Automatically registers or updates the "LM Studio" provider in user settings (`type: 'openai'`, `apiKey: 'not-needed'`, `url: detectedUrl`).
-     - Populates all discovered models and sets the **Active Model** to the detected loaded model.
+     - Populates all discovered models and sets the **Active Model** to the detected loaded model (keeping the current selection if it is one of several loaded models, or if none is loaded and it is still available).
    - **Multi-Point UI Access**:
      - **Settings Tab**: A dedicated "LM Studio (Local LLM)" card with a **Detect & Connect** button.
      - **Provider Accordion**: A **Refresh from LM Studio** button inside the LM Studio card to quickly re-sync newly loaded models after switching weights in LM Studio.
