@@ -1049,6 +1049,33 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
+	 * Replaces the first occurrence of `search` in a note and returns whether it was found.
+	 * A note that is open in an editor is changed through that editor: its latest edits may not be saved
+	 * yet, and vault.process() only sees what is on disk.
+	 */
+	private async replaceInNote(file: TFile, search: string, replacement: string): Promise<boolean> {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) {
+				continue;
+			}
+			const editor = view.editor;
+			const index = editor.getValue().indexOf(search);
+			if (index !== -1) {
+				editor.replaceRange(replacement, editor.offsetToPos(index), editor.offsetToPos(index + search.length));
+				return true;
+			}
+		}
+
+		let found = false;
+		await this.app.vault.process(file, (content) => {
+			found = content.includes(search);
+			return content.replace(search, () => replacement);
+		});
+		return found;
+	}
+
+	/**
 	 * Renames a pending summary note to the sanitized video title and updates the link in the source note.
 	 * The link is updated directly so it doesn't depend on the "Automatically update internal links" preference.
 	 */
@@ -1071,7 +1098,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		if (sourceFile && oldLink) {
 			const newLink = this.app.fileManager.generateMarkdownLink(pending.file, sourceFile.path);
 			if (newLink !== oldLink) {
-				await this.app.vault.process(sourceFile, (content) => content.replace(oldLink, () => newLink));
+				await this.replaceInNote(sourceFile, oldLink, newLink);
 			}
 			pending.link = newLink;
 		}
@@ -1084,7 +1111,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		try {
 			const { sourceFile, link, linkPrefix = '' } = pending;
 			if (sourceFile && link) {
-				await this.app.vault.process(sourceFile, (content) => content.replace(`${linkPrefix}${link}`, ''));
+				await this.replaceInNote(sourceFile, `${linkPrefix}${link}`, '');
 			}
 			await this.app.fileManager.trashFile(pending.file);
 		} catch (error) {

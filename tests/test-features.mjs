@@ -4463,6 +4463,59 @@ assert.deepStrictEqual(
 
 console.log('✓ Media Extended plugin detection, default, and settings grouping passed');
 
+// Test 41: The link to a new summary note is updated even when the source note's editor is unsaved
+console.log('Testing summary link update against unsaved editor content...');
+
+// Mirrors replaceInNote(): an open editor wins over the on-disk content
+async function testReplaceInNote(openEditors, disk, path, search, replacement) {
+	for (const editor of openEditors) {
+		if (editor.path !== path) continue;
+		const index = editor.value.indexOf(search);
+		if (index !== -1) {
+			editor.value = editor.value.slice(0, index) + replacement + editor.value.slice(index + search.length);
+			return true;
+		}
+	}
+	const found = disk[path].includes(search);
+	disk[path] = disk[path].replace(search, () => replacement);
+	return found;
+}
+
+const unsavedLink = '[[YouTube Summary MdxaU0l3FzI]]';
+const titledLink = '[[Some $1 Video Title]]';
+
+// 41.1: The link was just inserted, so it is in the editor but not yet on disk
+const unsavedDisk = { 'Note.md': 'Intro\n' };
+const unsavedEditors = [{ path: 'Note.md', value: `Intro\n${unsavedLink}` }];
+assert.strictEqual(await testReplaceInNote(unsavedEditors, unsavedDisk, 'Note.md', unsavedLink, titledLink), true);
+assert.strictEqual(unsavedEditors[0].value, `Intro\n${titledLink}`);
+assert.strictEqual(unsavedDisk['Note.md'], 'Intro\n'); // disk is left for the editor's own save
+
+// 41.2: The note is no longer open: the saved file is changed
+const closedDisk = { 'Note.md': `Intro\n${unsavedLink}` };
+assert.strictEqual(await testReplaceInNote([], closedDisk, 'Note.md', unsavedLink, titledLink), true);
+assert.strictEqual(closedDisk['Note.md'], `Intro\n${titledLink}`);
+
+// 41.3: Another note open in an editor is never touched, and a link Obsidian already updated is a no-op
+const otherEditors = [{ path: 'Other.md', value: unsavedLink }];
+const updatedDisk = { 'Note.md': `Intro\n${titledLink}` };
+assert.strictEqual(await testReplaceInNote(otherEditors, updatedDisk, 'Note.md', unsavedLink, titledLink), false);
+assert.strictEqual(otherEditors[0].value, unsavedLink);
+assert.strictEqual(updatedDisk['Note.md'], `Intro\n${titledLink}`);
+
+// 41.4: Failure cleanup removes the unsaved link the same way
+const cleanupEditors = [{ path: 'Note.md', value: `https://youtu.be/MdxaU0l3FzI ${unsavedLink} tail` }];
+await testReplaceInNote(cleanupEditors, { 'Note.md': '' }, 'Note.md', ` ${unsavedLink}`, '');
+assert.strictEqual(cleanupEditors[0].value, 'https://youtu.be/MdxaU0l3FzI tail');
+
+// 41.5: Both the rename and the cleanup go through replaceInNote, not vault.process on the source note
+const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+assert(mainSource.includes('await this.replaceInNote(sourceFile, oldLink, newLink);'));
+assert(mainSource.includes("await this.replaceInNote(sourceFile, `${linkPrefix}${link}`, '');"));
+assert(!/vault\.process\(sourceFile,/.test(mainSource));
+
+console.log('✓ Summary link update against unsaved editor content passed');
+
 console.log('\nAll tests passed successfully!');
 
 
