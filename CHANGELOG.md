@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.17.3] - 2026-10-05
+
+### Fixed
+- **Summary Link Left as `YouTube Summary <id>`**: When summarizing from an existing note, the link inserted at the cursor sometimes kept its placeholder name after the new note was renamed to the video title (and could be left behind, pointing nowhere, after a failed run). The link was updated in the saved file, but Obsidian hadn't always saved the note yet. It is now updated through the open editor.
+
+---
+
 ## [1.17.2] - 2026-10-05
 
 ### Fixed
