@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.17.1] - 2026-10-05
+
+### Fixed
+- **LM Studio Detects the Loaded Model**: *Detect & Connect* / *Refresh from LM Studio* now read LM Studio's native `/api/v0/models` endpoint, which reports which model is loaded. The OpenAI-compatible `/v1/models` endpoint lists every downloaded model with no load state, so the active model was being set to the alphabetically first one. Embedding models are no longer imported, and when no model is loaded your current LM Studio model stays selected. Other OpenAI-compatible servers still fall back to `/v1/models`.
+
+---
+
 ## [1.17.0] - 2026-10-05
 
 ### Added
