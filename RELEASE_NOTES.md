@@ -1,5 +1,22 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.17.3
+
+### Highlights
+
+YouTube Video Summarizer v1.17.3 fixes the link that's inserted when you summarize from an existing note:
+
+* 🔗 **Summary Link Always Gets the Video Title**: The link no longer sometimes stays as `YouTube Summary <video id>` after the new note is renamed.
+
+### What's Changed in v1.17.3
+
+#### 🔗 Summarizing From an Existing Note
+* The link at your cursor is now reliably renamed to the video title along with the new summary note. Before, it depended on whether Obsidian had already saved your note when the title arrived.
+* If a run fails, the link is now reliably removed along with the unfinished note, instead of sometimes being left behind pointing at nothing.
+* Links left over from earlier runs aren't changed. You can delete them, or point them at the right note by hand.
+
+---
+
 ## v1.17.2
 
 ### Highlights
