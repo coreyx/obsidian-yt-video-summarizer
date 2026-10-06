@@ -3,6 +3,7 @@ import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
 import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
 
 import { normalizeOpenAIBaseUrl } from '../lmStudio';
+import { obsidianFetch } from '../../utils/obsidianFetch';
 
 export class OpenAIProvider implements AIModelProvider {
     private client: OpenAI;
@@ -20,7 +21,8 @@ export class OpenAIProvider implements AIModelProvider {
         this.client = new OpenAI({
             apiKey: (apiKey && apiKey.trim()) ? apiKey.trim() : 'not-needed',
             baseURL: baseUrl ? normalizeOpenAIBaseUrl(baseUrl) : undefined,
-            dangerouslyAllowBrowser: true // required to run inside the browser-like Obsidian
+            dangerouslyAllowBrowser: true, // required to run inside the browser-like Obsidian
+            fetch: obsidianFetch // local servers (LM Studio, Ollama) don't allow app://obsidian.md via CORS
         });
         this.model = model;
         this.maxTokens = maxTokens;
