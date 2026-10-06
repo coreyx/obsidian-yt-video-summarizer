@@ -1,5 +1,24 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.17.1
+
+### Highlights
+
+YouTube Video Summarizer v1.17.1 fixes LM Studio model detection:
+
+* 🏠 **LM Studio Picks the Loaded Model**: *Detect & Connect* and *Refresh from LM Studio* now set the active model to the one actually loaded in LM Studio, instead of the first model in alphabetical order.
+
+### What's Changed in v1.17.1
+
+#### 🏠 LM Studio
+* The plugin now asks LM Studio which model is loaded (via its native `/api/v0/models` endpoint). The endpoint it used before lists every downloaded model without saying which one is loaded.
+* If several models are loaded and your current model is one of them, it stays selected.
+* If no model is loaded, your current LM Studio model stays selected instead of switching to another one.
+* Embedding models are no longer added to the LM Studio model list.
+* Older LM Studio versions and other OpenAI-compatible servers work as before.
+
+---
+
 ## v1.17.0
 
 ### Highlights
