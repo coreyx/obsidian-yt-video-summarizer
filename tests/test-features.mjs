@@ -2316,6 +2316,10 @@ function testNormalizeOpenAIBaseUrl(rawUrl) {
 	return clean;
 }
 
+function testGetLMStudioNativeModelsUrl(baseUrl) {
+	return `${baseUrl.replace(/\/v\d+([a-z0-9_-]+)?$/i, '')}/api/v0/models`;
+}
+
 function testParseLMStudioModels(responseData) {
 	if (!responseData) return [];
 	const rawList = Array.isArray(responseData)
@@ -2328,6 +2332,7 @@ function testParseLMStudioModels(responseData) {
 		if (!item) continue;
 		const id = typeof item === 'string' ? item : item.id || item.name;
 		if (!id || typeof id !== 'string') continue;
+		if (item.type === 'embeddings' || item.type === 'embedding') continue;
 		const isLoaded = item.state === 'loaded' || item.loaded === true;
 		const displayName = item.displayName || item.name || id;
 		models.push({
@@ -2376,7 +2381,9 @@ function testSyncLMStudioProvider(settings, url, models) {
 
 	let newActiveModelId = null;
 	if (models.length > 0) {
-		const preferredModel = models.find((m) => m.isLoaded) || models[0];
+		const isCurrent = (m) => `${provider.name}:${m.id}` === settings.selectedModelId;
+		const loadedModels = models.filter((m) => m.isLoaded);
+		const preferredModel = loadedModels.find(isCurrent) || loadedModels[0] || models.find(isCurrent) || models[0];
 		newActiveModelId = `${provider.name}:${preferredModel.id}`;
 		settings.selectedModelId = newActiveModelId;
 	}
@@ -2394,6 +2401,10 @@ assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/v1/'), 'htt
 assert.strictEqual(testNormalizeOpenAIBaseUrl('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1');
 assert.strictEqual(testNormalizeOpenAIBaseUrl('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1');
 assert.strictEqual(testNormalizeOpenAIBaseUrl('https://api.groq.com/openai/v1/'), 'https://api.groq.com/openai/v1');
+
+// Native LM Studio endpoint derived from the OpenAI-compatible base URL
+assert.strictEqual(testGetLMStudioNativeModelsUrl('http://localhost:1234/v1'), 'http://localhost:1234/api/v0/models');
+assert.strictEqual(testGetLMStudioNativeModelsUrl('http://127.0.0.1:1234/v1'), 'http://127.0.0.1:1234/api/v0/models');
 
 // 25.2: Model parsing tests
 const mockLMStudioResp = {
@@ -2420,6 +2431,22 @@ const parsedOpenAI = testParseLMStudioModels(mockOpenAIList);
 assert.strictEqual(parsedOpenAI.length, 2);
 assert.strictEqual(parsedOpenAI[0].id, 'model-a'); // sorted alphabetically when neither loaded
 assert.strictEqual(parsedOpenAI[1].id, 'model-b');
+
+// LM Studio native /api/v0/models format: loaded model wins over alphabetical order, embeddings dropped
+const mockNativeResp = {
+	object: 'list',
+	data: [
+		{ id: 'gemma-4-e4b-it', type: 'vlm', state: 'not-loaded' },
+		{ id: 'qwen3-coder-30b-a3b-instruct', type: 'llm', state: 'loaded' },
+		{ id: 'text-embedding-nomic-embed-text-v1.5', type: 'embeddings', state: 'not-loaded' }
+	]
+};
+const parsedNative = testParseLMStudioModels(mockNativeResp);
+assert.strictEqual(parsedNative.length, 2);
+assert.strictEqual(parsedNative[0].id, 'qwen3-coder-30b-a3b-instruct');
+assert.strictEqual(parsedNative[0].isLoaded, true);
+assert.strictEqual(parsedNative[1].id, 'gemma-4-e4b-it');
+assert.strictEqual(parsedNative[1].isLoaded, false);
 
 // Empty and invalid handling
 assert.deepStrictEqual(testParseLMStudioModels(null), []);
@@ -2454,6 +2481,36 @@ assert.strictEqual(testSettings.providers.length, 2); // still 2 providers
 assert.strictEqual(resyncResult.modelCount, 1);
 assert.strictEqual(testSettings.providers[1].url, 'http://127.0.0.1:1234/v1');
 assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
+
+// Nothing loaded: the current LM Studio selection is kept instead of jumping to the first model
+const noneLoaded = testParseLMStudioModels({
+	data: [
+		{ id: 'aaa-model', state: 'not-loaded' },
+		{ id: 'deepseek-r1-distill-qwen-7b', state: 'not-loaded' }
+	]
+});
+testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', noneLoaded);
+assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
+
+// Several loaded: the current selection is kept when it is one of them
+const twoLoaded = testParseLMStudioModels({
+	data: [
+		{ id: 'aaa-model', state: 'loaded' },
+		{ id: 'deepseek-r1-distill-qwen-7b', state: 'loaded' }
+	]
+});
+testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', twoLoaded);
+assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
+
+// Current selection not loaded: switch to the loaded model
+const otherLoaded = testParseLMStudioModels({
+	data: [
+		{ id: 'aaa-model', state: 'loaded' },
+		{ id: 'deepseek-r1-distill-qwen-7b', state: 'not-loaded' }
+	]
+});
+testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', otherLoaded);
+assert.strictEqual(testSettings.selectedModelId, 'LM Studio:aaa-model');
 
 console.log('✓ OpenAI-compatible URL normalization and LM Studio model parsing passed');
 

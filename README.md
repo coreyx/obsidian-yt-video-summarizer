@@ -94,7 +94,7 @@ The plugin includes native auto-detection for [LM Studio](https://lmstudio.ai/),
 2. **Auto-Detect & Connect**:
    - In Obsidian, open **Settings** → **YouTube Video Summarizer** → **AI Providers**.
    - Under **LM Studio (Local LLM)**, verify the server URL (`http://localhost:1234/v1`) and click **Detect & Connect** (or run the command `Detect and connect local LM Studio instance` from Obsidian's Command Palette).
-   - The plugin will query LM Studio's `/v1/models` endpoint, automatically register the "LM Studio" provider, import all loaded/available local models, and set the **Active Model** to your detected local model!
+   - The plugin will query LM Studio's `/api/v0/models` endpoint (falling back to `/v1/models`), automatically register the "LM Studio" provider, import all loaded/available local models, and set the **Active Model** to the model currently loaded in LM Studio!
 3. **Switching or Reloading Models**:
    - Whenever you load a different model in LM Studio, click **Refresh from LM Studio** inside the LM Studio provider accordion (or click **Detect & Connect** again) to sync the latest loaded model without re-configuring anything.
 
