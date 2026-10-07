@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.19.1] - 2026-10-06
+
+### Removed
+- **Command: Upgrade Video Summary Frontmatter in Folder...**: Removed. It was a one-time way to add the `watch_later` and `favorite` properties to existing notes. New notes still get both properties, and existing notes get them when their metadata is refreshed or they are regenerated.
+
+---
+
 ## [1.19.0] - 2026-10-06
 
 ### Added
