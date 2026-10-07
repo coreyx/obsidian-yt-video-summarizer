@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.19.0] - 2026-10-06
+
+### Added
+- **Live Status for Running Operations**: Summarizing, fetching a transcript, creating a companion note, adding a description or transcript, tagging, and refreshing a note now show one notice that stays on screen until the operation ends. It names the operation, the current stage (e.g. *Generating summary with <model>*), and the elapsed time, and the same stage and timer appear in the status bar on desktop.
+
+### Changed
+- **Error Notices Stay Longer and Name the Stage**: A failed operation's notice stays for 10 seconds and says what it was doing, e.g. `(while generating summary with <model>)`.
+- **Clearer "Busy" Message**: Starting an operation while another is running now says which one is running and for how long, instead of "Already processing a video".
+- **Add Description / Add Transcript Wait Their Turn**: These commands now wait for a running operation to finish, like the other commands.
+
+---
+
 ## [1.18.0] - 2026-10-06
 
 ### Added
