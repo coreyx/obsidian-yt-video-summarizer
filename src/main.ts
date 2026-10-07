@@ -15,7 +15,6 @@ import { ProvidersFactory } from './services/providers/providersFactory';
 import { detectLMStudioServer } from './services/lmStudio';
 import { AIModelProvider } from './types';
 import {
-	addMissingUserFlags,
 	addRelatedLink,
 	addTagsToNoteContent,
 	applyFrontmatter,
@@ -47,7 +46,6 @@ import {
 	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
 	upsertMarkdownSection,
-	USER_FLAG_KEYS,
 	videoStatsFrontmatter,
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
@@ -406,17 +404,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			name: 'Refresh video metadata in folder...',
 			callback: () => {
 				this.promptRefreshVideoMetadata();
-			},
-		});
-
-		// Command to add frontmatter properties introduced by newer plugin versions, without fetching anything
-		this.addCommand({
-			id: 'upgrade-video-summary-frontmatter-folder',
-			name: 'Upgrade video summary frontmatter in folder...',
-			callback: () => {
-				new FolderSuggestModal(this.app, async (folder) => {
-					await this.upgradeVideoSummaryFrontmatterInFolder(folder);
-				}).open();
 			},
 		});
 
@@ -1780,54 +1767,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			console.error('Failed to refresh video metadata:', error);
 		} finally {
 			this.endOperation(progress);
-		}
-	}
-
-	/**
-	 * Adds the frontmatter properties that newer plugin versions introduced (`watch_later`, `favorite`)
-	 * to every video summary note in a folder (and its subfolders) that doesn't have them yet.
-	 * Nothing is fetched, and no existing frontmatter or note content is changed.
-	 */
-	public async upgradeVideoSummaryFrontmatterInFolder(folder: TFolder): Promise<void> {
-		if (this.isProcessing) {
-			this.showBusyNotice();
-			return;
-		}
-
-		const scopeDescription = folder.isRoot() ? 'the vault' : `folder "${folder.path}"`;
-
-		try {
-			this.isProcessing = true;
-			const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
-
-			let summaryNotes = 0;
-			let upgraded = 0;
-			for (const file of filterFilesByFolder(this.app.vault.getMarkdownFiles(), folder)) {
-				const content = await this.app.vault.read(file);
-				if (getVideoNoteKind(content, file.path, mediaFolder) !== 'summary') {
-					continue;
-				}
-				summaryNotes++;
-				if (addMissingUserFlags(content) === content) {
-					continue;
-				}
-				// Re-applied to the current content in case the note changed since it was read
-				await this.app.vault.process(file, (current) => addMissingUserFlags(current));
-				upgraded++;
-			}
-
-			if (summaryNotes === 0) {
-				new Notice(`No video summary notes found in ${scopeDescription}.`);
-			} else if (upgraded === 0) {
-				new Notice(`All ${summaryNotes} video summary note(s) in ${scopeDescription} are already up to date.`);
-			} else {
-				new Notice(`Added ${USER_FLAG_KEYS.join(' / ')} to ${upgraded} of ${summaryNotes} video summary note(s) in ${scopeDescription}.`);
-			}
-		} catch (error) {
-			new Notice(`Failed to upgrade video summary frontmatter: ${error.message}`);
-			console.error('Failed to upgrade video summary frontmatter:', error);
-		} finally {
-			this.isProcessing = false;
 		}
 	}
 

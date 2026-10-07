@@ -34,31 +34,6 @@ export interface FrontmatterOptions {
 export const USER_FLAG_KEYS = ['watch_later', 'favorite'];
 
 /**
- * Adds the checkbox properties a note's frontmatter doesn't have yet, as `false`, and changes nothing
- * else. They go where new notes have them (before `description` / `tags`), or at the end of the
- * frontmatter. Returns the content as-is when there is no frontmatter or nothing is missing.
- */
-export function addMissingUserFlags(content: string): string {
-	const match = content.match(/^---\r?\n([\s\S]*?\r?\n)---(?:\r?\n|$)/);
-	if (!match) {
-		return content;
-	}
-
-	const yaml = match[1];
-	const missing = USER_FLAG_KEYS.filter((key) => !new RegExp(`^${key}:`, 'm').test(yaml));
-	if (missing.length === 0) {
-		return content;
-	}
-
-	const eol = yaml.endsWith('\r\n') ? '\r\n' : '\n';
-	const yamlStart = match[0].indexOf('\n') + 1;
-	const anchor = yaml.search(/^(?:description|tags):/m);
-	const insertAt = yamlStart + (anchor === -1 ? yaml.length : anchor);
-	const added = missing.map((key) => `${key}: false${eol}`).join('');
-	return content.slice(0, insertAt) + added + content.slice(insertAt);
-}
-
-/**
  * Maps fetched video metadata to the video stats frontmatter properties.
  */
 export function videoStatsFrontmatter(metadata: {
