@@ -221,6 +221,8 @@ Model pricing is displayed in the settings UI — next to each model in the prov
 
 **Where the summary goes**: Run the summarizer from a **blank note** and the summary is written into that note. A note also counts as blank when its name starts with "Untitled", it has no body, and its only frontmatter is `tags` (e.g. a new note from a template); your tags are kept and merged with any new ones. Run it from a note that already has a body and/or frontmatter, and a new note is created in the *Video summaries folder* (default `Video Summaries/`), a link to it is inserted at your cursor, and the summary is written to the new note when it's ready — you can keep working in other notes in the meantime. If the summary fails, the new note is moved to the trash and the link is removed.
 
+**Seeing what's happening**: While a command is fetching from YouTube or waiting on the AI model, one notice stays on screen until it finishes, for example `Summarizing "Video Title" · Generating summary with qwen2.5-coder-7b-instruct… 1:12`. It shows the current stage and the elapsed time, and the same stage and timer appear in the status bar on desktop. There is no percentage for the AI step, because the plugin only receives the summary when it's complete. If something fails, the error notice stays for 10 seconds and says which stage it failed in. Only one operation runs at a time; starting another tells you what is still running.
+
 ### Method 1: Command Palette
 
 1. Copy YouTube URL

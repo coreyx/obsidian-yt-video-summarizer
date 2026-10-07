@@ -4100,6 +4100,186 @@ assert(upgradeSource.includes("id: 'upgrade-video-summary-frontmatter-folder'"))
 
 console.log('✓ Frontmatter-only upgrade of video summary notes passed');
 
+// Test 44: Live operation status — persistent notice, status bar, stages, and outcomes (real OperationProgress.ts)
+console.log('Testing live operation status...');
+
+// Bundle the real module with a recording stand-in for Obsidian's Notice
+globalThis.__notices = [];
+const progressBundle = await esbuildBuild({
+	entryPoints: [fileURLToPath(new URL('../src/utils/OperationProgress.ts', import.meta.url))],
+	bundle: true,
+	format: 'esm',
+	write: false,
+	logLevel: 'silent',
+	plugins: [{
+		name: 'obsidian-stub',
+		setup(build) {
+			build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
+			build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+				loader: 'js',
+				contents: `export class Notice {
+					constructor(message, duration) { this.message = message; this.duration = duration; this.hidden = false; globalThis.__notices.push(this); }
+					setMessage(message) { this.message = message; }
+					hide() { this.hidden = true; }
+				}`,
+			}));
+		},
+	}],
+});
+const progressModule = await import(
+	`data:text/javascript;base64,${Buffer.from(progressBundle.outputFiles[0].text).toString('base64')}`
+);
+const { OperationProgress, LiveStatus, formatElapsed, shortenTitle, formatOperationStatus, describeFailedStage, ERROR_NOTICE_MS } = progressModule;
+
+// 44.1: Elapsed time and title formatting
+assert.strictEqual(formatElapsed(0), '0:00');
+assert.strictEqual(formatElapsed(999), '0:00');
+assert.strictEqual(formatElapsed(72_000), '1:12');
+assert.strictEqual(formatElapsed(600_000), '10:00');
+assert.strictEqual(formatElapsed(3_725_000), '1:02:05');
+assert.strictEqual(formatElapsed(-5), '0:00');
+assert.strictEqual(shortenTitle('  Short title  '), 'Short title');
+assert.strictEqual(shortenTitle('x'.repeat(80)).length, 60);
+assert(shortenTitle('x'.repeat(80)).endsWith('…'));
+assert.deepStrictEqual(formatOperationStatus('Summarizing "Video"', 'Generating summary with qwen', 72_000), {
+	notice: 'Summarizing "Video" · Generating summary with qwen… 1:12',
+	statusBar: 'YT: Generating summary with qwen… 1:12',
+});
+assert.strictEqual(describeFailedStage('Fetching transcript'), ' (while fetching transcript)');
+assert.strictEqual(describeFailedStage(''), '');
+
+// Fakes for the status bar and timers
+const realSetTimeout = globalThis.setTimeout;
+const realWindow = globalThis.window;
+const lingerCallbacks = [];
+const intervals = [];
+const clearedIntervals = [];
+globalThis.setTimeout = (fn) => { lingerCallbacks.push(fn); return 0; };
+globalThis.window = {
+	setInterval: (fn) => { intervals.push(fn); return intervals.length; },
+	clearInterval: (id) => { clearedIntervals.push(id); },
+};
+const makeStatusHost = () => {
+	const items = [];
+	return {
+		items,
+		addStatusBarItem: () => {
+			const el = { text: '', removed: false, setText(t) { this.text = t; }, remove() { this.removed = true; } };
+			items.push(el);
+			return el;
+		},
+	};
+};
+
+try {
+	// 44.2: Nothing is shown until the first stage, so a failed validation never flashes a status
+	globalThis.__notices.length = 0;
+	const host = makeStatusHost();
+	const progress = new OperationProgress(host, 'Summarizing video');
+	assert.strictEqual(globalThis.__notices.length, 0);
+	assert.strictEqual(host.items.length, 0);
+	assert.match(progress.describe(), /^Summarizing video \(\d+:\d\d\)$/);
+
+	// 44.3: The first stage shows one persistent notice and one status bar item
+	progress.setStage('Fetching transcript');
+	assert.strictEqual(globalThis.__notices.length, 1);
+	const liveNotice = globalThis.__notices[0];
+	assert.strictEqual(liveNotice.duration, 0, 'the live notice must not time out');
+	assert.match(liveNotice.message, /^Summarizing video · Fetching transcript… 0:0\d$/);
+	assert.strictEqual(host.items.length, 1);
+	assert.match(host.items[0].text, /^YT: Fetching transcript… 0:0\d$/);
+	assert.strictEqual(intervals.length, 1, 'a one-second timer keeps the elapsed time current');
+
+	// 44.4: Later stages and the label update the same notice in place
+	progress.setLabel('Summarizing "My Video"');
+	progress.setStage('Generating summary with qwen');
+	assert.strictEqual(globalThis.__notices.length, 1);
+	assert.strictEqual(host.items.length, 1);
+	assert.match(liveNotice.message, /^Summarizing "My Video" · Generating summary with qwen… 0:0\d$/);
+	intervals[0]();
+	assert.match(host.items[0].text, /^YT: Generating summary with qwen… 0:0\d$/);
+	assert.match(progress.describe(), /^Summarizing "My Video" \(generating summary with qwen, 0:0\d\)$/);
+
+	// 44.5: Success hides the live notice, shows the result, and clears the status bar after a moment
+	progress.done('Summary saved to "My Video"');
+	assert.strictEqual(liveNotice.hidden, true);
+	assert.deepStrictEqual(clearedIntervals, [1]);
+	assert.strictEqual(globalThis.__notices.length, 2);
+	assert.strictEqual(globalThis.__notices[1].message, 'Summary saved to "My Video"');
+	assert.strictEqual(globalThis.__notices[1].duration, undefined);
+	assert.strictEqual(host.items[0].text, 'YT: Done');
+	assert.strictEqual(host.items[0].removed, false);
+	lingerCallbacks.shift()();
+	assert.strictEqual(host.items[0].removed, true);
+
+	// 44.6: Ending twice does nothing more (stop() runs in every finally block)
+	progress.stop();
+	progress.fail('late');
+	progress.setStage('Too late');
+	assert.strictEqual(globalThis.__notices.length, 3, 'only the explicit fail() adds a notice');
+	assert.strictEqual(host.items.length, 1);
+
+	// 44.7: Failure names the stage and stays on screen longer
+	globalThis.__notices.length = 0;
+	const failHost = makeStatusHost();
+	const failing = new OperationProgress(failHost, 'Summarizing video');
+	failing.setStage('Generating summary with qwen');
+	failing.fail('Error: Connection error.');
+	assert.strictEqual(globalThis.__notices[0].hidden, true);
+	assert.strictEqual(globalThis.__notices[1].message, 'Error: Connection error. (while generating summary with qwen)');
+	assert.strictEqual(globalThis.__notices[1].duration, ERROR_NOTICE_MS);
+	assert(ERROR_NOTICE_MS >= 10000);
+	assert.strictEqual(failHost.items[0].text, 'YT: Failed');
+
+	// 44.8: stop() clears everything silently, including the status bar item
+	globalThis.__notices.length = 0;
+	const stopHost = makeStatusHost();
+	const stopped = new OperationProgress(stopHost, 'Tagging "Note"');
+	stopped.setStage('Fetching tags from YouTube');
+	stopped.stop();
+	assert.strictEqual(globalThis.__notices.length, 1);
+	assert.strictEqual(globalThis.__notices[0].hidden, true);
+	assert.strictEqual(stopHost.items[0].removed, true);
+
+	// 44.9: Works without a status bar (mobile)
+	globalThis.__notices.length = 0;
+	const mobile = new OperationProgress({}, 'Getting transcript');
+	mobile.setStage('Fetching transcript');
+	mobile.done('Transcript retrieved successfully!');
+	assert.strictEqual(globalThis.__notices.length, 2);
+
+	// 44.10: LiveStatus (shared with batch operations) updates both displays in place
+	globalThis.__notices.length = 0;
+	const batchHost = makeStatusHost();
+	const live = new LiveStatus(batchHost, '[0/3] Starting...', 'YT: [0/3] Starting...');
+	live.set('[1/3] (33%) Refresh video metadata: A', 'YT: [1/3] 33%');
+	assert.strictEqual(globalThis.__notices.length, 1);
+	assert.strictEqual(globalThis.__notices[0].message, '[1/3] (33%) Refresh video metadata: A');
+	assert.strictEqual(batchHost.items[0].text, 'YT: [1/3] 33%');
+	live.end('YT: Done (3/3)');
+	assert.strictEqual(globalThis.__notices[0].hidden, true);
+	assert.strictEqual(batchHost.items[0].text, 'YT: Done (3/3)');
+} finally {
+	globalThis.setTimeout = realSetTimeout;
+	globalThis.window = realWindow;
+}
+
+// 44.11: Every command that fetches or generates reports through the shared status, and none of the
+// short-lived "Fetching…" / "Generating…" notices remain
+const statusSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+assert(!/new Notice\(['`](Fetching|Generating|Refreshing)/.test(statusSource));
+assert(!statusSource.includes('Already processing'));
+assert.strictEqual((statusSource.match(/this\.beginOperation\(/g) || []).length, 8);
+assert.strictEqual(
+	(statusSource.match(/this\.endOperation\(progress\);/g) || []).length,
+	8,
+	'every operation ends its status in a finally block'
+);
+const trackerSource = readFileSync(new URL('../src/utils/BatchProgressTracker.ts', import.meta.url), 'utf8');
+assert(trackerSource.includes('new LiveStatus('));
+
+console.log('✓ Live operation status passed');
+
 console.log('\nAll tests passed successfully!');
 
 

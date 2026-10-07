@@ -8,6 +8,7 @@ import { CustomPromptModal } from './ui/modals/CustomPromptModal';
 import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { BatchReportModal } from './ui/modals/BatchReportModal';
 import { BatchProgressTracker } from './utils/BatchProgressTracker';
+import { OperationProgress, shortenTitle } from './utils/OperationProgress';
 import { PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
@@ -73,6 +74,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	private promptService: PromptService;
 	private provider: AIModelProvider | null = null;
 	private isProcessing = false;
+	/** The running operation's live status, used to tell the user what is still in progress */
+	private activeStatus: OperationProgress | BatchProgressTracker | null = null;
 	private cachedVaultTagData: VaultTagData | null = null;
 	private lastBatchReport: BatchOperationReport | null = null;
 
@@ -149,6 +152,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		} catch (error) {
 			new Notice(`Error: ${error.message}`);
+		}
+	}
+
+	onunload() {
+		// A status notice stays up until it is hidden, so don't leave one behind
+		if (this.activeStatus instanceof OperationProgress) {
+			this.activeStatus.stop();
 		}
 	}
 
@@ -486,9 +496,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		mediaExtendedOptions: MediaExtendedRunOptions = this.getDefaultMediaExtendedRunOptions()
 	): Promise<void> {
 
-		// Check if a video is already being processed
-		if (this.isProcessing) {
-			new Notice('Already processing a video, please wait...');
+		if (!this.ensureAIReady()) {
+			return;
+		}
+		const progress = this.beginOperation('Summarizing video');
+		if (!progress) {
 			return;
 		}
 
@@ -496,10 +508,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		let succeeded = false;
 
 		try {
-			this.isProcessing = true;
-			if (!this.ensureAIReady()) {
-				return;
-			}
 
 			// Step 0: Decide where the summary goes. A blank note (including an "Untitled" note with only
 			// tags in its frontmatter) receives it directly; any other note gets a link at the cursor to a
@@ -514,7 +522,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			// Step 1: Fetch the video transcript & metadata
-			new Notice('Fetching video transcript...');
+			progress.setStage('Fetching transcript');
 			let transcript: TranscriptResponse;
 			try {
 				transcript = await this.youtubeService.fetchTranscript(
@@ -523,9 +531,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					this.settings.getYoutubeApiKey()
 				);
 			} catch (error) {
-				new Notice(`Error: ${error.message}`);
+				progress.fail(`Error: ${error.message}`);
 				return;
 			}
+			progress.setLabel(`Summarizing "${shortenTitle(transcript.title)}"`);
 			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
 
 			// Step 1.5: New notes are always named after the video as soon as the title is known
@@ -534,7 +543,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			// Steps 2–4, 6–7: AI summary, thumbnail text, tags, body, and frontmatter
-			const parts = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl, customPrompt);
+			const parts = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl, customPrompt, progress);
 			let bodyContent = parts.bodyContent;
 			const fmData = parts.fmData;
 
@@ -545,6 +554,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			// Step 7.5: Optionally create Media Extended companion note and link bidirectionally
 			if (mediaExtendedOptions.createNote) {
+				progress.setStage('Creating Media Extended note');
 
 				try {
 					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, targetFile, mediaExtendedOptions);
@@ -562,6 +572,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// Written through the vault (not the editor) so it lands in the right note regardless of focus.
 			// If the blank note has tags-only frontmatter (or the user typed into it meanwhile), append and
 			// merge frontmatter instead, so existing tags are kept alongside any new ones.
+			progress.setStage('Writing note');
 			await this.app.vault.process(targetFile, (current) =>
 				pendingNote || current.trim() === ''
 					? `${buildFrontmatter(fmData)}\n\n${bodyContent}`
@@ -569,19 +580,59 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			);
 			succeeded = true;
 
-			new Notice(pendingNote
+			progress.done(pendingNote
 				? `Summary saved to "${targetFile.basename}"`
 				: 'Summary generated successfully!');
 		} catch (error) {
-			new Notice(`Error: ${error.message}`);
+			progress.fail(`Error: ${error.message}`);
 			console.error('Summary generation failed:', error);
 		} finally {
 			if (pendingNote && !succeeded) {
 				await this.discardPendingSummaryNote(pendingNote);
 			}
-			// Reset the processing flag
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
+	}
+
+	/**
+	 * Starts a single operation and its live status. Returns null, after telling the user what is
+	 * still running, when another operation is in progress. Pair with endOperation() in a finally block.
+	 */
+	private beginOperation(label: string): OperationProgress | null {
+		if (this.isProcessing) {
+			this.showBusyNotice();
+			return null;
+		}
+		this.isProcessing = true;
+		const progress = new OperationProgress(this, label);
+		this.activeStatus = progress;
+		return progress;
+	}
+
+	/**
+	 * Ends the running operation. A status that wasn't finished with done() / fail() is hidden.
+	 */
+	private endOperation(progress?: OperationProgress): void {
+		progress?.stop();
+		this.activeStatus = null;
+		this.isProcessing = false;
+	}
+
+	/**
+	 * Tells the user which operation is still running, and for how long.
+	 */
+	private showBusyNotice(): void {
+		new Notice(this.activeStatus
+			? `Still busy: ${this.activeStatus.describe()}. Please wait for it to finish.`
+			: 'Another operation is still running, please wait...');
+	}
+
+	/**
+	 * The active AI model's name for status lines.
+	 */
+	private getActiveModelLabel(): string {
+		const model = this.settings.getSelectedModel();
+		return model ? (model.displayName || model.name) : 'AI';
 	}
 
 	/**
@@ -625,7 +676,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -655,21 +706,26 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 		}
 
+		const progress = this.beginOperation(`${existing ? 'Rebuilding' : 'Creating'} Media Extended note for "${shortenTitle(file.basename)}"`);
+		if (!progress) {
+			return;
+		}
+
 		try {
-			this.isProcessing = true;
-			new Notice('Fetching video transcript...');
+			progress.setStage('Fetching transcript');
 			const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
+			progress.setStage('Writing Media Extended note');
 			const mediaNote = await this.createMediaExtendedCompanionNote(transcript, file, undefined, existing);
 			if (!mediaNote) {
 				throw new Error('Could not write the Media Extended note');
 			}
 			await this.app.vault.process(file, (current) => addRelatedLink(current, mediaNote.path.replace(/\.md$/, '')));
-			new Notice(`${existing ? 'Rebuilt' : 'Created'} Media Extended note "${mediaNote.basename}"`);
+			progress.done(`${existing ? 'Rebuilt' : 'Created'} Media Extended note "${mediaNote.basename}"`);
 		} catch (error) {
-			new Notice(`Failed to create Media Extended note: ${error.message}`);
+			progress.fail(`Failed to create Media Extended note: ${error.message}`);
 			console.error('Failed to create Media Extended note for summary note:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
 	}
 
@@ -684,7 +740,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 		if (this.isProcessing) {
-			new Notice('Already processing a video, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -724,14 +780,19 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 		}
 
+		const progress = this.beginOperation(`${existing ? 'Regenerating' : 'Creating'} summary for "${shortenTitle(file.basename)}"`);
+		if (!progress) {
+			return;
+		}
+
 		try {
-			this.isProcessing = true;
-			new Notice('Fetching video transcript...');
+			progress.setStage('Fetching transcript');
 			const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
 			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
-			const { bodyContent, fmData } = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl);
+			const { bodyContent, fmData } = await this.buildSummaryNoteParts(transcript, url, thumbnailUrl, undefined, progress);
 			const body = addRelatedLink(bodyContent, file.path.replace(/\.md$/, ''));
 
+			progress.setStage('Writing note');
 			let summaryFile: TFile;
 			if (existing) {
 				// Replace the body, merging the new frontmatter into the existing one (keeps added keys, merges tags)
@@ -749,12 +810,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			await this.app.vault.process(file, (current) => addRelatedLink(current, summaryFile.path.replace(/\.md$/, '')));
-			new Notice(`${existing ? 'Regenerated' : 'Created'} video summary note "${summaryFile.basename}"`);
+			progress.done(`${existing ? 'Regenerated' : 'Created'} video summary note "${summaryFile.basename}"`);
 		} catch (error) {
-			new Notice(`Failed to create video summary note: ${error.message}`);
+			progress.fail(`Failed to create video summary note: ${error.message}`);
 			console.error('Failed to create video summary note for Media Extended note:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
 	}
 
@@ -767,7 +828,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		transcript: TranscriptResponse,
 		url: string,
 		thumbnailUrl: string,
-		customPrompt?: string
+		customPrompt?: string,
+		progress?: OperationProgress
 	): Promise<{ bodyContent: string; fmData: FrontmatterData }> {
 		if (!this.provider) {
 			throw new Error('AI provider not initialized. Please check your settings.');
@@ -775,7 +837,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		// Build the prompt, then run summary generation and thumbnail text recognition concurrently
 		const prompt = this.buildPrompt(transcript.lines.map((line) => line.text).join(' '), customPrompt);
-		new Notice('Generating summary...');
+		progress?.setStage(`Generating summary with ${this.getActiveModelLabel()}`);
 		const summaryPromise = this.provider.summarizeVideo(transcript.videoId, prompt);
 
 		const thumbnailTextPromise = (async (): Promise<string> => {
@@ -813,6 +875,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		let topicTags: string[] = [];
 		if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
 			try {
+				progress?.setStage(`Generating tags with ${this.getActiveModelLabel()}`);
 				const vaultTagData = await this.rebuildVaultTagCache();
 				topicTags = await this.provider.generateTopics(summary, {
 					existingTags: [...detectedTags, ...ytDataApiTags],
@@ -1217,11 +1280,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 		}
 
+		const progress = this.beginOperation(`Adding ${section} to "${shortenTitle(file.basename)}"`);
+		if (!progress) {
+			return;
+		}
+
 		try {
 			let body: string;
 			let source = '';
 			if (section === 'description') {
-				const result = await this.getDescriptionForNote(file, url, videoId);
+				const result = await this.getDescriptionForNote(file, url, videoId, progress);
 				if (!result.description.trim()) {
 					new Notice('This video has no description.');
 					return;
@@ -1229,7 +1297,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				source = result.source;
 				body = convertDescriptionTimestampsToMediaExtended(result.description.replace(/\r\n/g, '\n').trim(), videoId);
 			} else {
-				new Notice('Fetching video transcript...');
+				progress.setStage('Fetching transcript');
 				const transcript = await this.youtubeService.fetchTranscript(url, 'en', this.settings.getYoutubeApiKey());
 				if (!transcript.lines || transcript.lines.length === 0) {
 					new Notice('No transcript lines found for this video.');
@@ -1244,10 +1312,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			await this.app.vault.process(file, (current) =>
 				ensureSectionOrder(upsertMarkdownSection(current, heading, body, insertBefore), 'Description', 'Transcript')
 			);
-			new Notice(`Added ${section} to "${file.basename}"${source}`);
+			progress.done(`Added ${section} to "${file.basename}"${source}`);
 		} catch (error) {
-			new Notice(`Failed to add ${section}: ${error.message}`);
+			progress.fail(`Failed to add ${section}: ${error.message}`);
 			console.error(`Failed to add ${section} to Media Extended note:`, error);
+		} finally {
+			this.endOperation(progress);
 		}
 	}
 
@@ -1288,8 +1358,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 		}
 
+		const progress = this.beginOperation(`Adding description to "${shortenTitle(file.basename)}"`);
+		if (!progress) {
+			return;
+		}
+
 		try {
-			const result = await this.getDescriptionForNote(file, url, videoId);
+			const result = await this.getDescriptionForNote(file, url, videoId, progress);
 			if (!result.description.trim()) {
 				new Notice('This video has no description.');
 				return;
@@ -1297,10 +1372,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const body = convertTimestampsToLinks(result.description.replace(/\r\n/g, '\n').trim(), videoId, 'youtube');
 			// Keep # Related (the link to the Media Extended note) at the end
 			await this.app.vault.process(file, (current) => upsertMarkdownSection(current, 'Description', body, ['Related'], 2));
-			new Notice(`Added description to "${file.basename}"${result.source}`);
+			progress.done(`Added description to "${file.basename}"${result.source}`);
 		} catch (error) {
-			new Notice(`Failed to add description: ${error.message}`);
+			progress.fail(`Failed to add description: ${error.message}`);
 			console.error('Failed to add description to video summary note:', error);
+		} finally {
+			this.endOperation(progress);
 		}
 	}
 
@@ -1309,12 +1386,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * *Use frontmatter description* is on and it's non-empty, otherwise fetched from YouTube.
 	 * `source` is a short suffix for the confirmation notice.
 	 */
-	private async getDescriptionForNote(file: TFile, url: string, videoId: string): Promise<{ description: string; source: string }> {
+	private async getDescriptionForNote(file: TFile, url: string, videoId: string, progress?: OperationProgress): Promise<{ description: string; source: string }> {
 		const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
 		if (this.settings.getMediaExtendedDescriptionFromFrontmatter() && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()) {
 			return { description: frontmatterDescription, source: ' (from frontmatter)' };
 		}
-		new Notice('Fetching video description...');
+		progress?.setStage('Fetching description');
 		const result = await this.fetchVideoDescription(url, videoId);
 		return {
 			description: result.description,
@@ -1333,7 +1410,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -1344,11 +1421,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return;
 		}
 
+		const progress = this.beginOperation(`Tagging "${shortenTitle(file.basename)}"`);
+		if (!progress) {
+			return;
+		}
+
 		try {
-			this.isProcessing = true;
 			const newTags = source === 'ai'
-				? await this.generateAITagsForNote(file, content)
-				: await this.fetchYouTubeTagsForNote(url);
+				? await this.generateAITagsForNote(file, content, progress)
+				: await this.fetchYouTubeTagsForNote(url, progress);
 			if (newTags === null) {
 				return;
 			}
@@ -1361,14 +1442,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			});
 
 			const label = source === 'ai' ? 'AI' : 'YouTube';
-			new Notice(added.length > 0
+			progress.done(added.length > 0
 				? `Added ${added.length} tag(s) from ${label} to "${file.basename}": ${added.join(', ')}`
 				: `No new tags from ${label} for "${file.basename}".`);
 		} catch (error) {
-			new Notice(`Failed to tag note: ${error.message}`);
+			progress.fail(`Failed to tag note: ${error.message}`);
 			console.error(`Failed to tag note with ${source}:`, error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
 	}
 
@@ -1377,7 +1458,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * as summarizing. Uses the note body (the summary), or the frontmatter description when the body is empty.
 	 * Returns null (after a Notice) when no AI model can be used.
 	 */
-	private async generateAITagsForNote(file: TFile, content: string): Promise<string[] | null> {
+	private async generateAITagsForNote(file: TFile, content: string, progress?: OperationProgress): Promise<string[] | null> {
 		const selectedModel = this.settings.getSelectedModel();
 		if (!selectedModel) {
 			new Notice('No AI model selected. Please select a model in the plugin settings.');
@@ -1397,7 +1478,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return null;
 		}
 
-		new Notice('Generating tags with AI...');
+		progress?.setStage(`Generating tags with ${this.getActiveModelLabel()}`);
 		const vaultTagData = await this.rebuildVaultTagCache();
 		return await this.provider.generateTopics(noteText, {
 			existingTags: extractFrontmatterTags(content),
@@ -1412,8 +1493,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * Fetches a video's YouTube tags (YouTube Data API when a key is set, player metadata otherwise)
 	 * plus creator hashtags from the title and description (when *Detect tags in title and description* is on).
 	 */
-	private async fetchYouTubeTagsForNote(url: string): Promise<string[]> {
-		new Notice('Fetching tags from YouTube...');
+	private async fetchYouTubeTagsForNote(url: string, progress?: OperationProgress): Promise<string[]> {
+		progress?.setStage('Fetching tags from YouTube');
 		const metadata = await this.youtubeService.fetchVideoMetadata(url, this.settings.getYoutubeApiKey());
 		const hashtags = this.settings.getDetectTagsInDescriptionAndTitle()
 			? [...extractTagsFromText(metadata.title), ...extractTagsFromText(metadata.description || '')]
@@ -1470,7 +1551,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 */
 	public async processMediaExtendedNotes(files: TFile[], scopeDescription: string): Promise<void> {
 		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -1528,6 +1609,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				scopeDescription,
 				candidates.length
 			);
+			this.activeStatus = tracker;
 
 			for (let i = 0; i < candidates.length; i++) {
 				const { file, url } = candidates[i];
@@ -1581,7 +1663,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice(`Failed to process Media Extended notes: ${error.message}`);
 			console.error('Failed to create missing Media Extended notes:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation();
 		}
 	}
 
@@ -1682,23 +1764,22 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * Refreshes video metadata in a single video summary or Media Extended note.
 	 */
 	public async refreshVideoMetadataInNote(file: TFile): Promise<void> {
-		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+		const progress = this.beginOperation(`Refreshing "${shortenTitle(file.basename)}"`);
+		if (!progress) {
 			return;
 		}
 
 		try {
-			this.isProcessing = true;
-			new Notice(`Refreshing video metadata in "${file.basename}"...`);
+			progress.setStage('Fetching video details');
 			const result = await this.refreshNoteVideoMetadata(file);
-			new Notice(result.status === 'success'
+			progress.done(result.status === 'success'
 				? `Refreshed video metadata in "${file.basename}"`
 				: `Skipped "${file.basename}": ${result.message}`);
 		} catch (error) {
-			new Notice(`Failed to refresh video metadata: ${error.message}`);
+			progress.fail(`Failed to refresh video metadata: ${error.message}`);
 			console.error('Failed to refresh video metadata:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
 	}
 
@@ -1709,7 +1790,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 */
 	public async upgradeVideoSummaryFrontmatterInFolder(folder: TFolder): Promise<void> {
 		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -1764,7 +1845,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 */
 	public async refreshVideoMetadataInFolder(folder: TFolder): Promise<void> {
 		if (this.isProcessing) {
-			new Notice('Already processing a video or upgrading notes, please wait...');
+			this.showBusyNotice();
 			return;
 		}
 
@@ -1790,6 +1871,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 
 			const tracker = new BatchProgressTracker(this, operation, scopeDescription, candidates.length);
+			this.activeStatus = tracker;
 			for (let i = 0; i < candidates.length; i++) {
 				const file = candidates[i];
 				try {
@@ -1820,7 +1902,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			new Notice(`Failed to refresh video metadata: ${error.message}`);
 			console.error('Failed to refresh video metadata:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation();
 		}
 	}
 
@@ -1853,14 +1935,13 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		mediaExtendedOptions: MediaExtendedRunOptions = this.getDefaultMediaExtendedRunOptions()
 	): Promise<void> {
 
-		if (this.isProcessing) {
-			new Notice('Already processing a video, please wait...');
+		const progress = this.beginOperation('Getting transcript');
+		if (!progress) {
 			return;
 		}
 
 		try {
-			this.isProcessing = true;
-			new Notice('Fetching video transcript...');
+			progress.setStage('Fetching transcript');
 
 			let transcript: TranscriptResponse;
 			try {
@@ -1870,9 +1951,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 					this.settings.getYoutubeApiKey()
 				);
 			} catch (error) {
-				new Notice(`Error: ${error.message}`);
+				progress.fail(`Error: ${error.message}`);
 				return;
 			}
+			progress.setLabel(`Getting transcript for "${shortenTitle(transcript.title)}"`);
 
 			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
 
@@ -1934,6 +2016,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			let bodyContent = bodyParts.join('\n\n');
 
 			if (mediaExtendedOptions.createNote) {
+				progress.setStage('Creating Media Extended note');
 
 				try {
 					const mediaNote = await this.createMediaExtendedCompanionNote(transcript, view?.file, mediaExtendedOptions);
@@ -1975,12 +2058,12 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				applyFrontmatter(editor, fmData);
 			}
 
-			new Notice('Transcript retrieved successfully!');
+			progress.done('Transcript retrieved successfully!');
 		} catch (error) {
-			new Notice(`Failed to retrieve transcript: ${error.message}`);
+			progress.fail(`Failed to retrieve transcript: ${error.message}`);
 			console.error('Failed to retrieve transcript:', error);
 		} finally {
-			this.isProcessing = false;
+			this.endOperation(progress);
 		}
 	}
 
