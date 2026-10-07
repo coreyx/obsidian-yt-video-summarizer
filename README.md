@@ -343,12 +343,6 @@ New tags are merged into the frontmatter `tags` with the same deduplication as s
 
 Each command looks for an existing note for the same video only in its target folder (and subfolders). If one exists, you're asked first: the Media Extended note is **rebuilt**, or the summary note is **regenerated**, in place. Frontmatter properties and tags you added are kept.
 
-### Method 14: Upgrade Video Summary Frontmatter
-
-Run `Upgrade video summary frontmatter in folder...` from the Command Palette and pick a folder (pick the vault root for every note). It adds the `watch_later` and `favorite` checkbox properties, unticked, to each video summary note that doesn't have them yet.
-
-Nothing is fetched and no AI model is used. Existing properties, values you've set, and the note body are left exactly as they are; the new lines go just before `description` / `tags`. Running it again changes nothing.
-
 ## Output Format
 
 The plugin generates structured notes with comprehensive YAML frontmatter and markdown sections:
