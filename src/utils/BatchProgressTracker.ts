@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian';
 import { BatchItemResult, BatchOperationReport } from '../types';
+import { ERROR_NOTICE_MS, LiveStatus } from './OperationProgress';
 
 /**
  * Formats a BatchOperationReport as human-readable Markdown for clipboard copying or inspection.
@@ -58,8 +59,7 @@ export interface BatchPluginHost {
  */
 export class BatchProgressTracker {
 	private report: BatchOperationReport;
-	private liveNotice: Notice | null = null;
-	private statusBarEl: HTMLElement | null = null;
+	private status: LiveStatus;
 
 	constructor(
 		private host: BatchPluginHost,
@@ -78,22 +78,16 @@ export class BatchProgressTracker {
 			items: []
 		};
 
-		// Persistent in-place notice (duration = 0)
-		try {
-			this.liveNotice = new Notice(`[0/${total}] Starting ${operationName} in ${scope}...`, 0);
-		} catch {
-			this.liveNotice = null;
-		}
+		this.status = new LiveStatus(
+			this.host,
+			`[0/${total}] Starting ${operationName} in ${scope}...`,
+			`YT: [0/${total}] Starting...`
+		);
+	}
 
-		// Status bar item (defensively handled)
-		try {
-			if (typeof this.host.addStatusBarItem === 'function') {
-				this.statusBarEl = this.host.addStatusBarItem();
-				this.statusBarEl.setText(`YT: [0/${total}] Starting...`);
-			}
-		} catch {
-			this.statusBarEl = null;
-		}
+	/** One line for telling the user what is still running */
+	public describe(): string {
+		return `${this.report.operationName} in ${this.report.scope} (${this.report.items.length}/${this.report.total} notes)`;
 	}
 
 	/**
@@ -105,13 +99,7 @@ export class BatchProgressTracker {
 			detail ? ` - ${detail}` : ''
 		}`;
 
-		if (this.liveNotice && typeof this.liveNotice.setMessage === 'function') {
-			this.liveNotice.setMessage(noticeText);
-		}
-
-		if (this.statusBarEl) {
-			this.statusBarEl.setText(`YT: [${current}/${this.report.total}] ${pct}%`);
-		}
+		this.status.set(noticeText, `YT: [${current}/${this.report.total}] ${pct}%`);
 	}
 
 	/**
@@ -145,12 +133,7 @@ export class BatchProgressTracker {
 	 */
 	public finish(): BatchOperationReport {
 		this.report.endTime = Date.now();
-
-		if (this.liveNotice && typeof this.liveNotice.hide === 'function') {
-			this.liveNotice.hide();
-			this.liveNotice = null;
-		}
-
+		this.status.end(`YT: Done (${this.report.succeeded}/${this.report.total})`);
 		this.host.setLastBatchReport(this.report);
 
 		const summaryMsg = `${this.report.operationName} complete! ${this.report.succeeded} succeeded${
@@ -163,16 +146,6 @@ export class BatchProgressTracker {
 			// Ignore in environments where Notice is unavailable
 		}
 
-		if (this.statusBarEl) {
-			this.statusBarEl.setText(`YT: Done (${this.report.succeeded}/${this.report.total})`);
-			setTimeout(() => {
-				if (this.statusBarEl) {
-					this.statusBarEl.remove();
-					this.statusBarEl = null;
-				}
-			}, 4000);
-		}
-
 		return this.report;
 	}
 
@@ -182,28 +155,13 @@ export class BatchProgressTracker {
 	public fail(error: Error | string): BatchOperationReport {
 		this.report.endTime = Date.now();
 		const errMsg = typeof error === 'string' ? error : error.message;
-
-		if (this.liveNotice && typeof this.liveNotice.hide === 'function') {
-			this.liveNotice.hide();
-			this.liveNotice = null;
-		}
-
+		this.status.end('YT: Failed');
 		this.host.setLastBatchReport(this.report);
 
 		try {
-			new Notice(`${this.report.operationName} failed: ${errMsg}`, 8000);
+			new Notice(`${this.report.operationName} failed: ${errMsg}`, ERROR_NOTICE_MS);
 		} catch {
 			// Ignore
-		}
-
-		if (this.statusBarEl) {
-			this.statusBarEl.setText(`YT: Failed`);
-			setTimeout(() => {
-				if (this.statusBarEl) {
-					this.statusBarEl.remove();
-					this.statusBarEl = null;
-				}
-			}, 4000);
 		}
 
 		return this.report;
