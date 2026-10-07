@@ -1,5 +1,22 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.19.1
+
+### Highlights
+
+YouTube Video Summarizer v1.19.1 removes one more one-time command:
+
+* 🧹 **Upgrade Video Summary Frontmatter in Folder... Is Gone**: It existed to add the `watch_later` and `favorite` properties to notes made before v1.18.0.
+
+### What's Changed in v1.19.1
+
+#### 🧹 Removed Command
+* **Upgrade video summary frontmatter in folder...** has been removed from the Command Palette.
+* Nothing changes for your notes: new video summary notes still get `watch_later` and `favorite`, and an existing note without them gets them (unticked) when you refresh its metadata or regenerate it.
+* If you ran the command in v1.18.0 or v1.19.0, note that it set every note's last-modified time to the moment it ran, which changes the order of notes sorted by modified date.
+
+---
+
 ## v1.19.0
 
 ### Highlights
