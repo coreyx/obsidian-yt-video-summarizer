@@ -1,5 +1,29 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.19.0
+
+### Highlights
+
+YouTube Video Summarizer v1.19.0 keeps you informed while it works:
+
+* ⏱️ **Live Status**: A notice now stays on screen for the whole operation, showing what the plugin is doing and for how long, instead of a short message that disappears while the AI is still working.
+
+### What's Changed in v1.19.0
+
+#### ⏱️ Live Status
+* One notice stays up until the operation ends and updates in place, for example `Summarizing "Video Title" · Generating summary with qwen2.5-coder-7b-instruct… 1:12`.
+* It moves through the stages as they happen: fetching the transcript, generating the summary, generating tags, creating the Media Extended note, and writing the note.
+* On desktop, the same stage and timer appear in the status bar, so you can dismiss the notice or switch notes and still see progress.
+* It covers summarizing (with or without a custom prompt), getting a transcript, creating either companion note, adding a description or transcript, tagging with AI or YouTube, and refreshing a note's metadata. Batch operations keep their note counter.
+* There is no percentage for the AI step: the plugin only receives the summary when it's complete, so the timer is the honest indicator.
+
+#### 🛠️ Other Changes
+* Error notices stay for 10 seconds and say which stage failed, e.g. `(while generating summary with ...)`.
+* Starting a command while another is running now tells you what is running and for how long.
+* **Add description** and **Add transcript** now wait for a running operation to finish, like the other commands.
+
+---
+
 ## v1.18.0
 
 ### Highlights
