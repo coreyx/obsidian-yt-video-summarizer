@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.20.0] - 2026-10-13
+
+### Added
+- **Actionable Insights Section**: Summaries now include an *Actionable insights* bullet list just before *Conclusion*: practical advice, workflows, best practices, warnings, and takeaways you can apply. For videos that are informational rather than instructional, it picks the most useful insights and says how they could be applied.
+
+### Changed
+- **Default Summary Prompt Updated Automatically**: The summary prompt is saved with your settings, so if yours is still the unedited default it is replaced with the new one the next time the plugin loads. A prompt you have edited is left exactly as it is; to get the new section, add an `## Actionable insights` section to it yourself.
+
+---
+
 ## [1.19.1] - 2026-10-06
 
 ### Removed
