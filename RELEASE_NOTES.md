@@ -1,5 +1,27 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.20.0
+
+### Highlights
+
+YouTube Video Summarizer v1.20.0 adds a section to every summary that tells you what to do with what you watched:
+
+* 🎯 **Actionable Insights**: A bullet list of practical advice, workflows, and takeaways from the video, placed just before the conclusion.
+
+### What's Changed in v1.20.0
+
+#### 🎯 Actionable Insights
+* New summaries include an **Actionable insights** section between *Technical terms* and *Conclusion*.
+* It pulls out practical advice, workflows, implementation details, best practices, recommendations, lessons learned, warnings, and concrete takeaways you can apply in your own work.
+* For videos that are informational rather than instructional, it picks the most useful insights and explains how they could be applied.
+* Notes you already have aren't changed. The section appears in new summaries and in ones you regenerate.
+
+#### 📝 Your Summary Prompt
+* The summary prompt is saved with your settings. If yours is still the unedited default, it is replaced with the new default automatically the next time the plugin loads.
+* If you have edited your prompt, it is left exactly as it is. To get the new section, add an `## Actionable insights` section to your prompt's output structure.
+
+---
+
 ## v1.19.1
 
 ### Highlights
