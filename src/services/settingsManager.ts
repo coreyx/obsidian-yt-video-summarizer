@@ -5,6 +5,7 @@ import {
     DEFAULT_PROVIDERS,
     DEFAULT_SELECTED_MODEL,
     DEFAULT_PROMPT,
+    upgradeSavedPrompt,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
     DEFAULT_ADD_TOPICS_AS_TAGS,
@@ -159,6 +160,13 @@ export class SettingsManager implements PluginSettings {
                 lmStudioUrl: rawSettings.lmStudioUrl ?? this.settings.lmStudioUrl,
             };
 
+            await this.saveData();
+        }
+
+        // An unedited copy of an earlier default prompt follows the current default; edited prompts are kept
+        const upgradedPrompt = upgradeSavedPrompt(this.settings.customPrompt);
+        if (upgradedPrompt !== this.settings.customPrompt) {
+            this.settings.customPrompt = upgradedPrompt;
             await this.saveData();
         }
 

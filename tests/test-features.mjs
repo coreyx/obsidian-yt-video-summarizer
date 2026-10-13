@@ -4207,6 +4207,73 @@ assert(trackerSource.includes('new LiveStatus('));
 
 console.log('✓ Live operation status passed');
 
+// Test 45: "Actionable insights" section in the default prompt, and upgrading saved default prompts (real defaults.ts)
+console.log('Testing Actionable insights prompt section and saved prompt upgrade...');
+
+const defaultsBundle = await esbuildBuild({
+	entryPoints: [fileURLToPath(new URL('../src/defaults.ts', import.meta.url))],
+	bundle: true,
+	format: 'esm',
+	write: false,
+	logLevel: 'silent',
+});
+const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await import(
+	`data:text/javascript;base64,${Buffer.from(defaultsBundle.outputFiles[0].text).toString('base64')}`
+);
+
+// 45.1: The section sits between Technical terms and Conclusion in the output structure
+const outputStructure = DEFAULT_PROMPT.slice(DEFAULT_PROMPT.indexOf('## Output Structure'));
+const sectionOrder = [...outputStructure.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+assert.deepStrictEqual(sectionOrder, ['Output Structure', 'Summary', 'Key points', 'Technical terms', 'Actionable insights', 'Conclusion']);
+assert(outputStructure.includes('## Actionable insights\n- [Actionable insight 1]\n- [Actionable insight 2]\n- [Additional insights...]\n\n## Conclusion'));
+
+// 45.2: The instructions for it come before the output structure
+const insightsGuidance = DEFAULT_PROMPT.slice(DEFAULT_PROMPT.indexOf('## Extracting Actionable Insights'), DEFAULT_PROMPT.indexOf('## Output Structure'));
+for (const phrase of [
+	'practical advice, workflows, implementation details, best practices, recommendations, lessons learned, warnings, optimization opportunities, and concrete takeaways',
+	'Return a markdown bullet list.',
+	'could apply in their own work or projects',
+	'primarily informational rather than instructional, identify the most useful insights and explain how they might be applied',
+]) {
+	assert(insightsGuidance.includes(phrase), `guidance should include: ${phrase}`);
+}
+assert(!/\bpage\b/i.test(DEFAULT_PROMPT), 'the prompt is about a video, not a page');
+
+// 45.3: The earlier default is kept word for word (it is what existing installs have saved)
+assert.strictEqual(LEGACY_DEFAULT_PROMPTS.length, 1);
+const legacyPrompt = LEGACY_DEFAULT_PROMPTS[0];
+assert.strictEqual(legacyPrompt.length, 1167);
+assert(!/actionable/i.test(legacyPrompt));
+assert(legacyPrompt.includes('## Technical terms') && legacyPrompt.endsWith('omit that section entirely.'));
+// Everything outside the new section is unchanged
+assert.strictEqual(
+	DEFAULT_PROMPT
+		.replace(/## Extracting Actionable Insights\n\n[^\n]+\n\n/, '')
+		.replace('## Actionable insights\n- [Actionable insight 1]\n- [Actionable insight 2]\n- [Additional insights...]\n\n', ''),
+	legacyPrompt
+);
+
+// 45.4: An unedited saved copy of the old default is upgraded; anything else is left alone
+assert.strictEqual(upgradeSavedPrompt(legacyPrompt), DEFAULT_PROMPT);
+assert.strictEqual(upgradeSavedPrompt(`${legacyPrompt.replace(/\n/g, '\r\n')}\r\n  `), DEFAULT_PROMPT);
+assert.strictEqual(upgradeSavedPrompt(DEFAULT_PROMPT), DEFAULT_PROMPT);
+const editedPrompt = legacyPrompt.replace('[Write a brief conclusion]', '[Write a one-line conclusion]');
+assert.strictEqual(upgradeSavedPrompt(editedPrompt), editedPrompt);
+assert.strictEqual(upgradeSavedPrompt('Summarize this video in three bullets.'), 'Summarize this video in three bullets.');
+assert.strictEqual(upgradeSavedPrompt(''), '');
+assert.strictEqual(upgradeSavedPrompt(undefined), undefined);
+
+// 45.5: Settings loading applies the upgrade, and wikilink stripping still stops at the new heading
+const settingsManagerSource = readFileSync(new URL('../src/services/settingsManager.ts', import.meta.url), 'utf8');
+assert(settingsManagerSource.includes('upgradeSavedPrompt(this.settings.customPrompt)'));
+const strippedInsights = realFrontmatter.stripWikilinksFromTechnicalTerms(
+	'## Technical terms\n- **[[RAG]]**: retrieval\n\n## Actionable insights\n- Read [[this note]] first\n\n## Conclusion\nDone.'
+);
+assert(strippedInsights.includes('- **RAG**: retrieval'));
+assert(strippedInsights.includes('- Read [[this note]] first'));
+
+console.log('✓ Actionable insights prompt section and saved prompt upgrade passed');
+
 console.log('\nAll tests passed successfully!');
 
 
