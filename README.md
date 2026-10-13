@@ -389,6 +389,9 @@ tags:
 ## Technical terms
 - **[[Term]]**: [Definition]
 
+## Actionable insights
+- [Advice, workflow, or takeaway you can apply...]
+
 ## Conclusion
 [Brief takeaway...]
 
