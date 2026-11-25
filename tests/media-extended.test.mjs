@@ -4,6 +4,8 @@ import { loadSource } from './helpers/loadSource.mjs';
 import { readFileSync } from 'node:fs';
 
 // Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
+const { resolveMediaExtendedPluginStatus } = await loadSource('src/utils/mediaExtendedPlugin.ts');
+
 const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 
 console.log('Testing Media Extended companion notes and bidirectional linking...');
@@ -622,21 +624,15 @@ console.log('✓ Companion note creation in both directions passed');
 console.log('Testing Media Extended plugin detection, default, and settings grouping...');
 
 const MEDIA_EXTENDED_PLUGIN_ID_HELPER = 'media-extended';
-function resolveMediaExtendedPluginStatusHelper(registry) {
-	if (!registry || (!registry.manifests && !registry.enabledPlugins && !registry.plugins)) return 'unknown';
-	if (registry.plugins?.[MEDIA_EXTENDED_PLUGIN_ID_HELPER] || registry.enabledPlugins?.has(MEDIA_EXTENDED_PLUGIN_ID_HELPER)) return 'enabled';
-	if (registry.manifests?.[MEDIA_EXTENDED_PLUGIN_ID_HELPER]) return 'disabled';
-	return 'not-installed';
-}
 
 // 40.1: Detection from Obsidian's community plugin registry
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(['media-extended']), plugins: { 'media-extended': {} } }), 'enabled');
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(), plugins: {} }), 'disabled');
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: { 'dataview': {} }, enabledPlugins: new Set(['dataview']), plugins: { dataview: {} } }), 'not-installed');
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper({ manifests: {}, enabledPlugins: new Set(), plugins: {} }), 'not-installed');
+assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(['media-extended']), plugins: { 'media-extended': {} } }), 'enabled');
+assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(), plugins: {} }), 'disabled');
+assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: { 'dataview': {} }, enabledPlugins: new Set(['dataview']), plugins: { dataview: {} } }), 'not-installed');
+assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: {}, enabledPlugins: new Set(), plugins: {} }), 'not-installed');
 // Registry unavailable → unknown (never prompts or blocks)
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper(undefined), 'unknown');
-assert.strictEqual(resolveMediaExtendedPluginStatusHelper({}), 'unknown');
+assert.strictEqual(resolveMediaExtendedPluginStatus(undefined), 'unknown');
+assert.strictEqual(resolveMediaExtendedPluginStatus({}), 'unknown');
 
 // 40.2: Prompt only when turning the setting on and the plugin is missing or disabled
 const shouldPromptToInstall = (turnedOn, status) => turnedOn && (status === 'not-installed' || status === 'disabled');

@@ -3,115 +3,15 @@ import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
 // Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
+const { buildTopicGenerationPrompt, buildVaultTagData, compressVaultTags, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
+
 const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
 
 console.log('Testing vault tag caching, AI topic tagging prompt, and grouped tag deduplication...');
 
-function extractGroupPrefixesHelper(tags) {
-	if (!tags || tags.length === 0) return [];
-	const prefixSet = new Set();
-	for (const tag of tags) {
-		if (typeof tag !== 'string') continue;
-		const clean = tag.trim().toLowerCase();
-		if (clean.includes('/')) {
-			const parts = clean.split('/').filter(Boolean);
-			if (parts.length > 1) {
-				prefixSet.add(`${parts[0]}/`);
-			}
-			if (parts.length > 2) {
-				prefixSet.add(`${parts.slice(0, -1).join('/')}/`);
-			}
-		}
-	}
-	return Array.from(prefixSet).sort();
-}
 
-function compressVaultTagsHelper(tags, groupPrefixes, maxTags = 1000) {
-	if (!tags || tags.length === 0) {
-		return '(none yet - feel free to create initial tags)';
-	}
-	const limitedTags = tags.slice(0, maxTags);
-	return limitedTags.join(', ');
-}
 
-function buildVaultTagDataHelper(tagInput, maxTags = 1000) {
-	const countMap = new Map();
 
-	if (Array.isArray(tagInput)) {
-		for (const raw of tagInput) {
-			if (typeof raw !== 'string') continue;
-			const sanitized = sanitizeTag(raw);
-			if (sanitized && sanitized.length > 1 && !/^\d+$/.test(sanitized)) {
-				countMap.set(sanitized, (countMap.get(sanitized) || 0) + 1);
-			}
-		}
-	} else if (tagInput && typeof tagInput === 'object') {
-		for (const [rawTag, count] of Object.entries(tagInput)) {
-			const sanitized = sanitizeTag(rawTag);
-			if (sanitized && sanitized.length > 1 && !/^\d+$/.test(sanitized)) {
-				const n = typeof count === 'number' && !isNaN(count) ? count : 1;
-				countMap.set(sanitized, (countMap.get(sanitized) || 0) + n);
-			}
-		}
-	}
-
-	const sortedTags = Array.from(countMap.entries())
-		.sort((a, b) => {
-			if (b[1] !== a[1]) return b[1] - a[1];
-			return a[0].localeCompare(b[0]);
-		})
-		.map(entry => entry[0]);
-
-	const groupPrefixes = extractGroupPrefixesHelper(sortedTags);
-	const compressedContext = compressVaultTagsHelper(sortedTags, groupPrefixes, maxTags);
-
-	return {
-		tags: sortedTags,
-		groupPrefixes,
-		compressedContext,
-		totalCount: sortedTags.length,
-	};
-}
-
-function buildTopicGenerationPromptHelper(summaryText, options) {
-	const existingTags = (options?.existingTags || []).filter(t => t && typeof t === 'string' && t.trim().length > 0);
-	const existingTagsStr = existingTags.length > 0
-		? deduplicateTags(existingTags).join(', ')
-		: '(none)';
-
-	const vaultContext = options?.compressedContext || (options?.vaultTags && options.vaultTags.length > 0
-		? options.vaultTags.join(', ')
-		: '(none yet - feel free to create initial tags)');
-
-	const groupPrefixesStr = options?.groupPrefixes && options.groupPrefixes.length > 0
-		? `\nEstablished group prefixes in vault:\n${options.groupPrefixes.join(', ')}\n`
-		: '';
-
-	const titleStr = options?.title ? `Video Title: ${options.title}\n\n` : '';
-
-	return `You are an expert content categorization assistant for Obsidian notes.
-
-Analyze the video summary and existing metadata to generate 3 to 7 relevant tags.
-
-Questions to answer:
-1. What topic(s) does this video belong to?
-2. Is there any obvious tag that is missing in the existing set of tags?
-
-Existing tags already identified for this video:
-${existingTagsStr}
-
-Existing vault tags (cached tag list from whole vault):
-${vaultContext}
-${groupPrefixesStr}
-Important rules:
-- Always prefer to reuse a tag that already exists instead of creating a new one. Only create new tags when necessary if semantic meaning of the desired tag does not already exist in the cached tag list.
-- Use kebab case for any new tags you create (lowercase words separated by hyphens).
-- Group tags where it makes sense: If you find a large group prefix like ai/ then group the more specific part of the tag under that instead of creating an entirely new tag at the top level (e.g. "ai/machine-learning" instead of "ai-machine-learning").
-- Return ONLY a comma-separated list of tags in lowercase (e.g. ai/machine-learning, typescript, productivity). Do not include hashtags (#) or explanation.
-
-${titleStr}Summary:
-${summaryText.slice(0, 4000)}`;
-}
 
 // 28.1: extractGroupPrefixesHelper tests
 const mockTagsWithPrefixes = [
@@ -123,10 +23,10 @@ const mockTagsWithPrefixes = [
 	'obsidian',
 	'data-science'
 ];
-const extractedPrefixes = extractGroupPrefixesHelper(mockTagsWithPrefixes);
+const extractedPrefixes = extractGroupPrefixes(mockTagsWithPrefixes);
 assert.deepStrictEqual(extractedPrefixes, ['ai/', 'dev/', 'dev/frontend/']);
-assert.deepStrictEqual(extractGroupPrefixesHelper(['flat', 'no-slash', 'simple']), []);
-assert.deepStrictEqual(extractGroupPrefixesHelper([]), []);
+assert.deepStrictEqual(extractGroupPrefixes(['flat', 'no-slash', 'simple']), []);
+assert.deepStrictEqual(extractGroupPrefixes([]), []);
 
 // 28.2: buildVaultTagDataHelper tests with frequency sorting and sanitization
 const rawVaultTagRecord = {
@@ -141,7 +41,7 @@ const rawVaultTagRecord = {
 	'': 2
 };
 
-const vaultTagData = buildVaultTagDataHelper(rawVaultTagRecord);
+const vaultTagData = buildVaultTagData(rawVaultTagRecord);
 assert.strictEqual(vaultTagData.totalCount, 6);
 // Highest frequency first
 assert.strictEqual(vaultTagData.tags[0], 'ai');
@@ -159,13 +59,13 @@ assert(vaultTagData.groupPrefixes.includes('dev/'));
 assert(vaultTagData.compressedContext.includes('ai, productivity, ai/llm, ai/machine-learning'));
 
 // Empty vault tags check
-const emptyVaultData = buildVaultTagDataHelper({});
+const emptyVaultData = buildVaultTagData({});
 assert.strictEqual(emptyVaultData.totalCount, 0);
 assert.strictEqual(emptyVaultData.compressedContext, '(none yet - feel free to create initial tags)');
 
 // 28.3: buildTopicGenerationPromptHelper tests
 const test28SampleSummary = 'This tutorial demonstrates how to train machine learning models using PyTorch and open source tools.';
-const test28PromptOutput = buildTopicGenerationPromptHelper(test28SampleSummary, {
+const test28PromptOutput = buildTopicGenerationPrompt(test28SampleSummary, {
 	title: 'Training Machine Learning Models with PyTorch',
 	existingTags: ['youtube-video', 'pytorch'],
 	vaultTags: vaultTagData.tags,
@@ -222,7 +122,7 @@ function simulateRebuildCache(settings, mockVaultTags) {
 	if (!settings.getAddTopicsAsTags()) {
 		return { tags: [], groupPrefixes: [], compressedContext: '', totalCount: 0 };
 	}
-	return buildVaultTagDataHelper(mockVaultTags);
+	return buildVaultTagData(mockVaultTags);
 }
 
 // When disabled, cache is NOT rebuilt and returns empty

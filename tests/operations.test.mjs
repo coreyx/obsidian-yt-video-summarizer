@@ -5,47 +5,10 @@ import { loadSource } from './helpers/loadSource.mjs';
 import { notices, resetNotices } from './helpers/obsidian-stub.mjs';
 
 // Test 29: Batch operation progress tracking, item logging, and markdown reporting
+const { formatBatchReportAsMarkdown } = await loadSource('src/utils/BatchProgressTracker.ts');
+
 console.log('Testing batch operation progress tracking, item logging, and markdown reporting...');
 
-function formatBatchReportAsMarkdownHelper(report) {
-	const startTimeStr = new Date(report.startTime).toLocaleString();
-	const durationSec = report.endTime
-		? ((report.endTime - report.startTime) / 1000).toFixed(1)
-		: '0.0';
-
-	const lines = [
-		`# Batch Operation Report: ${report.operationName}`,
-		`- **Scope:** ${report.scope}`,
-		`- **Started:** ${startTimeStr}`,
-		`- **Duration:** ${durationSec}s`,
-		`- **Total Notes:** ${report.total}`,
-		`- **Succeeded:** ${report.succeeded}`,
-		`- **Skipped:** ${report.skipped}`,
-		`- **Failed:** ${report.failed}`,
-		'',
-		'## Processed Notes',
-		'| Status | File | Message | URL |',
-		'| :--- | :--- | :--- | :--- |'
-	];
-
-	if (report.items.length === 0) {
-		lines.push('| - | None | No notes were processed. | - |');
-	} else {
-		for (const item of report.items) {
-			const statusLabel =
-				item.status === 'success'
-					? '✓ Success'
-					: item.status === 'skipped'
-					? '⊘ Skipped'
-					: '✕ Error';
-			const sanitizedMsg = (item.message || '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
-			const urlCol = item.url ? item.url : '-';
-			lines.push(`| ${statusLabel} | [[${item.fileName}]] | ${sanitizedMsg} | ${urlCol} |`);
-		}
-	}
-
-	return lines.join('\n');
-}
 
 class MockBatchProgressTracker {
 	constructor(host, operationName, scope, total) {
@@ -168,13 +131,13 @@ assert.strictEqual(emptyReport.failed, 0);
 assert.strictEqual(emptyReport.items.length, 0);
 assert.strictEqual(host2.lastReport, emptyReport);
 
-const emptyMarkdown = formatBatchReportAsMarkdownHelper(emptyReport);
+const emptyMarkdown = formatBatchReportAsMarkdown(emptyReport);
 assert(emptyMarkdown.includes('# Batch Operation Report: Refresh video metadata'));
 assert(emptyMarkdown.includes('- **Total Notes:** 0'));
 assert(emptyMarkdown.includes('No notes were processed.'));
 
 // 29.4: formatBatchReportAsMarkdown output verification
-const markdownOutput = formatBatchReportAsMarkdownHelper(report1);
+const markdownOutput = formatBatchReportAsMarkdown(report1);
 assert(markdownOutput.includes('# Batch Operation Report: Refresh video metadata'));
 assert(markdownOutput.includes('- **Scope:** vault'));
 assert(markdownOutput.includes('- **Total Notes:** 3'));
@@ -204,7 +167,7 @@ const pipeItemReport = {
 		}
 	]
 };
-const pipeMarkdown = formatBatchReportAsMarkdownHelper(pipeItemReport);
+const pipeMarkdown = formatBatchReportAsMarkdown(pipeItemReport);
 assert(pipeMarkdown.includes('Param A \\| Param B \\| Param C'));
 
 console.log('✓ Batch operation progress tracking, item logging, and markdown reporting passed');

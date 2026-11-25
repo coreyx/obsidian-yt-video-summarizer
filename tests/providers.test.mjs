@@ -1,7 +1,10 @@
 // AI provider helpers: topic tag parsing, OpenAI request settings, and LM Studio.
 import assert from 'node:assert';
+import { loadSource } from './helpers/loadSource.mjs';
 
 // Test 6: Topics parsing from LLM response
+const { getLMStudioNativeModelsUrl, normalizeOpenAIBaseUrl, parseLMStudioModels } = await loadSource('src/services/lmStudio.ts');
+
 function parseTopics(text) {
 	return Array.from(new Set(
 		text
@@ -76,56 +79,11 @@ console.log('✓ OpenAI parameter construction passed');
 // Test 25: OpenAI-compatible URL normalization, LM Studio model parsing & provider sync
 console.log('Testing OpenAI-compatible URL normalization and LM Studio model parsing...');
 
-function testNormalizeOpenAIBaseUrl(rawUrl) {
-	let clean = (rawUrl || '').trim();
-	if (!clean) {
-		return 'http://localhost:1234/v1';
-	}
-	if (!/^https?:\/\//i.test(clean)) {
-		clean = `http://${clean}`;
-	}
-	clean = clean.replace(/\/+$/, '');
-	if (!/\/v\d+([a-z0-9_-]+)?$/i.test(clean)) {
-		clean = `${clean}/v1`;
-	}
-	return clean;
-}
 
-function testGetLMStudioNativeModelsUrl(baseUrl) {
-	return `${baseUrl.replace(/\/v\d+([a-z0-9_-]+)?$/i, '')}/api/v0/models`;
-}
 
-function testParseLMStudioModels(responseData) {
-	if (!responseData) return [];
-	const rawList = Array.isArray(responseData)
-		? responseData
-		: Array.isArray(responseData.data)
-			? responseData.data
-			: [];
-	const models = [];
-	for (const item of rawList) {
-		if (!item) continue;
-		const id = typeof item === 'string' ? item : item.id || item.name;
-		if (!id || typeof id !== 'string') continue;
-		if (item.type === 'embeddings' || item.type === 'embedding') continue;
-		const isLoaded = item.state === 'loaded' || item.loaded === true;
-		const displayName = item.displayName || item.name || id;
-		models.push({
-			id: id.trim(),
-			displayName: String(displayName).trim(),
-			isLoaded
-		});
-	}
-	models.sort((a, b) => {
-		if (a.isLoaded && !b.isLoaded) return -1;
-		if (!a.isLoaded && b.isLoaded) return 1;
-		return a.displayName.localeCompare(b.displayName);
-	});
-	return models;
-}
 
 function testSyncLMStudioProvider(settings, url, models) {
-	const normalizedUrl = testNormalizeOpenAIBaseUrl(url);
+	const normalizedUrl = normalizeOpenAIBaseUrl(url);
 	let provider = settings.providers.find((p) => p.name.toLowerCase() === 'lm studio');
 	const storedModels = models.map((m) => ({
 		name: m.id,
@@ -167,19 +125,19 @@ function testSyncLMStudioProvider(settings, url, models) {
 }
 
 // 25.1: URL normalization tests
-assert.strictEqual(testNormalizeOpenAIBaseUrl(''), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('localhost:1234'), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234'), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/'), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/v1'), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('http://localhost:1234/v1/'), 'http://localhost:1234/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1');
-assert.strictEqual(testNormalizeOpenAIBaseUrl('https://api.groq.com/openai/v1/'), 'https://api.groq.com/openai/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl(''), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('localhost:1234'), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('http://localhost:1234'), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('http://localhost:1234/'), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('http://localhost:1234/v1'), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('http://localhost:1234/v1/'), 'http://localhost:1234/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1');
+assert.strictEqual(normalizeOpenAIBaseUrl('https://api.groq.com/openai/v1/'), 'https://api.groq.com/openai/v1');
 
 // Native LM Studio endpoint derived from the OpenAI-compatible base URL
-assert.strictEqual(testGetLMStudioNativeModelsUrl('http://localhost:1234/v1'), 'http://localhost:1234/api/v0/models');
-assert.strictEqual(testGetLMStudioNativeModelsUrl('http://127.0.0.1:1234/v1'), 'http://127.0.0.1:1234/api/v0/models');
+assert.strictEqual(getLMStudioNativeModelsUrl('http://localhost:1234/v1'), 'http://localhost:1234/api/v0/models');
+assert.strictEqual(getLMStudioNativeModelsUrl('http://127.0.0.1:1234/v1'), 'http://127.0.0.1:1234/api/v0/models');
 
 // 25.2: Model parsing tests
 const mockLMStudioResp = {
@@ -190,7 +148,7 @@ const mockLMStudioResp = {
 		{ id: 'llama-3.2-3b-instruct', state: 'unloaded' }
 	]
 };
-const parsedModels = testParseLMStudioModels(mockLMStudioResp);
+const parsedModels = parseLMStudioModels(mockLMStudioResp);
 assert.strictEqual(parsedModels.length, 3);
 // Loaded model must be sorted first
 assert.strictEqual(parsedModels[0].id, 'qwen2.5-coder-7b-instruct');
@@ -202,7 +160,7 @@ assert.strictEqual(parsedModels[2].id, 'mistral-7b-instruct');
 const mockOpenAIList = {
 	data: [{ id: 'model-b' }, { id: 'model-a' }]
 };
-const parsedOpenAI = testParseLMStudioModels(mockOpenAIList);
+const parsedOpenAI = parseLMStudioModels(mockOpenAIList);
 assert.strictEqual(parsedOpenAI.length, 2);
 assert.strictEqual(parsedOpenAI[0].id, 'model-a'); // sorted alphabetically when neither loaded
 assert.strictEqual(parsedOpenAI[1].id, 'model-b');
@@ -216,7 +174,7 @@ const mockNativeResp = {
 		{ id: 'text-embedding-nomic-embed-text-v1.5', type: 'embeddings', state: 'not-loaded' }
 	]
 };
-const parsedNative = testParseLMStudioModels(mockNativeResp);
+const parsedNative = parseLMStudioModels(mockNativeResp);
 assert.strictEqual(parsedNative.length, 2);
 assert.strictEqual(parsedNative[0].id, 'qwen3-coder-30b-a3b-instruct');
 assert.strictEqual(parsedNative[0].isLoaded, true);
@@ -224,9 +182,9 @@ assert.strictEqual(parsedNative[1].id, 'gemma-4-e4b-it');
 assert.strictEqual(parsedNative[1].isLoaded, false);
 
 // Empty and invalid handling
-assert.deepStrictEqual(testParseLMStudioModels(null), []);
-assert.deepStrictEqual(testParseLMStudioModels({ data: [] }), []);
-assert.deepStrictEqual(testParseLMStudioModels({ data: [{ id: '' }, null, 123] }), []);
+assert.deepStrictEqual(parseLMStudioModels(null), []);
+assert.deepStrictEqual(parseLMStudioModels({ data: [] }), []);
+assert.deepStrictEqual(parseLMStudioModels({ data: [{ id: '' }, null, 123] }), []);
 
 // 25.3: Sync LM Studio provider into settings
 const testSettings = {
@@ -250,7 +208,7 @@ assert.strictEqual(testSettings.providers[1].apiKey, 'not-needed');
 const updatedResp = {
 	data: [{ id: 'deepseek-r1-distill-qwen-7b', state: 'loaded' }]
 };
-const updatedModels = testParseLMStudioModels(updatedResp);
+const updatedModels = parseLMStudioModels(updatedResp);
 const resyncResult = testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', updatedModels);
 assert.strictEqual(testSettings.providers.length, 2); // still 2 providers
 assert.strictEqual(resyncResult.modelCount, 1);
@@ -258,7 +216,7 @@ assert.strictEqual(testSettings.providers[1].url, 'http://127.0.0.1:1234/v1');
 assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
 
 // Nothing loaded: the current LM Studio selection is kept instead of jumping to the first model
-const noneLoaded = testParseLMStudioModels({
+const noneLoaded = parseLMStudioModels({
 	data: [
 		{ id: 'aaa-model', state: 'not-loaded' },
 		{ id: 'deepseek-r1-distill-qwen-7b', state: 'not-loaded' }
@@ -268,7 +226,7 @@ testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', noneLoaded);
 assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
 
 // Several loaded: the current selection is kept when it is one of them
-const twoLoaded = testParseLMStudioModels({
+const twoLoaded = parseLMStudioModels({
 	data: [
 		{ id: 'aaa-model', state: 'loaded' },
 		{ id: 'deepseek-r1-distill-qwen-7b', state: 'loaded' }
@@ -278,7 +236,7 @@ testSyncLMStudioProvider(testSettings, 'http://127.0.0.1:1234/v1', twoLoaded);
 assert.strictEqual(testSettings.selectedModelId, 'LM Studio:deepseek-r1-distill-qwen-7b');
 
 // Current selection not loaded: switch to the loaded model
-const otherLoaded = testParseLMStudioModels({
+const otherLoaded = parseLMStudioModels({
 	data: [
 		{ id: 'aaa-model', state: 'loaded' },
 		{ id: 'deepseek-r1-distill-qwen-7b', state: 'not-loaded' }
