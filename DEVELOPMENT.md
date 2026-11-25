@@ -73,10 +73,16 @@ The plugin operates as an Obsidian desktop/mobile plugin built with TypeScript a
 │   │   ├── modals.ts        # Input modals (URL, custom prompts, add provider)
 │   │   └── components.ts   # Reusable UI components (accordions, toggles)
 │   └── utils/
-│       └── frontmatter.ts   # YAML frontmatter builder/merger, tag deduplication,
-│                            # timestamp formatters, Media Extended note builder
+│       ├── frontmatter.ts   # YAML frontmatter builder/merger, tag deduplication,
+│       │                    # timestamp formatters, Media Extended note builder
+│       ├── summaryNote.ts   # Summary note body, placement, and note-editing helpers
+│       ├── youtubeMetadata.ts # Parsing of YouTube tags and playlist links; tag collection
+│       └── mediaExtendedOptions.ts # Per-run Media Extended options
 ├── tests/
-│   └── test-features.mjs    # Comprehensive standalone test suite (21 feature suites)
+│   ├── *.test.mjs           # Test suite, one file per area (see Testing Strategy)
+│   └── helpers/             # loadSource(), the obsidian stand-in, fakes for editors/app/settings
+├── scratch/
+│   └── test_real_source.mjs # Checks the tests run real source and catch broken functions
 ├── CHANGELOG.md             # Keep a Changelog format
 ├── DEVELOPMENT.md           # This developer guide and Q&A log
 ├── README.md                # User-facing documentation
@@ -105,7 +111,7 @@ npm install
   ```bash
   npm test
   ```
-  Runs `tests/test-features.mjs` verifying 28 feature areas (filename sanitization, tag deduplication, frontmatter serialization, model migration, timestamp linking, Media Extended formatting, description timestamp conversion, playlist discovery, vault tag caching, AI topic tagging, etc.).
+  Runs the `tests/*.test.mjs` files with `node --test` against the plugin's real source (frontmatter, timestamps, Media Extended notes, YouTube parsing, tags, AI providers, settings, summary notes, and batch operations). See [Testing Strategy](#testing-strategy).
 * **Compile TypeScript & Bundle (Production)**:
   ```bash
   npm run build
@@ -219,45 +225,50 @@ npm install
 
 ## Testing Strategy
 
-All new features and regression protections are maintained in `tests/test-features.mjs`.
+Tests run the plugin's real code from `src/`, never copies of it. A test that re-implements a function only checks the copy: the real function could change or break and the test would still pass.
 
 ### Running Tests
 ```bash
 npm test
 ```
 
-### Feature Suites Covered
-1. `sanitizeFileName`: File system and wikilink safety across Windows/Mac/Linux.
-2. `sanitizeTag`: Tag format sanitization for Obsidian.
-3. `buildFrontmatter`: Frontmatter serialization.
-4. `mergeFrontmatter`: Safe YAML merging without data loss.
-5. `decodeHTML`: Unescaping HTML entities in titles and descriptions.
-6. `parseTopics`: Topic extraction from LLM responses.
-7. `extractTagsFromText`: Hashtag regex detection in titles and descriptions.
-8. `extractYouTubeUrlFromNote`: URL detection in existing notes.
-10. `mergeFrontmatter with excludeTags`: Safe batch upgrading without overwriting tags.
-11. Folder filtering & sorting for folder-scoped batch operations.
-12. Gemini model retirement and auto-migration.
-13. Anthropic & OpenAI model retirement and auto-migration.
-14. OpenAI parameter construction (`max_completion_tokens` vs `max_tokens`).
-15. Optional note body title formatting.
-16. Optional technical term wikilink formatting.
-17. Transcript formatting and timestamp playback links.
-18. YouTube Data API tags extraction.
-19. Media Extended companion note formatting and bidirectional links.
-20. YouTube description frontmatter block and cross-source tag deduplication.
-21. Creator playlist discovery, frontmatter serialization, and header formatting.
-22. Missing companion note detection.
-23. Folder filtering and folder-scoped discovery.
-24. Summary prompt Media Extended checkbox and per-run override resolution.
-25. OpenAI-compatible URL normalization, LM Studio model parsing & provider sync.
-26. Media Extended note description, timestamp conversion, section headings, and empty line formatting.
-    - 26b. Summary note YouTube timestamp links (description, transcript, AI summary), code/wikilink protection, per-run Media Extended description/transcript options, and body defaults.
-28. Vault tag caching, compression, group prefix detection, AI topic tagging prompt, and grouped tag deduplication.
+This runs every `tests/*.test.mjs` file with Node's built-in runner (`node --test tests/`), one process per file, and fails if any file fails. A single file can be run on its own: `node tests/frontmatter.test.mjs`.
+
+### How tests load the plugin's code
+* **`tests/helpers/loadSource.mjs`**: `await loadSource('src/utils/frontmatter.ts')` compiles a source file and everything it imports with esbuild (the same compiler the build uses) and returns its exports. Each file is compiled once per test process.
+* **`tests/helpers/obsidian-stub.mjs`**: every `obsidian` import in the compiled code resolves to this stand-in, shared by all compiled modules and the tests:
+  * `requestUrl()` answers through a handler the test sets with `setRequestUrlHandler()`, and throws when none is set, so no test reaches the network.
+  * `Notice` records each notice (message, duration, hidden) in `notices`; `resetNotices()` clears them.
+  * `normalizePath()` and `arrayBufferToBase64()` behave like Obsidian's; classes the plugin only extends or type-checks (`Plugin`, `Modal`, `MarkdownView`, `TFile`, ...) are empty.
+* **`tests/helpers/obsidianFakes.mjs`**: `createFakeEditor()` (text, cursor, selection and the `Editor` methods the plugin uses) and `createFakeApp()` (open Markdown views and a vault whose `process()` edits in-memory files), for code that edits notes.
+* **`tests/helpers/settings.mjs`**: `loadSettingsManager(savedData)` runs the real `SettingsManager` start-up (`loadSettings()`) against a fake plugin and records what it saves.
+* Plugin methods that are only reachable through the plugin class can be called on its prototype with a fake `this`, as Test 28 does with `rebuildVaultTagCache()`.
+
+### Rules
+* Import what you test. When the logic lives inside a plugin method or a UI handler, move it into an exported function (usually in `src/utils/`) that the plugin calls, and test that.
+* Don't define functions in a test that repeat plugin logic; small fixtures, fakes and assertion helpers are fine.
+* Reading a source file as text is a last resort, for wiring inside `main.ts` that has no runnable unit (for example, that both link updates go through `replaceInNote`).
+
+### Checking the tests catch breakage
+```bash
+node scratch/test_real_source.mjs
+```
+Checks that no test file defines a copy of an exported `src/` function, that the suite passes, and then, in a temporary copy of the repository, makes each function on its target list (77 when this was written) throw and confirms the suite fails. `src/` itself is never modified. Add a target to its list when you add a function worth guarding.
+
+### Test files
+| File | Covers (test numbers) |
+|---|---|
+| `frontmatter.test.mjs` | Sanitizing (1, 2), building and merging frontmatter (3, 4, 10), hashtags (7), YouTube URL detection (8), description frontmatter and tag deduplication (20), video stats (33), metadata refresh and YAML block merging (34), blank-note detection (36), `watch_later` / `favorite` (42), `video_url` order and `topic` (46) |
+| `timestamps.test.mjs` | Timestamp parts, links and transcript formatting, transcript dump in summaries (17) |
+| `media-extended.test.mjs` | Companion notes and covers (19, 35), missing-companion detection (22), descriptions and timestamps (26, 26b), adding Description / Transcript sections (32), companion notes in either direction (39), plugin detection and settings layout (40) |
+| `youtube.test.mjs` | HTML decoding (5), YouTube tags (18), playlist discovery and the note meta line (21) |
+| `tags.test.mjs` | Vault tag cache, AI tag prompt and grouped deduplication (28), Tag with AI / Tag with YouTube (38) |
+| `providers.test.mjs` | Topic tag parsing (6), OpenAI request settings and `max_tokens` fallback (14), LM Studio URLs, model parsing and provider sync (25) |
+| `settings.test.mjs` | Model retirement on start-up (12, 13), per-run Media Extended options (24), default prompt upgrade (45) |
+| `summary-note.test.mjs` | Folder filtering and sorting (11, 23), body title (15), technical-term wikilinks (16), note placement, paths and link handling (31), Add description to video summary note (37), link updates in unsaved notes (41) |
+| `operations.test.mjs` | Batch progress and reports (29), live operation status (44) |
 
 ---
-
-
 
 ## Release Process
 

@@ -104,7 +104,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 - [x] **TASK-17:** Resolve every remaining copy (Test 28's `deduplicateTagsUpdatedHelper` and anything the earlier tasks did not reach): point it at real code, or delete it with the reason recorded. Afterwards no test file defines a function that re-implements plugin logic; only fixtures, fakes, and assertion helpers remain.
 
 #### [MODIFY] `DEVELOPMENT.md`
-- [ ] **TASK-18:** Update *Testing Strategy* / *Running Tests*: tests live in one `tests/<area>.test.mjs` file per area and run with `node --test`; they load the real `src/` through `tests/helpers/loadSource.mjs`, the `obsidian` stand-in and what it supports, the rule that tests never copy plugin code, and how to run the mutation check.
+- [x] **TASK-18:** Update *Testing Strategy* / *Running Tests*: tests live in one `tests/<area>.test.mjs` file per area and run with `node --test`; they load the real `src/` through `tests/helpers/loadSource.mjs`, the `obsidian` stand-in and what it supports, the rule that tests never copy plugin code, and how to run the mutation check.
 
 ## Verification Plan
 

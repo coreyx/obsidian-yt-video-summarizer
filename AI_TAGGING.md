@@ -157,4 +157,5 @@ The functionality is tested in [`tests/tags.test.mjs`](tests/tags.test.mjs):
 - **Test 28.2**: Tag frequency sorting and sanitization.
 - **Test 28.3**: Prompt generation verifying question inclusion, prefix exposure, and rule enforcement.
 - **Test 28.4**: Hierarchical deduplication prioritizing grouped tags (`/`) over flat tags (`-`).
-- **Test 28.5**: Conditional activation verifying zero execution when the setting is disabled.
+- **Test 28.5**: Conditional activation verifying zero execution when the setting is disabled (runs the plugin's own `rebuildVaultTagCache()` against a fake vault).
+- **Test 28.6**: Tag counting from Obsidian's tag index plus each file's frontmatter and inline tags (`collectVaultTagCounts()`).
