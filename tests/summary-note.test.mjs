@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 
+const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
 const { convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
@@ -63,65 +64,49 @@ console.log('✓ folder filtering and sorting passed');
 
 // Test 15: Optional note body title
 console.log('Testing optional note body title...');
-function generateSummaryHelper(transcript, thumbnailUrl, url, summaryText, inlineTags, includeDescription, includeTitle) {
-	const metaLines = [
-		`👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`
-	];
-
-	if (inlineTags && inlineTags.length > 0) {
-		metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
-	}
-
-	const summaryParts = [];
-	if (includeTitle && transcript.title) {
-		summaryParts.push(`# ${transcript.title}`);
-	}
-
-	summaryParts.push(
-		`![Thumbnail](${thumbnailUrl})`,
-		metaLines.join('\n\n'),
-		summaryText
-	);
-
-	if (includeDescription && transcript.description && transcript.description.trim()) {
-		summaryParts.push(`## Description\n\n${transcript.description.trim()}`);
-	}
-
-	return summaryParts.join('\n\n');
-}
-
 const mockTranscript = {
 	title: 'Sample Video Title',
 	author: 'Sample Author',
 	channelUrl: 'https://youtube.com/@sample',
 	description: 'Sample description text',
+	videoId: '123',
+	lines: [{ text: 'Hello there', offset: 1000, duration: 2000 }],
+};
+const bodyOptions = {
+	transcript: mockTranscript,
+	thumbnailUrl: 'https://img.youtube.com/vi/123/default.jpg',
+	videoUrl: 'https://youtube.com/watch?v=123',
+	summary: 'Summary content goes here',
 };
 
 // Default behavior: includeTitle = false
-const bodyWithoutTitle = generateSummaryHelper(
-	mockTranscript,
-	'https://img.youtube.com/vi/123/default.jpg',
-	'https://youtube.com/watch?v=123',
-	'Summary content goes here',
-	undefined,
-	true,
-	false
-);
-assert.strictEqual(bodyWithoutTitle.startsWith('# Sample Video Title'), false);
+const bodyWithoutTitle = buildSummaryBody(bodyOptions);
 assert.strictEqual(bodyWithoutTitle.includes('# Sample Video Title'), false);
 assert.strictEqual(bodyWithoutTitle.startsWith('![Thumbnail](https://img.youtube.com/vi/123/default.jpg)'), true);
+// The description stays in frontmatter ("Add description to video summary note" adds it to the body)
+assert.strictEqual(bodyWithoutTitle.includes('Sample description text'), false);
+assert.strictEqual(bodyWithoutTitle.includes('## Transcript'), false);
 
 // Enabled behavior: includeTitle = true
-const bodyWithTitle = generateSummaryHelper(
-	mockTranscript,
-	'https://img.youtube.com/vi/123/default.jpg',
-	'https://youtube.com/watch?v=123',
-	'Summary content goes here',
-	undefined,
-	true,
-	true
+const bodyWithTitle = buildSummaryBody({ ...bodyOptions, includeTitle: true });
+assert.strictEqual(bodyWithTitle.startsWith('# Sample Video Title\n\n![Thumbnail]'), true);
+
+// Layout: thumbnail, meta line, inline tags, then the summary
+assert.strictEqual(
+	buildSummaryBody({ ...bodyOptions, inlineTags: ['ai', 'pkm'] }),
+	'![Thumbnail](https://img.youtube.com/vi/123/default.jpg)\n\n'
+		+ '👤 [Sample Author](https://youtube.com/@sample)  🔗 [Watch video](https://youtube.com/watch?v=123)\n\n'
+		+ '**Tags:** #ai #pkm\n\n'
+		+ 'Summary content goes here'
 );
-assert.strictEqual(bodyWithTitle.startsWith('# Sample Video Title'), true);
+
+// Timestamps the AI wrote in the summary link to the video
+assert(buildSummaryBody({ ...bodyOptions, summary: 'At 01:05 it starts' }).includes('[01:05](https://www.youtube.com/watch?v=123&t=65s)'));
+
+// A transcript-only note (no summary) always has its Transcript section
+const transcriptOnlyBody = buildSummaryBody({ ...bodyOptions, summary: undefined });
+assert(transcriptOnlyBody.endsWith('## Transcript\n\n- [00:01](https://www.youtube.com/watch?v=123&t=1s) Hello there'));
+assert(!transcriptOnlyBody.includes('Summary content'));
 console.log('✓ Optional note body title passed');
 
 // Test 16: Optional wikilinks in technical terms

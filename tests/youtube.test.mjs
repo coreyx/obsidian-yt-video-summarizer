@@ -2,6 +2,7 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
+const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { collectVideoTags, findPlaylistIdInDescription, tagsFromDataApiItem, tagsFromPlayerDataKeywords, tagsFromWatchPageHtml } = await loadSource('src/utils/youtubeMetadata.ts');
 const { buildFrontmatter, deduplicateTags, extractTagsFromText, mergeFrontmatter, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
@@ -100,20 +101,6 @@ console.log('✓ YouTube Data API and metadata tags extraction passed');
 console.log('Testing creator playlist discovery, frontmatter, and body formatting...');
 
 // Helper functions mirroring YouTubeService and frontmatter methods
-function formatMetaLine(author, channelUrl, videoUrl, playlist, discoverPlaylist = true) {
-	let line = `👤 [${author}](${channelUrl})  🔗 [Watch video](${videoUrl})`;
-	if (discoverPlaylist && playlist) {
-		let pLabel = playlist.title || 'Playlist';
-		if (typeof playlist.index === 'number' && typeof playlist.count === 'number') {
-			pLabel += ` (${playlist.index}/${playlist.count})`;
-		} else if (typeof playlist.index === 'number') {
-			pLabel += ` (#${playlist.index})`;
-		}
-		line += `  📋 [Playlist: ${pLabel}](${playlist.url})`;
-	}
-	return line;
-}
-
 // Case 1: Extract playlist ID & index from video URL
 const urlWithPlaylist = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s&index=4';
 assert.strictEqual(YouTubeService.extractPlaylistId(urlWithPlaylist), 'PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s');
@@ -171,21 +158,27 @@ const playlistObj = {
 	index: 3,
 	count: 12,
 };
-const formattedLineWithCount = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', playlistObj, true);
+const formattedLineWithCount = buildVideoMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', playlistObj);
 assert.strictEqual(
 	formattedLineWithCount,
 	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)  📋 [Playlist: Obsidian Plugin Tutorial Series (3/12)](https://www.youtube.com/playlist?list=PLabc1234567890xyz)'
 );
 
 // Without count:
-const formattedLineWithoutCount = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', { ...playlistObj, count: undefined }, true);
+const formattedLineWithoutCount = buildVideoMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', { ...playlistObj, count: undefined });
 assert.strictEqual(
 	formattedLineWithoutCount,
 	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)  📋 [Playlist: Obsidian Plugin Tutorial Series (#3)](https://www.youtube.com/playlist?list=PLabc1234567890xyz)'
 );
 
-// When feature is disabled:
-const formattedLineDisabled = formatMetaLine('DevChannel', 'https://youtube.com/@devchannel', 'https://youtube.com/watch?v=123', playlistObj, false);
+// When *Discover playlist from creator* is off, the note body's meta line has no playlist link:
+const formattedLineDisabled = buildSummaryBody({
+	transcript: { title: 'T', author: 'DevChannel', channelUrl: 'https://youtube.com/@devchannel', videoId: '123', lines: [], playlist: playlistObj },
+	thumbnailUrl: 'thumb.jpg',
+	videoUrl: 'https://youtube.com/watch?v=123',
+	summary: 'S',
+	showPlaylist: false,
+}).split('\n\n')[1];
 assert.strictEqual(
 	formattedLineDisabled,
 	'👤 [DevChannel](https://youtube.com/@devchannel)  🔗 [Watch video](https://youtube.com/watch?v=123)'

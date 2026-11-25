@@ -50,6 +50,7 @@ import {
 import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData } from './utils/vaultTags';
 import { collectVideoTags } from './utils/youtubeMetadata';
+import { buildSummaryBody } from './utils/summaryNote';
 import { defaultMediaExtendedRunOptions, resolveCompanionNoteOptions } from './utils/mediaExtendedOptions';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
@@ -1923,38 +1924,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const inlineTags = addInlineTags ? allTags : undefined;
 			const frontmatterTags = addTagsToFrontmatter ? allTags : undefined;
 
-			// Format transcript
-			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
-				format: 'youtube',
+			let bodyContent = buildSummaryBody({
+				transcript,
+				thumbnailUrl,
+				videoUrl: url,
+				inlineTags,
+				includeTitle: this.settings.getIncludeTitleInBody(),
+				showPlaylist: this.settings.getDiscoverPlaylist(),
 			});
-
-			let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
-			if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
-				const p = transcript.playlist;
-				let pLabel = p.title ?? 'Playlist';
-				if (typeof p.index === 'number' && typeof p.count === 'number') {
-					pLabel += ` (${p.index}/${p.count})`;
-				} else if (typeof p.index === 'number') {
-					pLabel += ` (#${p.index})`;
-				}
-				metaLine += `  📋 [Playlist: ${pLabel}](${p.url})`;
-			}
-			const metaLines = [metaLine];
-			if (inlineTags && inlineTags.length > 0) {
-				metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
-			}
-
-			const bodyParts: string[] = [];
-			if (this.settings.getIncludeTitleInBody() && transcript.title) {
-				bodyParts.push(`# ${transcript.title}`);
-			}
-			bodyParts.push(
-				`![Thumbnail](${thumbnailUrl})`,
-				metaLines.join('\n\n'),
-				`## Transcript\n\n${formattedTranscript}`
-			);
-
-			let bodyContent = bodyParts.join('\n\n');
 
 			if (mediaExtendedOptions.createNote) {
 				progress.setStage('Creating Media Extended note');
@@ -2022,43 +1999,16 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		includeTitle = false,
 		dumpTranscript = false
 	): string {
-		let metaLine = `👤 [${transcript.author}](${transcript.channelUrl})  🔗 [Watch video](${url})`;
-		if (this.settings.getDiscoverPlaylist() && transcript.playlist) {
-			const p = transcript.playlist;
-			let pLabel = p.title ?? 'Playlist';
-			if (typeof p.index === 'number' && typeof p.count === 'number') {
-				pLabel += ` (${p.index}/${p.count})`;
-			} else if (typeof p.index === 'number') {
-				pLabel += ` (#${p.index})`;
-			}
-			metaLine += `  📋 [Playlist: ${pLabel}](${p.url})`;
-		}
-		const metaLines = [metaLine];
-
-		if (inlineTags && inlineTags.length > 0) {
-			metaLines.push(`**Tags:** ${inlineTags.map((t) => `#${t}`).join(' ')}`);
-		}
-
-		const summaryParts: string[] = [];
-		if (includeTitle && transcript.title) {
-			summaryParts.push(`# ${transcript.title}`);
-		}
-
-		// Link any timestamps the AI included to the video in standard YouTube format
-		summaryParts.push(
-			`![Thumbnail](${thumbnailUrl})`,
-			metaLines.join('\n\n'),
-			convertTimestampsToLinks(summaryText, transcript.videoId, 'youtube')
-		);
-
-		if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
-			const formattedTranscript = formatTranscript(transcript.lines, transcript.videoId, {
-				format: 'youtube',
-			});
-			summaryParts.push(`## Transcript\n\n${formattedTranscript}`);
-		}
-
-		return summaryParts.join('\n\n');
+		return buildSummaryBody({
+			transcript,
+			thumbnailUrl,
+			videoUrl: url,
+			summary: summaryText,
+			inlineTags,
+			includeTitle,
+			includeTranscript: dumpTranscript,
+			showPlaylist: this.settings.getDiscoverPlaylist(),
+		});
 	}
 
 	/**

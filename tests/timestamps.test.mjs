@@ -2,6 +2,7 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
+const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
 const { formatTimestampParts, formatTranscript } = await loadSource('src/utils/frontmatter.ts');
 
 // Test 17: Transcript formatting and timestamp links
@@ -48,27 +49,25 @@ for (const formatted of [meFormatted, ytFormatted]) {
 }
 
 // Test summary generation with transcript dump
-function generateSummaryDumpHelper(transcript, thumbnailUrl, url, summaryText, dumpTranscript) {
-	const summaryParts = [
-		`![Thumbnail](${thumbnailUrl})`,
-		summaryText
-	];
-	if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
-		const formatted = formatTranscript(transcript.lines, transcript.videoId);
-		summaryParts.push(`## Transcript\n\n${formatted}`);
-	}
-	return summaryParts.join('\n\n');
-}
-
 const mockTranscriptWithLines = {
+	title: 'T',
+	author: 'A',
+	channelUrl: 'https://youtube.com/@a',
 	videoId: 'abc123xyz',
 	lines: testLines
 };
+const dumpBody = (includeTranscript) => buildSummaryBody({
+	transcript: mockTranscriptWithLines,
+	thumbnailUrl: 'thumb.jpg',
+	videoUrl: 'url',
+	summary: '## Summary\nText',
+	includeTranscript,
+});
 
-const summaryNoDump = generateSummaryDumpHelper(mockTranscriptWithLines, 'thumb.jpg', 'url', '## Summary\nText', false);
+const summaryNoDump = dumpBody(false);
 assert.strictEqual(summaryNoDump.includes('## Transcript'), false);
 
-const summaryWithDump = generateSummaryDumpHelper(mockTranscriptWithLines, 'thumb.jpg', 'url', '## Summary\nText', true);
+const summaryWithDump = dumpBody(true);
 assert.strictEqual(summaryWithDump.includes('## Transcript'), true);
 assert.strictEqual(summaryWithDump.includes('- [01:05]('), true);
 console.log('✓ Transcript formatting and timestamp links passed');
