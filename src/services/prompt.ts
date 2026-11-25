@@ -21,3 +21,19 @@ export class PromptService {
 		return `${this.customPrompt}\n\nTranscript:\n${transcriptText}`;
 	}
 }
+
+/**
+ * Adjusts the summary prompt for the *Link technical terms* setting. The default prompt asks for technical
+ * terms as `[[wikilinks]]`; with the setting off, the examples become bold text and an explicit rule tells the
+ * model not to use wikilinks.
+ */
+export function adaptPromptForWikilinks(prompt: string, linkTerms: boolean): string {
+	if (linkTerms) {
+		return prompt;
+	}
+	return prompt
+		.replace(/\*\*\[\[Term 1\]\]\*\*/g, '**Term 1**')
+		.replace(/\*\*\[\[Term 2\]\]\*\*/g, '**Term 2**')
+		.replace(/\[\[Term (\d+)\]\]/g, 'Term $1')
+		+ '\n\nImportant formatting rule: In the "Technical terms" section, do NOT use wikilinks (do NOT enclose terms in [[ ]]). Format terms as bold text only (e.g. - **Term**: explanation).';
+}

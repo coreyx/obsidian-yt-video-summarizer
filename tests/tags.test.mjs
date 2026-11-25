@@ -3,13 +3,14 @@ import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
 const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
-const { buildTopicGenerationPrompt, buildVaultTagData, compressVaultTags, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
+const { buildTopicGenerationPrompt, buildVaultTagData, collectVaultTagCounts, compressVaultTags, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
+const { YouTubeSummarizerPlugin } = await loadSource('src/main.ts');
 
 // Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
 
 console.log('Testing vault tag caching, AI topic tagging prompt, and grouped tag deduplication...');
 
-// 28.1: extractGroupPrefixesHelper tests
+// 28.1: extractGroupPrefixes
 const mockTagsWithPrefixes = [
 	'ai/machine-learning',
 	'ai/llm',
@@ -24,7 +25,7 @@ assert.deepStrictEqual(extractedPrefixes, ['ai/', 'dev/', 'dev/frontend/']);
 assert.deepStrictEqual(extractGroupPrefixes(['flat', 'no-slash', 'simple']), []);
 assert.deepStrictEqual(extractGroupPrefixes([]), []);
 
-// 28.2: buildVaultTagDataHelper tests with frequency sorting and sanitization
+// 28.2: buildVaultTagData with frequency sorting and sanitization
 const rawVaultTagRecord = {
 	'#productivity': 25,
 	'#ai/machine-learning': 12,
@@ -59,7 +60,7 @@ const emptyVaultData = buildVaultTagData({});
 assert.strictEqual(emptyVaultData.totalCount, 0);
 assert.strictEqual(emptyVaultData.compressedContext, '(none yet - feel free to create initial tags)');
 
-// 28.3: buildTopicGenerationPromptHelper tests
+// 28.3: buildTopicGenerationPrompt
 const test28SampleSummary = 'This tutorial demonstrates how to train machine learning models using PyTorch and open source tools.';
 const test28PromptOutput = buildTopicGenerationPrompt(test28SampleSummary, {
 	title: 'Training Machine Learning Models with PyTorch',
@@ -104,34 +105,56 @@ assert.deepStrictEqual(testTagsOrder2, ['ai/machine-learning']);
 const testHyphenCollapse = deduplicateTags(['rickastley', 'rick-astley']);
 assert.deepStrictEqual(testHyphenCollapse, ['rick-astley']);
 
-// 28.5: Activation condition simulation (only active when addTopicsAsTags is true)
-class MockSettingsManager {
-	constructor(addTopicsAsTags) {
-		this.addTopicsAsTags = addTopicsAsTags;
-	}
-	getAddTopicsAsTags() {
-		return this.addTopicsAsTags;
-	}
-}
+// 28.5: The plugin's rebuildVaultTagCache() — nothing is scanned when topic tagging is off
+const fakeTagVault = {
+	scanned: 0,
+	getMarkdownFiles() {
+		this.scanned++;
+		return [{ path: 'a.md' }, { path: 'b.md' }];
+	},
+};
+const fakeTagApp = {
+	vault: fakeTagVault,
+	metadataCache: {
+		getTags: () => rawVaultTagRecord,
+		getFileCache: (file) => (file.path === 'a.md' ? { frontmatter: { tags: ['newsletter'] } } : null),
+	},
+};
+const rebuildWith = (addTopicsAsTags) => YouTubeSummarizerPlugin.prototype.rebuildVaultTagCache.call({
+	settings: { getAddTopicsAsTags: () => addTopicsAsTags },
+	app: fakeTagApp,
+});
 
-function simulateRebuildCache(settings, mockVaultTags) {
-	if (!settings.getAddTopicsAsTags()) {
-		return { tags: [], groupPrefixes: [], compressedContext: '', totalCount: 0 };
-	}
-	return buildVaultTagData(mockVaultTags);
-}
-
-// When disabled, cache is NOT rebuilt and returns empty
-const disabledSettings = new MockSettingsManager(false);
-const disabledResult = simulateRebuildCache(disabledSettings, rawVaultTagRecord);
+const disabledResult = await rebuildWith(false);
 assert.strictEqual(disabledResult.totalCount, 0);
 assert.strictEqual(disabledResult.compressedContext, '');
+assert.strictEqual(fakeTagVault.scanned, 0, 'the vault is not scanned when the setting is off');
 
-// When enabled, cache is rebuilt
-const enabledSettings = new MockSettingsManager(true);
-const enabledResult = simulateRebuildCache(enabledSettings, rawVaultTagRecord);
-assert.strictEqual(enabledResult.totalCount, 6);
+// When enabled, the cache is rebuilt from the tag index and the file caches
+const enabledResult = await rebuildWith(true);
+assert.strictEqual(fakeTagVault.scanned, 1);
+assert.strictEqual(enabledResult.totalCount, 7);
+assert(enabledResult.tags.includes('newsletter'));
 assert(enabledResult.compressedContext.length > 0);
+
+// 28.6: Tag counting across the vault: Obsidian's tag index plus every file's frontmatter and inline tags
+const fileCaches = [
+	{ frontmatter: { tags: ['ai', ' productivity ', 42, ''] }, tags: [{ tag: '#ai/llm' }, null, {}] },
+	{ frontmatter: { tags: 'music, pop-culture  jazz' } },
+	{ frontmatter: { title: 'No tags' } },
+	null,
+];
+assert.deepStrictEqual(collectVaultTagCounts({ '#ai': 30, '#odd': 'not a number' }, fileCaches), {
+	'#ai': 30,
+	'#odd': 1,
+	ai: 1,
+	productivity: 1,
+	'#ai/llm': 1,
+	music: 1,
+	'pop-culture': 1,
+	jazz: 1,
+});
+assert.deepStrictEqual(collectVaultTagCounts(null, []), {});
 
 console.log('✓ Vault tag caching, AI topic tagging prompt, and grouped tag deduplication passed');
 

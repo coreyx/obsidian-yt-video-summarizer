@@ -14,6 +14,7 @@ const {
 	replaceInNote,
 } = await loadSource('src/utils/summaryNote.ts');
 const { buildFrontmatter, convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
+const { adaptPromptForWikilinks } = await loadSource('src/services/prompt.ts');
 
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
 const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
@@ -165,18 +166,6 @@ assert.strictEqual(strippedEnding.includes('- **Docker**: Container engine.'), t
 assert.strictEqual(strippedEnding.includes('[['), false);
 
 // Case 3: Prompt adaptation logic
-function adaptPromptForWikilinks(basePrompt, linkTerms) {
-	if (!linkTerms) {
-		let prompt = basePrompt
-			.replace(/\*\*\[\[Term 1\]\]\*\*/g, '**Term 1**')
-			.replace(/\*\*\[\[Term 2\]\]\*\*/g, '**Term 2**')
-			.replace(/\[\[Term (\d+)\]\]/g, 'Term $1');
-		prompt += '\n\nImportant formatting rule: In the "Technical terms" section, do NOT use wikilinks (do NOT enclose terms in [[ ]]). Format terms as bold text only (e.g. - **Term**: explanation).';
-		return prompt;
-	}
-	return basePrompt;
-}
-
 const mockDefaultPrompt = '## Technical terms\n- **[[Term 1]]**: [Explanation 1]\n- **[[Term 2]]**: [Explanation 2]';
 const adaptedEnabled = adaptPromptForWikilinks(mockDefaultPrompt, true);
 assert.strictEqual(adaptedEnabled.includes('**[[Term 1]]**'), true);

@@ -1,4 +1,4 @@
-import { arrayBufferToBase64, Editor, MarkdownView, Notice, Plugin, TFile, TFolder } from 'obsidian';
+import { arrayBufferToBase64, CachedMetadata, Editor, MarkdownView, Notice, Plugin, TFile, TFolder } from 'obsidian';
 import { BatchItemResult, BatchOperationReport, MediaExtendedRunOptions, PluginSettings, TranscriptResponse } from './types';
 
 import { SettingsTab } from './ui/settings';
@@ -9,7 +9,7 @@ import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { BatchReportModal } from './ui/modals/BatchReportModal';
 import { BatchProgressTracker } from './utils/BatchProgressTracker';
 import { OperationProgress, shortenTitle } from './utils/OperationProgress';
-import { PromptService } from './services/prompt';
+import { adaptPromptForWikilinks, PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
 import { detectLMStudioServer } from './services/lmStudio';
@@ -47,7 +47,7 @@ import {
 	videoStatsFrontmatter,
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
-import { buildVaultTagData } from './utils/vaultTags';
+import { buildVaultTagData, collectVaultTagCounts } from './utils/vaultTags';
 import { collectVideoTags } from './utils/youtubeMetadata';
 import {
 	buildSummaryBody,
@@ -1020,57 +1020,25 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return { tags: [], groupPrefixes: [], compressedContext: '', totalCount: 0 };
 		}
 
-		const tagCounts: Record<string, number> = {};
-
-		// 1. Primary: Query Obsidian MetadataCache getTags()
+		// Obsidian's tag index; getTags() isn't in Obsidian's published typings, so check it exists first
+		let appTags: Record<string, unknown> | null = null;
 		try {
 			if (typeof (this.app.metadataCache as any)?.getTags === 'function') {
-				const appTags = (this.app.metadataCache as any).getTags() || {};
-				for (const [tag, count] of Object.entries(appTags)) {
-					tagCounts[tag] = typeof count === 'number' ? count : 1;
-				}
+				appTags = (this.app.metadataCache as any).getTags() || {};
 			}
 		} catch (e) {
 			console.warn('Failed to read app.metadataCache.getTags():', e);
 		}
 
-		// 2. Secondary: Scan cached markdown files to ensure frontmatter and inline tags are captured
+		// Every markdown file's cached metadata, so frontmatter and inline tags are counted too
+		let fileCaches: Array<CachedMetadata | null> = [];
 		try {
-			const markdownFiles = this.app.vault.getMarkdownFiles();
-			for (const file of markdownFiles) {
-				const cache = this.app.metadataCache.getFileCache(file);
-				if (!cache) continue;
-
-				if (cache.frontmatter?.tags) {
-					const fmTags = cache.frontmatter.tags;
-					if (Array.isArray(fmTags)) {
-						for (const t of fmTags) {
-							if (typeof t === 'string') {
-								const clean = t.trim();
-								if (clean) tagCounts[clean] = (tagCounts[clean] || 0) + 1;
-							}
-						}
-					} else if (typeof fmTags === 'string') {
-						const parts = fmTags.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
-						for (const p of parts) {
-							tagCounts[p] = (tagCounts[p] || 0) + 1;
-						}
-					}
-				}
-
-				if (cache.tags && Array.isArray(cache.tags)) {
-					for (const t of cache.tags) {
-						if (t?.tag) {
-							tagCounts[t.tag] = (tagCounts[t.tag] || 0) + 1;
-						}
-					}
-				}
-			}
+			fileCaches = this.app.vault.getMarkdownFiles().map((file) => this.app.metadataCache.getFileCache(file));
 		} catch (e) {
 			console.warn('Failed to scan file caches for tags:', e);
 		}
 
-		const data = buildVaultTagData(tagCounts, 1000);
+		const data = buildVaultTagData(collectVaultTagCounts(appTags, fileCaches), 1000);
 		this.cachedVaultTagData = data;
 		return data;
 	}
@@ -1826,13 +1794,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			? `${this.settings.getCustomPrompt()}\n\nAdditional instructions:\n${customPrompt.trim()}`
 			: this.settings.getCustomPrompt();
 
-		if (!this.settings.getLinkTechnicalTerms()) {
-			basePrompt = basePrompt
-				.replace(/\*\*\[\[Term 1\]\]\*\*/g, '**Term 1**')
-				.replace(/\*\*\[\[Term 2\]\]\*\*/g, '**Term 2**')
-				.replace(/\[\[Term (\d+)\]\]/g, 'Term $1');
-			basePrompt += '\n\nImportant formatting rule: In the "Technical terms" section, do NOT use wikilinks (do NOT enclose terms in [[ ]]). Format terms as bold text only (e.g. - **Term**: explanation).';
-		}
+		basePrompt = adaptPromptForWikilinks(basePrompt, this.settings.getLinkTechnicalTerms());
 
 		const promptService = new PromptService(basePrompt);
 		return promptService.buildPrompt(transcriptText);

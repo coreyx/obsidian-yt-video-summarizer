@@ -152,3 +152,49 @@ export function parseTopicTags(text: string): string[] {
 			.filter((tag) => tag.length > 0 && !/^\d+$/.test(tag))
 	));
 }
+
+/** The parts of an Obsidian file cache that carry tags */
+interface TaggedFileCache {
+	frontmatter?: { tags?: unknown } | null;
+	tags?: Array<{ tag?: string } | null> | null;
+}
+
+/**
+ * Counts every tag in the vault from Obsidian's tag index (`metadataCache.getTags()`, when available) plus each
+ * markdown file's cached frontmatter `tags` (a list, or a comma/space-separated string) and inline `#tags`.
+ * Scanning the file caches as well makes sure frontmatter tags are counted even where the index misses them.
+ * @param appTags - The tag index: tag → occurrence count, or `null` when unavailable.
+ * @param fileCaches - The cached metadata of every markdown file (`null` for files not cached yet).
+ */
+export function collectVaultTagCounts(
+	appTags: Record<string, unknown> | null | undefined,
+	fileCaches: Array<TaggedFileCache | null | undefined>
+): Record<string, number> {
+	const tagCounts: Record<string, number> = {};
+	for (const [tag, count] of Object.entries(appTags ?? {})) {
+		tagCounts[tag] = typeof count === 'number' ? count : 1;
+	}
+	const add = (tag: string) => {
+		tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+	};
+
+	for (const cache of fileCaches) {
+		if (!cache) continue;
+
+		const fmTags = cache.frontmatter?.tags;
+		if (Array.isArray(fmTags)) {
+			for (const tag of fmTags) {
+				if (typeof tag === 'string' && tag.trim()) add(tag.trim());
+			}
+		} else if (typeof fmTags === 'string') {
+			fmTags.split(/[,\s]+/).map((part) => part.trim()).filter(Boolean).forEach(add);
+		}
+
+		if (Array.isArray(cache.tags)) {
+			for (const inline of cache.tags) {
+				if (inline?.tag) add(inline.tag);
+			}
+		}
+	}
+	return tagCounts;
+}
