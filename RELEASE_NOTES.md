@@ -1,5 +1,29 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.21.0
+
+### Highlights
+
+YouTube Video Summarizer v1.21.0 labels each summary with what the video is about:
+
+* 🧭 **Topics**: Up to 3 topics inferred from the transcript, saved in a new `topic` property.
+* 🔗 **Video Link Up Top**: `video_url` now sits right under `title` in new notes.
+
+### What's Changed in v1.21.0
+
+#### 🧭 Topics
+* New and regenerated summaries get a `topic` list in their frontmatter, just above `tags`, with up to 3 topics such as *Machine Learning* or *Personal Finance*.
+* Topics are readable Title Case labels for browsing and filtering your notes. They are separate from tags, which stay lowercase and reuse your vault's existing tags.
+* Your AI model reads the transcript to pick them, in one small extra request that runs alongside the summary, so summaries don't take longer. For long videos, it reads samples from the beginning, middle, and end.
+* Regenerating a summary replaces its topics. *Refresh video metadata* never changes them, and if the request fails, a note keeps the topics it already has.
+* Turn it off with **Infer topics** in the *Tags & Metadata* settings tab. It's on by default.
+
+#### 🔗 Frontmatter Order
+* New video summary notes list `video_url` directly after `title`, ahead of the channel fields.
+* Notes you already have keep their current property order.
+
+---
+
 ## v1.20.0
 
 ### Highlights
