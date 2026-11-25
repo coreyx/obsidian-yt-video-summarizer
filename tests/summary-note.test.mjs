@@ -1,13 +1,9 @@
 // Video summary notes: body rendering, placement and paths, prompt options, folder filtering, and description/link updates.
 import assert from 'node:assert';
+import { loadSource } from './helpers/loadSource.mjs';
 import { readFileSync } from 'node:fs';
-import {
-	convertTimestampsToLinksHelper,
-	testFilterFilesByFolderPaths,
-	findMarkdownSectionHelper,
-	upsertMarkdownSectionHelper,
-	getVideoNoteKindHelper,
-} from './helpers/legacy-copies.mjs';
+
+const { convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
 const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
@@ -15,12 +11,6 @@ const meNoteBare = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n`;
 
 // Test 11: folder filtering and sorting
 console.log('Testing folder filtering and sorting...');
-function filterFilesByFolder(files, folder) {
-	if (folder.isRoot) {
-		return files;
-	}
-	return files.filter((f) => f.path.startsWith(folder.path + '/'));
-}
 
 function sortFolders(folders) {
 	return [...folders].sort((a, b) => {
@@ -38,9 +28,10 @@ const mockFiles = [
 	{ path: 'YouTube-Archived/Old.md' }, // Note prefix boundary test
 ];
 
-const rootFolder = { path: '/', isRoot: true };
-const ytFolder = { path: 'YouTube', isRoot: false };
-const ytSubFolder = { path: 'YouTube/2026', isRoot: false };
+// Obsidian's TFolder.isRoot is a method
+const rootFolder = { path: '/', isRoot: () => true };
+const ytFolder = { path: 'YouTube', isRoot: () => false };
+const ytSubFolder = { path: 'YouTube/2026', isRoot: () => false };
 
 assert.strictEqual(filterFilesByFolder(mockFiles, rootFolder).length, 5);
 
@@ -135,16 +126,6 @@ console.log('✓ Optional note body title passed');
 
 // Test 16: Optional wikilinks in technical terms
 console.log('Testing optional wikilinks in technical terms...');
-function stripWikilinksFromTechnicalTerms(content) {
-	const sectionRegex = /(^|\r?\n)(#{1,4}\s+[^\r\n]*technical\s+term[^\r\n]*\r?\n)([\s\S]*?)(?=(?:\r?\n#{1,4}\s+|\r?\n---\s*|$))/gi;
-	return content.replace(sectionRegex, (match, prefix, heading, body) => {
-		const strippedBody = body.replace(
-			/\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g,
-			(_, target, display) => display || target
-		);
-		return `${prefix}${heading}${strippedBody}`;
-	});
-}
 
 // Case 1: Standard wikilinks in technical terms with wikilinks in summary
 const sampleSummary = [
@@ -215,18 +196,6 @@ console.log('✓ Optional wikilinks in technical terms passed');
 // Test 23: Folder filtering and folder-scoped discovery
 console.log('Testing folder filtering and folder-scoped discovery...');
 
-
-function testFilterFilesByFolder(files, folder) {
-	if (folder.isRoot()) {
-		return files;
-	}
-	const folderPath = folder.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-	return files.filter((file) => {
-		const filePath = file.path.replace(/\\/g, '/');
-		return filePath.startsWith(folderPath + '/') || filePath === folderPath;
-	});
-}
-
 // Case 1: filterFilesByFolderPaths
 const mockVaultFiles = [
 	{ path: 'YouTube/Rick Astley.md' },
@@ -236,7 +205,7 @@ const mockVaultFiles = [
 	{ path: 'RootNote.md' }
 ];
 
-const filteredByPaths = testFilterFilesByFolderPaths(mockVaultFiles, ['YouTube', 'Notes/Videos']);
+const filteredByPaths = filterFilesByFolderPaths(mockVaultFiles, ['YouTube', 'Notes/Videos']);
 assert.strictEqual(filteredByPaths.length, 3);
 assert.deepStrictEqual(
 	filteredByPaths.map((f) => f.path),
@@ -244,22 +213,21 @@ assert.deepStrictEqual(
 );
 
 // Empty folder list returns all files
-assert.strictEqual(testFilterFilesByFolderPaths(mockVaultFiles, []).length, 5);
+assert.strictEqual(filterFilesByFolderPaths(mockVaultFiles, []).length, 5);
 
 // Case 2: filterFilesByFolder (single folder or root)
 const mockSubFolder = { path: 'YouTube', isRoot: () => false };
 const vaultRootFolder = { path: '/', isRoot: () => true };
 
-const filteredByFolder = testFilterFilesByFolder(mockVaultFiles, mockSubFolder);
+const filteredByFolder = filterFilesByFolder(mockVaultFiles, mockSubFolder);
 assert.strictEqual(filteredByFolder.length, 2);
 assert.deepStrictEqual(
 	filteredByFolder.map((f) => f.path),
 	['YouTube/Rick Astley.md', 'YouTube/Tutorials/Agent.md']
 );
 
-const filteredByRoot = testFilterFilesByFolder(mockVaultFiles, vaultRootFolder);
+const filteredByRoot = filterFilesByFolder(mockVaultFiles, vaultRootFolder);
 assert.strictEqual(filteredByRoot.length, 5);
-
 
 console.log('✓ Folder filtering and folder-scoped discovery passed');
 
@@ -346,7 +314,7 @@ console.log('Testing add description to video summary note...');
 const summaryNoteFm = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\ndescription: |-\n  Chapters\n  0:00 Intro\n  01:23 Setup\n---';
 const summaryNoteBody = '![Thumbnail](https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg)\n\n## Summary\n\nText\n\n## Key points\n\n- Point\n\n# Related\n\n- [[Media Library/Video]]';
 const summaryNoteFull = `${summaryNoteFm}\n\n${summaryNoteBody}\n`;
-const ytDescriptionBody = convertTimestampsToLinksHelper('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ', 'youtube');
+const ytDescriptionBody = convertTimestampsToLinks('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ', 'youtube');
 
 // 37.1: Description timestamps become clickable standard YouTube links
 assert(ytDescriptionBody.includes('[0:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0s) Intro'));
@@ -354,32 +322,32 @@ assert(ytDescriptionBody.includes('[01:23](https://www.youtube.com/watch?v=dQw4w
 assert(!ytDescriptionBody.includes('#t='));
 
 // 37.2: Classified as a summary note (and Media Extended notes are not)
-assert.strictEqual(getVideoNoteKindHelper(summaryNoteFull, 'Video Summaries/Video.md', 'Media Library'), 'summary');
-assert.strictEqual(getVideoNoteKindHelper(meNoteBare, 'Media Library/Video.md', 'Media Library'), 'mediaExtended');
+assert.strictEqual(getVideoNoteKind(summaryNoteFull, 'Video Summaries/Video.md', 'Media Library'), 'summary');
+assert.strictEqual(getVideoNoteKind(meNoteBare, 'Media Library/Video.md', 'Media Library'), 'mediaExtended');
 
 // 37.3: Inserted as ## Description before # Related (Media Extended link stays last)
-const withSummaryDesc = upsertMarkdownSectionHelper(summaryNoteFull, 'Description', ytDescriptionBody, ['Related'], 2);
+const withSummaryDesc = upsertMarkdownSection(summaryNoteFull, 'Description', ytDescriptionBody, ['Related'], 2);
 assert(withSummaryDesc.includes(`## Key points\n\n- Point\n\n## Description\n\n${ytDescriptionBody}\n\n# Related\n\n- [[Media Library/Video]]\n`));
 assert(withSummaryDesc.startsWith(summaryNoteFm));
 
 // 37.4: Appended at the end when there's no # Related
 const noRelated = `${summaryNoteFm}\n\n## Summary\n\nText\n`;
-assert.strictEqual(upsertMarkdownSectionHelper(noRelated, 'Description', 'D', ['Related'], 2), `${summaryNoteFm}\n\n## Summary\n\nText\n\n## Description\n\nD\n`);
+assert.strictEqual(upsertMarkdownSection(noRelated, 'Description', 'D', ['Related'], 2), `${summaryNoteFm}\n\n## Summary\n\nText\n\n## Description\n\nD\n`);
 
 // 37.5: Existing ## Description is detected and replaced in place; level-2 sections end at the next ## or #
-assert.notStrictEqual(findMarkdownSectionHelper(withSummaryDesc, 'Description', 2), null);
-assert.strictEqual(findMarkdownSectionHelper(withSummaryDesc, 'Description', 1), null);
-const replacedSummaryDesc = upsertMarkdownSectionHelper(withSummaryDesc, 'Description', 'New', ['Related'], 2);
+assert.notStrictEqual(findMarkdownSection(withSummaryDesc, 'Description', 2), null);
+assert.strictEqual(findMarkdownSection(withSummaryDesc, 'Description', 1), null);
+const replacedSummaryDesc = upsertMarkdownSection(withSummaryDesc, 'Description', 'New', ['Related'], 2);
 assert(replacedSummaryDesc.includes('## Description\n\nNew\n\n# Related'));
 assert.strictEqual((replacedSummaryDesc.match(/^## Description$/gm) || []).length, 1);
 const midDesc = `${summaryNoteFm}\n\n## Description\n\nOld\n\n### Sub\n\nx\n\n## Key points\n\n- P\n`;
-const replacedMid = upsertMarkdownSectionHelper(midDesc, 'Description', 'New', ['Related'], 2);
+const replacedMid = upsertMarkdownSection(midDesc, 'Description', 'New', ['Related'], 2);
 assert(replacedMid.includes('## Description\n\nNew\n\n## Key points\n\n- P\n'));
 assert(!replacedMid.includes('### Sub'));
 
 // 37.6: Level-1 behavior unchanged — ## subsections belong to a # section
 const level1WithSub = '# Description\n\nA\n\n## Links\n\n- x\n\n# Related\n\n- y';
-assert.deepStrictEqual(findMarkdownSectionHelper(level1WithSub, 'Description'), { start: 0, end: 8 });
+assert.deepStrictEqual(findMarkdownSection(level1WithSub, 'Description'), { start: 0, end: 8 });
 
 console.log('✓ Add description to video summary note passed');
 

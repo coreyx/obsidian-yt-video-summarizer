@@ -1,23 +1,19 @@
 // Timestamp parsing, timestamp links, and transcript formatting.
 import assert from 'node:assert';
-import {
-	formatTimestampPartsHelper,
-	formatTranscriptHelper,
-} from './helpers/legacy-copies.mjs';
+import { loadSource } from './helpers/loadSource.mjs';
 
 // Test 17: Transcript formatting and timestamp links
+const { formatTimestampParts, formatTranscript } = await loadSource('src/utils/frontmatter.ts');
+
 console.log('Testing transcript formatting and timestamp links...');
 
-
-
-
 // Check unit breakdown
-const p1 = formatTimestampPartsHelper(65610);
+const p1 = formatTimestampParts(65610);
 assert.strictEqual(p1.timeStr, '01:05');
 assert.strictEqual(p1.roundedSeconds, 66);
 assert.strictEqual(p1.meTimeStr, '01:05.61');
 
-const p2 = formatTimestampPartsHelper(122650);
+const p2 = formatTimestampParts(122650);
 assert.strictEqual(p2.timeStr, '02:02');
 assert.strictEqual(p2.roundedSeconds, 123);
 assert.strictEqual(p2.meTimeStr, '02:02.65');
@@ -29,14 +25,14 @@ const testLines = [
 ];
 
 // Media Extended format (companion notes) matching user's exact specification
-const meFormatted = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
+const meFormatted = formatTranscript(testLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
 assert.strictEqual(meFormatted.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=66#t=01:05.61) First segment'), true);
 assert.strictEqual(meFormatted.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=123#t=02:02.65) Second segment with newline'), true);
 assert.strictEqual(meFormatted.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3666#t=01:01:05.61) Hour segment'), true);
 assert.strictEqual(meFormatted.includes('[[#t='), false);
 
 // Standard YouTube format (default, video summary notes): &t=SECONDSs, floored to the displayed second
-const ytFormatted = formatTranscriptHelper(testLines, 'dQw4w9WgXcQ');
+const ytFormatted = formatTranscript(testLines, 'dQw4w9WgXcQ');
 assert.strictEqual(ytFormatted.includes('- [01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=65s) First segment'), true);
 assert.strictEqual(ytFormatted.includes('- [02:02](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=122s) Second segment with newline'), true);
 assert.strictEqual(ytFormatted.includes('- [01:01:05](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3665s) Hour segment'), true);
@@ -57,7 +53,7 @@ function generateSummaryDumpHelper(transcript, thumbnailUrl, url, summaryText, d
 		summaryText
 	];
 	if (dumpTranscript && transcript.lines && transcript.lines.length > 0) {
-		const formatted = formatTranscriptHelper(transcript.lines, transcript.videoId);
+		const formatted = formatTranscript(transcript.lines, transcript.videoId);
 		summaryParts.push(`## Transcript\n\n${formatted}`);
 	}
 	return summaryParts.join('\n\n');

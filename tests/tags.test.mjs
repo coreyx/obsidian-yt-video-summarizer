@@ -1,12 +1,10 @@
 // The vault tag cache, the AI tag prompt, and the Tag with AI / Tag with YouTube commands.
 import assert from 'node:assert';
-import {
-	sanitizeTag,
-	splitYamlBlocksHelper,
-	mergeYamlBlocksHelper,
-} from './helpers/legacy-copies.mjs';
+import { loadSource } from './helpers/loadSource.mjs';
 
 // Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
+const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
+
 console.log('Testing vault tag caching, AI topic tagging prompt, and grouped tag deduplication...');
 
 function extractGroupPrefixesHelper(tags) {
@@ -78,7 +76,7 @@ function buildVaultTagDataHelper(tagInput, maxTags = 1000) {
 function buildTopicGenerationPromptHelper(summaryText, options) {
 	const existingTags = (options?.existingTags || []).filter(t => t && typeof t === 'string' && t.trim().length > 0);
 	const existingTagsStr = existingTags.length > 0
-		? deduplicateTagsUpdatedHelper(existingTags).join(', ')
+		? deduplicateTags(existingTags).join(', ')
 		: '(none)';
 
 	const vaultContext = options?.compressedContext || (options?.vaultTags && options.vaultTags.length > 0
@@ -113,49 +111,6 @@ Important rules:
 
 ${titleStr}Summary:
 ${summaryText.slice(0, 4000)}`;
-}
-
-function deduplicateTagsUpdatedHelper(tags) {
-	if (!tags || tags.length === 0) return [];
-	const sanitizedList = [];
-	for (const raw of tags) {
-		if (typeof raw !== 'string') continue;
-		const sanitized = sanitizeTag(raw);
-		if (sanitized && sanitized.length > 0) {
-			sanitizedList.push(sanitized);
-		}
-	}
-	const seen = new Set();
-	const uniqueTags = [];
-	for (const tag of sanitizedList) {
-		if (!seen.has(tag)) {
-			seen.add(tag);
-			uniqueTags.push(tag);
-		}
-	}
-	const normalizedMap = new Map();
-	for (const tag of uniqueTags) {
-		const key = tag.replace(/[\-\/]/g, '');
-		const existing = normalizedMap.get(key);
-		if (!existing) {
-			normalizedMap.set(key, tag);
-		} else {
-			const existingHasSlash = existing.includes('/');
-			const currentHasSlash = tag.includes('/');
-			if (currentHasSlash && !existingHasSlash) {
-				normalizedMap.set(key, tag);
-			} else if (!currentHasSlash && existingHasSlash) {
-				// Keep existing hierarchical tag
-			} else {
-				const existingDelimCount = (existing.match(/[\-\/]/g) || []).length;
-				const currentDelimCount = (tag.match(/[\-\/]/g) || []).length;
-				if (currentDelimCount > existingDelimCount) {
-					normalizedMap.set(key, tag);
-				}
-			}
-		}
-	}
-	return Array.from(normalizedMap.values());
 }
 
 // 28.1: extractGroupPrefixesHelper tests
@@ -243,14 +198,14 @@ assert(test28PromptOutput.includes(test28SampleSummary));
 
 // 28.4: Deduplication preference for grouped tags over flat tags
 // ai/machine-learning should be preferred over ai-machine-learning regardless of order
-const testTagsOrder1 = deduplicateTagsUpdatedHelper(['ai-machine-learning', 'ai/machine-learning']);
+const testTagsOrder1 = deduplicateTags(['ai-machine-learning', 'ai/machine-learning']);
 assert.deepStrictEqual(testTagsOrder1, ['ai/machine-learning']);
 
-const testTagsOrder2 = deduplicateTagsUpdatedHelper(['ai/machine-learning', 'ai-machine-learning']);
+const testTagsOrder2 = deduplicateTags(['ai/machine-learning', 'ai-machine-learning']);
 assert.deepStrictEqual(testTagsOrder2, ['ai/machine-learning']);
 
 // Other hyphenated tags should still collapse run-together words
-const testHyphenCollapse = deduplicateTagsUpdatedHelper(['rickastley', 'rick-astley']);
+const testHyphenCollapse = deduplicateTags(['rickastley', 'rick-astley']);
 assert.deepStrictEqual(testHyphenCollapse, ['rick-astley']);
 
 // 28.5: Activation condition simulation (only active when addTopicsAsTags is true)
@@ -287,49 +242,17 @@ console.log('✓ Vault tag caching, AI topic tagging prompt, and grouped tag ded
 // Test 38: "Tag with AI" / "Tag with YouTube" — extracting and merging frontmatter tags
 console.log('Testing tag commands: frontmatter tag extraction and deduplicated merge...');
 
-function extractFrontmatterTagsHelper(content) {
-	const fmMatch = content.replace(/\r\n/g, '\n').match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
-	const tagsBlock = splitYamlBlocksHelper(fmMatch?.[1] ?? '').find((block) => block.key === 'tags');
-	if (!tagsBlock) return [];
-	const raw = [];
-	const inline = tagsBlock.lines[0].replace(/^tags:/, '').trim();
-	if (inline.startsWith('[') && inline.endsWith(']')) raw.push(...inline.slice(1, -1).split(','));
-	else if (inline) raw.push(...inline.split(/[,\s]+/));
-	for (const line of tagsBlock.lines.slice(1)) {
-		const item = line.match(/^\s*-\s+(.*)$/);
-		if (item) raw.push(item[1]);
-	}
-	return raw.map((tag) => tag.trim().replace(/^['"]|['"]$/g, '').replace(/^#/, '')).filter(Boolean);
-}
-
-function addTagsToNoteContentHelper(content, newTags) {
-	const existing = extractFrontmatterTagsHelper(content);
-	const existingDeduplicated = new Set(deduplicateTagsUpdatedHelper(existing));
-	const combined = deduplicateTagsUpdatedHelper([...existing, ...newTags]);
-	const added = combined.filter((tag) => !existingDeduplicated.has(tag));
-	if (added.length === 0) return { content, added };
-	const tagsBlock = ['tags:', ...combined.map((tag) => `  - ${tag}`)].join('\n');
-	const normalized = content.replace(/\r\n/g, '\n');
-	const fmMatch = normalized.match(/^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/);
-	if (!fmMatch) {
-		const body = normalized.replace(/^\s+/, '');
-		return { content: body ? `---\n${tagsBlock}\n---\n\n${body}` : `---\n${tagsBlock}\n---\n`, added };
-	}
-	const merged = fmMatch[1] ? mergeYamlBlocksHelper(fmMatch[1], tagsBlock) : tagsBlock;
-	return { content: `---\n${merged}\n---\n${normalized.slice(fmMatch[0].length)}`, added };
-}
-
 // 38.1: Extraction handles list, inline, single/comma values, quotes, and #
-assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntitle: T\ntags:\n  - music\n  - "pop-culture"\n---\nBody'), ['music', 'pop-culture']);
-assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntags: [music, "#80s", pop]\n---\n'), ['music', '80s', 'pop']);
-assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntags: music, pop\n---\n'), ['music', 'pop']);
-assert.deepStrictEqual(extractFrontmatterTagsHelper('---\ntitle: T\n---\n'), []);
-assert.deepStrictEqual(extractFrontmatterTagsHelper('No frontmatter'), []);
+assert.deepStrictEqual(extractFrontmatterTags('---\ntitle: T\ntags:\n  - music\n  - "pop-culture"\n---\nBody'), ['music', 'pop-culture']);
+assert.deepStrictEqual(extractFrontmatterTags('---\ntags: [music, "#80s", pop]\n---\n'), ['music', '80s', 'pop']);
+assert.deepStrictEqual(extractFrontmatterTags('---\ntags: music, pop\n---\n'), ['music', 'pop']);
+assert.deepStrictEqual(extractFrontmatterTags('---\ntitle: T\n---\n'), []);
+assert.deepStrictEqual(extractFrontmatterTags('No frontmatter'), []);
 
 // 38.2: New tags merge into the existing list, deduplicated like the summary process (sanitized, collapsed variants)
 const taggable = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\ntags:\n  - music\n  - ai-machine-learning\ncustom: keep\n---\n\n## Summary\n\nText\n';
-const tagged = addTagsToNoteContentHelper(taggable, ['Music', 'ai/machine-learning', 'Rick Astley', '#80s']);
-assert.deepStrictEqual(tagged.added, deduplicateTagsUpdatedHelper(['music', 'ai-machine-learning', 'Music', 'ai/machine-learning', 'Rick Astley', '#80s']).filter((t) => !['music', 'ai-machine-learning'].includes(t)));
+const tagged = addTagsToNoteContent(taggable, ['Music', 'ai/machine-learning', 'Rick Astley', '#80s']);
+assert.deepStrictEqual(tagged.added, deduplicateTags(['music', 'ai-machine-learning', 'Music', 'ai/machine-learning', 'Rick Astley', '#80s']).filter((t) => !['music', 'ai-machine-learning'].includes(t)));
 assert(tagged.content.includes('  - music\n'));
 assert(tagged.content.includes('  - ai/machine-learning\n'));
 assert(!tagged.content.includes('ai-machine-learning'));
@@ -340,19 +263,19 @@ assert(tagged.content.endsWith('---\n\n## Summary\n\nText\n'));
 assert.strictEqual((tagged.content.match(/^tags:/gm) || []).length, 1);
 
 // 38.3: Nothing new → note returned unchanged (no rewrite)
-const unchanged = addTagsToNoteContentHelper(taggable, ['music', 'MUSIC', '#music']);
+const unchanged = addTagsToNoteContent(taggable, ['music', 'MUSIC', '#music']);
 assert.deepStrictEqual(unchanged.added, []);
 assert.strictEqual(unchanged.content, taggable);
 
 // 38.4: Inline tags are converted to a list when new tags are added; notes without tags or frontmatter get them
-const inlineTagged = addTagsToNoteContentHelper('---\ntags: [music]\n---\nBody', ['pop']);
+const inlineTagged = addTagsToNoteContent('---\ntags: [music]\n---\nBody', ['pop']);
 assert.strictEqual(inlineTagged.content, '---\ntags:\n  - music\n  - pop\n---\nBody');
-assert.strictEqual(addTagsToNoteContentHelper('---\ntitle: T\n---\nBody', ['pop']).content, '---\ntitle: T\ntags:\n  - pop\n---\nBody');
-assert.strictEqual(addTagsToNoteContentHelper('Body only\n', ['pop']).content, '---\ntags:\n  - pop\n---\n\nBody only\n');
-assert.strictEqual(addTagsToNoteContentHelper('---\n---\nBody', ['pop']).content, '---\ntags:\n  - pop\n---\nBody');
+assert.strictEqual(addTagsToNoteContent('---\ntitle: T\n---\nBody', ['pop']).content, '---\ntitle: T\ntags:\n  - pop\n---\nBody');
+assert.strictEqual(addTagsToNoteContent('Body only\n', ['pop']).content, '---\ntags:\n  - pop\n---\n\nBody only\n');
+assert.strictEqual(addTagsToNoteContent('---\n---\nBody', ['pop']).content, '---\ntags:\n  - pop\n---\nBody');
 
 // 38.5: Empty or invalid new tags add nothing
-assert.deepStrictEqual(addTagsToNoteContentHelper(taggable, []).added, []);
-assert.deepStrictEqual(addTagsToNoteContentHelper(taggable, ['', '   ', '#']).added, []);
+assert.deepStrictEqual(addTagsToNoteContent(taggable, []).added, []);
+assert.deepStrictEqual(addTagsToNoteContent(taggable, ['', '   ', '#']).added, []);
 
 console.log('✓ Tag commands: frontmatter tag extraction and deduplicated merge passed');

@@ -1,12 +1,10 @@
 // YouTube parsing: HTML decoding, tags from YouTube metadata, and playlist discovery.
 import assert from 'node:assert';
-import {
-	sanitizeTag,
-	extractTagsFromText,
-	deduplicateTagsHelper,
-} from './helpers/legacy-copies.mjs';
+import { loadSource } from './helpers/loadSource.mjs';
 
 // Test 5: decodeHTML with preserveNewlines
+const { buildFrontmatter, deduplicateTags, extractTagsFromText, mergeFrontmatter, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
+
 function decodeHTML(text, preserveNewlines = false) {
 	const decoded = text
 		.replace(/&#39;/g, "'")
@@ -217,109 +215,6 @@ function extractPlaylistFromDescHelper(desc) {
 	return null;
 }
 
-function buildFrontmatterWithPlaylist(data) {
-	const lines = ['---'];
-	lines.push(`title: ${JSON.stringify(data.title)}`);
-	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
-	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
-	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
-	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
-	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
-	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
-
-	if (data.playlist_title) {
-		lines.push(`playlist_title: ${JSON.stringify(data.playlist_title)}`);
-	}
-	if (data.playlist_url) {
-		lines.push(`playlist_url: ${JSON.stringify(data.playlist_url)}`);
-	}
-	if (data.playlist_id) {
-		lines.push(`playlist_id: ${JSON.stringify(data.playlist_id)}`);
-	}
-	if (typeof data.playlist_index === 'number') {
-		lines.push(`playlist_index: ${data.playlist_index}`);
-	}
-	if (typeof data.playlist_count === 'number') {
-		lines.push(`playlist_count: ${data.playlist_count}`);
-	}
-
-	if (data.description !== undefined && data.description !== null) {
-		if (data.description.trim()) {
-			lines.push('description: |-');
-			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-			for (const dLine of descLines) {
-				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-			}
-		} else {
-			lines.push('description: ""');
-		}
-	}
-
-	if (data.tags && data.tags.length > 0) {
-		lines.push('tags:');
-		for (const tag of deduplicateTagsHelper(data.tags)) {
-			lines.push(`  - ${tag}`);
-		}
-	}
-
-	lines.push('---');
-	return lines.join('\n');
-}
-
-function mergeFrontmatterWithPlaylist(rawYaml, data) {
-	const lines = rawYaml.split(/\r?\n/);
-	const updatedKeys = new Set();
-	const newLines = [];
-
-	const targetKeys = {
-		title: `title: ${JSON.stringify(data.title)}`,
-		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
-		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
-		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
-		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
-		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
-		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
-	};
-
-	if (data.playlist_title) {
-		targetKeys['playlist_title'] = `playlist_title: ${JSON.stringify(data.playlist_title)}`;
-	}
-	if (data.playlist_url) {
-		targetKeys['playlist_url'] = `playlist_url: ${JSON.stringify(data.playlist_url)}`;
-	}
-	if (data.playlist_id) {
-		targetKeys['playlist_id'] = `playlist_id: ${JSON.stringify(data.playlist_id)}`;
-	}
-	if (typeof data.playlist_index === 'number') {
-		targetKeys['playlist_index'] = `playlist_index: ${data.playlist_index}`;
-	}
-	if (typeof data.playlist_count === 'number') {
-		targetKeys['playlist_count'] = `playlist_count: ${data.playlist_count}`;
-	}
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
-		if (keyMatch) {
-			const key = keyMatch[1];
-			if (key in targetKeys) {
-				newLines.push(targetKeys[key]);
-				updatedKeys.add(key);
-				continue;
-			}
-		}
-		newLines.push(line);
-	}
-
-	for (const [key, line] of Object.entries(targetKeys)) {
-		if (!updatedKeys.has(key)) {
-			newLines.push(line);
-		}
-	}
-
-	return newLines.join('\n').trim();
-}
-
 function formatMetaLine(author, channelUrl, videoUrl, playlist, discoverPlaylist = true) {
 	let line = `👤 [${author}](${channelUrl})  🔗 [Watch video](${videoUrl})`;
 	if (discoverPlaylist && playlist) {
@@ -365,7 +260,7 @@ const dataWithPlaylist = {
 	tags: ['obsidian', 'plugins']
 };
 
-const builtPlaylistYaml = buildFrontmatterWithPlaylist(dataWithPlaylist);
+const builtPlaylistYaml = buildFrontmatter(dataWithPlaylist);
 assert(builtPlaylistYaml.includes('playlist_title: "Obsidian Plugin Tutorial Series"'));
 assert(builtPlaylistYaml.includes('playlist_url: "https://www.youtube.com/playlist?list=PLabc1234567890xyz"'));
 assert(builtPlaylistYaml.includes('playlist_id: "PLabc1234567890xyz"'));
@@ -377,7 +272,7 @@ const existingNoteNoPlaylist = `title: "Building Modern Obsidian Plugins"
 channel_name: "DevChannel"
 video_url: "https://youtube.com/watch?v=123"`;
 
-const mergedPlaylistYaml = mergeFrontmatterWithPlaylist(existingNoteNoPlaylist, dataWithPlaylist);
+const mergedPlaylistYaml = mergeFrontmatter(existingNoteNoPlaylist, dataWithPlaylist);
 assert(mergedPlaylistYaml.includes('playlist_title: "Obsidian Plugin Tutorial Series"'));
 assert(mergedPlaylistYaml.includes('playlist_url: "https://www.youtube.com/playlist?list=PLabc1234567890xyz"'));
 assert(mergedPlaylistYaml.includes('playlist_id: "PLabc1234567890xyz"'));

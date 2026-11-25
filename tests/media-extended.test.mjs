@@ -1,103 +1,16 @@
 // Media Extended companion notes: frontmatter, covers, sections, Related links, detection, and plugin settings.
 import assert from 'node:assert';
+import { loadSource } from './helpers/loadSource.mjs';
 import { readFileSync } from 'node:fs';
-import {
-	mergeFrontmatter,
-	formatTranscriptHelper,
-	generateMxUidHelper,
-	buildMediaExtendedFrontmatterHelper,
-	parseTimestampToUrlHelper,
-	convertTimestampsToLinksHelper,
-	getMediaExtendedCoverUrlHelper,
-	isMediaExtendedCompanionNoteHelper,
-	testFilterFilesByFolderPaths,
-	findMarkdownSectionHelper,
-	upsertMarkdownSectionHelper,
-	mergeYamlBlocksHelper,
-} from './helpers/legacy-copies.mjs';
 
 // Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
+const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
+
 console.log('Testing Media Extended companion notes and bidirectional linking...');
 
-
-
-function addRelatedLinkHelper(content, linkTarget) {
-	const trimmed = content.trimEnd();
-	const wikilink = `[[${linkTarget}]]`;
-	const linkLine = `- ${wikilink}`;
-
-	if (trimmed.includes(wikilink)) {
-		return content;
-	}
-
-	const relatedHeaderRegex = /(^|\r?\n)(#{1,6}\s+Related[^\r\n]*)(\r?\n[\s\S]*?)?(?=(?:\r?\n#{1,6}\s+|$))/i;
-	const match = trimmed.match(relatedHeaderRegex);
-
-	if (match) {
-		const fullMatch = match[0];
-		const header = match[2];
-		const body = match[3] || '';
-		
-		const cleanBody = body.trim();
-		const updatedBody = cleanBody ? `\n\n${cleanBody}\n${linkLine}` : `\n\n${linkLine}`;
-		const replacement = `${match[1]}${header}${updatedBody}`;
-		return trimmed.replace(fullMatch, () => replacement);
-	}
-
-	return trimmed ? `${trimmed}\n\n# Related\n\n${linkLine}\n` : `# Related\n\n${linkLine}\n`;
-}
-
-
-
-function parseTimestampToMediaExtendedUrlHelper(timeStr, videoId) {
-	return parseTimestampToUrlHelper(timeStr, videoId, 'mediaExtended');
-}
-
-
-function convertDescriptionTimestampsToMediaExtendedHelper(description, videoId) {
-	return convertTimestampsToLinksHelper(description, videoId, 'mediaExtended');
-}
-
-function convertDescriptionTimestampsToYouTubeHelper(description, videoId) {
-	return convertTimestampsToLinksHelper(description, videoId, 'youtube');
-}
-
-
-function buildCoverEmbedHelper(coverUrl) {
-	return `![Cover](${coverUrl})`;
-}
-
-function buildMediaExtendedNoteHelper(data, transcriptText, relatedNoteLink, options) {
-	const fm = buildMediaExtendedFrontmatterHelper(data);
-	const sections = [];
-
-	if (options?.embedCover) {
-		sections.push(buildCoverEmbedHelper(getMediaExtendedCoverUrlHelper(data)));
-	}
-
-	const includeDescription = options?.includeDescription ?? true;
-	if (includeDescription && data.description && data.description.trim()) {
-		const formattedDescription = convertDescriptionTimestampsToMediaExtendedHelper(
-			data.description.trim(),
-			data.videoId
-		);
-		sections.push(`# Description\n\n${formattedDescription}`);
-	}
-
-	if (transcriptText && transcriptText.trim()) {
-		sections.push(`# Transcript\n\n${transcriptText.trim()}`);
-	}
-
-	let body = sections.join('\n\n');
-	if (relatedNoteLink) {
-		body = addRelatedLinkHelper(body, relatedNoteLink);
-	}
-	return body.trim() ? `${fm}\n\n${body.trim()}\n` : `${fm}\n`;
-}
-
 // Case 1: generateMxUid test
-const uid1 = generateMxUidHelper();
-const uid2 = generateMxUidHelper();
+const uid1 = generateMxUid();
+const uid2 = generateMxUid();
 assert.strictEqual(uid1.length, 24);
 assert.match(uid1, /^[a-z0-9]{24}$/);
 assert.notStrictEqual(uid1, uid2);
@@ -117,7 +30,7 @@ const sampleRickAstleyData = {
 	aspectRatio: '427 / 240',
 };
 
-const sampleFm = buildMediaExtendedFrontmatterHelper(sampleRickAstleyData);
+const sampleFm = buildMediaExtendedFrontmatter(sampleRickAstleyData);
 assert(sampleFm.includes('mx-uid: vcxchy79gecb4s69v25oxq9s'));
 assert(sampleFm.includes('video: https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
 assert(sampleFm.includes('title: Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)'));
@@ -130,7 +43,7 @@ assert(sampleFm.includes('like_count: 19404514'));
 assert(sampleFm.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
 
 // Default cover (no explicit cover) is the full max-resolution WebP thumbnail URL, never a local wikilink
-const defaultCoverFm = buildMediaExtendedFrontmatterHelper({ videoId: 'z02Y-1OvWSM', title: 'T', creator: 'C' });
+const defaultCoverFm = buildMediaExtendedFrontmatter({ videoId: 'z02Y-1OvWSM', title: 'T', creator: 'C' });
 assert(defaultCoverFm.includes('cover: "https://i.ytimg.com/vi_webp/z02Y-1OvWSM/maxresdefault.webp"'));
 assert(!defaultCoverFm.includes('[['));
 
@@ -170,25 +83,25 @@ const specialTitleData = {
 	title: 'Guide: How to use Obsidian with AI',
 	creator: 'Tech Channel',
 };
-const specialFm = buildMediaExtendedFrontmatterHelper(specialTitleData);
+const specialFm = buildMediaExtendedFrontmatter(specialTitleData);
 assert(specialFm.includes('title: "Guide: How to use Obsidian with AI"'));
 
 // Case 4: addRelatedLink helper when no # Related section exists
 const noteWithoutRelated = '# Summary\n\nThis is a summary of the video.';
-const linkedNote = addRelatedLinkHelper(noteWithoutRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
+const linkedNote = addRelatedLink(noteWithoutRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
 assert(linkedNote.includes('# Related\n\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
 
 // Case 5: addRelatedLink helper when # Related already exists
 const noteWithRelated = '# Summary\n\nNotes.\n\n# Related\n- [[Existing Link]]';
-const linkedNote2 = addRelatedLinkHelper(noteWithRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
+const linkedNote2 = addRelatedLink(noteWithRelated, 'Media Library/Rick Astley - Never Gonna Give You Up');
 assert(linkedNote2.includes('# Related\n\n- [[Existing Link]]\n- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
 
 // Case 6: addRelatedLink helper does not duplicate links
-const linkedNote3 = addRelatedLinkHelper(linkedNote2, 'Media Library/Rick Astley - Never Gonna Give You Up');
+const linkedNote3 = addRelatedLink(linkedNote2, 'Media Library/Rick Astley - Never Gonna Give You Up');
 assert.strictEqual(linkedNote2, linkedNote3);
 
 // Case 7: addRelatedLink helper handles note names with dollar signs ($100, $$)
-const dollarLinked = addRelatedLinkHelper('# Summary', 'Media Library/$100 AI Budget');
+const dollarLinked = addRelatedLink('# Summary', 'Media Library/$100 AI Budget');
 assert(dollarLinked.includes('- [[Media Library/$100 AI Budget]]'));
 
 // Case 8: buildMediaExtendedNote helper complete note creation
@@ -196,8 +109,8 @@ const sampleLines = [
 	{ text: 'First line', duration: 2, offset: 65610 },
 	{ text: 'Second line', duration: 3, offset: 122650 }
 ];
-const formattedSampleLines = formatTranscriptHelper(sampleLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
-const fullMediaExtendedNote = buildMediaExtendedNoteHelper(
+const formattedSampleLines = formatTranscript(sampleLines, 'dQw4w9WgXcQ', { format: 'mediaExtended' });
+const fullMediaExtendedNote = buildMediaExtendedNote(
 	sampleRickAstleyData,
 	formattedSampleLines,
 	'Rick Astley - Never Gonna Give You Up'
@@ -212,7 +125,7 @@ assert(fullMediaExtendedNote.includes('# Related\n\n- [[Rick Astley - Never Gonn
 // Case 9: Bidirectional link simulation
 // Summary note links to Media Library/Title
 const summaryBody = '# Summary\n\nKey takeaways from the video.';
-const summaryWithRelated = addRelatedLinkHelper(summaryBody, 'Media Library/Rick Astley - Never Gonna Give You Up');
+const summaryWithRelated = addRelatedLink(summaryBody, 'Media Library/Rick Astley - Never Gonna Give You Up');
 assert(summaryWithRelated.includes('- [[Media Library/Rick Astley - Never Gonna Give You Up]]'));
 
 // Media Extended companion note links back to original summary note
@@ -222,35 +135,6 @@ console.log('✓ Media Extended companion notes and bidirectional linking passed
 
 // Test 22: Detection of missing companion notes
 console.log('Testing missing companion note detection...');
-
-
-function hasRelatedMediaExtendedLinkHelper(content, mediaFolder = 'Media Library', expectedBasename) {
-	const relatedMatch = content.match(/(?:^|\r?\n)#{1,6}\s+Related[^\r\n]*([\s\S]*?)(?=(?:\r?\n#{1,6}\s+|$))/i);
-	if (!relatedMatch) {
-		return false;
-	}
-	const relatedBody = relatedMatch[1];
-
-	if (expectedBasename) {
-		const cleanBase = expectedBasename.trim();
-		const escapedBase = cleanBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const specificRegex = new RegExp(`\\[\\[(?:.*\\/)?${escapedBase}(?:\\|[^\\]]+)?\\]\\]`, 'i');
-		if (specificRegex.test(relatedBody)) {
-			return true;
-		}
-	}
-
-	const cleanFolder = mediaFolder.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-	if (cleanFolder) {
-		const escapedFolder = cleanFolder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const folderRegex = new RegExp(`\\[\\[${escapedFolder}\\/[^\\]]+\\]\\]`, 'i');
-		if (folderRegex.test(relatedBody)) {
-			return true;
-		}
-	}
-
-	return false;
-}
 
 // Case 1: isMediaExtendedCompanionNote identification
 const companionNoteContent = `---
@@ -270,10 +154,10 @@ video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ## Summary
 Great music video.`;
 
-assert.strictEqual(isMediaExtendedCompanionNoteHelper(companionNoteContent, 'Media Library/Rick Astley.md'), true);
-assert.strictEqual(isMediaExtendedCompanionNoteHelper(companionNoteContent, 'Custom Folder/Rick Astley.md'), true); // Has mx-uid
-assert.strictEqual(isMediaExtendedCompanionNoteHelper(regularSummaryContent, 'Media Library/Rick Astley.md'), true); // In media folder
-assert.strictEqual(isMediaExtendedCompanionNoteHelper(regularSummaryContent, 'YouTube/Rick Astley.md'), false); // Regular summary
+assert.strictEqual(isMediaExtendedCompanionNote(companionNoteContent, 'Media Library/Rick Astley.md'), true);
+assert.strictEqual(isMediaExtendedCompanionNote(companionNoteContent, 'Custom Folder/Rick Astley.md'), true); // Has mx-uid
+assert.strictEqual(isMediaExtendedCompanionNote(regularSummaryContent, 'Media Library/Rick Astley.md'), true); // In media folder
+assert.strictEqual(isMediaExtendedCompanionNote(regularSummaryContent, 'YouTube/Rick Astley.md'), false); // Regular summary
 
 // Case 2: hasRelatedMediaExtendedLink detection
 const summaryWithCompanionLink = `---
@@ -306,9 +190,9 @@ video_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 ## Summary
 Some text.`;
 
-assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithCompanionLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), true);
-assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithDifferentRelatedLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
-assert.strictEqual(hasRelatedMediaExtendedLinkHelper(summaryWithNoRelated, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
+assert.strictEqual(hasRelatedMediaExtendedLink(summaryWithCompanionLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), true);
+assert.strictEqual(hasRelatedMediaExtendedLink(summaryWithDifferentRelatedLink, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
+assert.strictEqual(hasRelatedMediaExtendedLink(summaryWithNoRelated, 'Media Library', 'Rick Astley - Never Gonna Give You Up'), false);
 
 console.log('✓ Missing companion note detection passed');
 
@@ -318,18 +202,18 @@ console.log('Testing Media Extended note description, timestamp conversion, and 
 // 26.1: parseTimestampToMediaExtendedUrlHelper unit tests
 const testVideoId = 'abc123XYZ';
 assert.strictEqual(
-	parseTimestampToMediaExtendedUrlHelper('0:00', testVideoId),
+	parseTimestampToMediaExtendedUrl('0:00', testVideoId),
 	'https://www.youtube.com/watch?v=abc123XYZ&t=0#t=00:00.00'
 );
 assert.strictEqual(
-	parseTimestampToMediaExtendedUrlHelper('01:23', testVideoId),
+	parseTimestampToMediaExtendedUrl('01:23', testVideoId),
 	'https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00'
 );
 assert.strictEqual(
-	parseTimestampToMediaExtendedUrlHelper('1:23:45', testVideoId),
+	parseTimestampToMediaExtendedUrl('1:23:45', testVideoId),
 	'https://www.youtube.com/watch?v=abc123XYZ&t=5025#t=01:23:45.00'
 );
-assert.strictEqual(parseTimestampToMediaExtendedUrlHelper('invalid', testVideoId), null);
+assert.strictEqual(parseTimestampToMediaExtendedUrl('invalid', testVideoId), null);
 
 // 26.2: convertDescriptionTimestampsToMediaExtendedHelper tests
 const sampleRawDescription = `Welcome to this tutorial!
@@ -349,7 +233,7 @@ Already formatted: [06:00](https://youtube.com/watch?v=old&t=360)
 Note: Meeting is at 10:00 AM (not a video timestamp)
 Aspect ratio is 16:9 widescreen`;
 
-const convertedDesc = convertDescriptionTimestampsToMediaExtendedHelper(sampleRawDescription, testVideoId);
+const convertedDesc = convertDescriptionTimestampsToMediaExtended(sampleRawDescription, testVideoId);
 
 // 0:00 converted
 assert(convertedDesc.includes('[0:00](https://www.youtube.com/watch?v=abc123XYZ&t=0#t=00:00.00) - Introduction'));
@@ -378,8 +262,8 @@ assert(convertedDesc.includes('10:00 AM'));
 assert(convertedDesc.includes('16:9 widescreen'));
 
 // 26.3: Empty description handling
-assert.strictEqual(convertDescriptionTimestampsToMediaExtendedHelper('', testVideoId), '');
-assert.strictEqual(convertDescriptionTimestampsToMediaExtendedHelper(undefined, testVideoId), undefined);
+assert.strictEqual(convertDescriptionTimestampsToMediaExtended('', testVideoId), '');
+assert.strictEqual(convertDescriptionTimestampsToMediaExtended(undefined, testVideoId), undefined);
 
 // 26.4: buildMediaExtendedNoteHelper with sections and empty lines
 const testMetadata = {
@@ -394,7 +278,7 @@ const testTranscript = '- [00:00](https://www.youtube.com/watch?v=abc123XYZ&t=0#
 const testRelatedNote = 'TypeScript Summary Note';
 
 // Default includes description (on by default)
-const fullNoteWithDesc = buildMediaExtendedNoteHelper(testMetadata, testTranscript, testRelatedNote);
+const fullNoteWithDesc = buildMediaExtendedNote(testMetadata, testTranscript, testRelatedNote);
 assert(fullNoteWithDesc.startsWith('---\nmx-uid: test12345678901234567890'));
 // Section headings must exist
 assert(fullNoteWithDesc.includes('\n\n# Description\n\n'));
@@ -408,7 +292,7 @@ assert(fullNoteWithDesc.includes('# Related\n\n- [[TypeScript Summary Note]]'));
 assert(fullNoteWithDesc.includes('[01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83#t=01:23.00) Code walkthrough'));
 
 // 26.5: Turning off includeDescription setting
-const meNoteWithoutDesc = buildMediaExtendedNoteHelper(testMetadata, testTranscript, testRelatedNote, {
+const meNoteWithoutDesc = buildMediaExtendedNote(testMetadata, testTranscript, testRelatedNote, {
 	includeDescription: false
 });
 assert(!meNoteWithoutDesc.includes('# Description'));
@@ -417,7 +301,7 @@ assert(meNoteWithoutDesc.includes('# Related\n\n- [[TypeScript Summary Note]]'))
 
 // 26.6: Empty line after # Related in Video Summary note
 const summaryBodyNote = '# Video Summary\n\nHere are the key takeaways.';
-const summaryLinked = addRelatedLinkHelper(summaryBodyNote, 'Media Library/Complete TypeScript Guide');
+const summaryLinked = addRelatedLink(summaryBodyNote, 'Media Library/Complete TypeScript Guide');
 assert(summaryLinked.includes('\n\n# Related\n\n- [[Media Library/Complete TypeScript Guide]]\n'));
 
 console.log('✓ Media Extended note description, timestamp conversion, and section headings passed');
@@ -426,7 +310,7 @@ console.log('✓ Media Extended note description, timestamp conversion, and sect
 console.log('Testing summary note YouTube timestamp links, per-run Media Extended options, and defaults...');
 
 // 26b.1: Description timestamps become standard YouTube links in the summary note
-const ytDesc = convertDescriptionTimestampsToYouTubeHelper(sampleRawDescription, testVideoId);
+const ytDesc = convertDescriptionTimestampsToYouTube(sampleRawDescription, testVideoId);
 assert(ytDesc.includes('[0:00](https://www.youtube.com/watch?v=abc123XYZ&t=0s) - Introduction'));
 assert(ytDesc.includes('- [01:23](https://www.youtube.com/watch?v=abc123XYZ&t=83s) Getting Started'));
 assert(ytDesc.includes('• [02:45](https://www.youtube.com/watch?v=abc123XYZ&t=165s) Basic Workflow'));
@@ -453,7 +337,7 @@ const aiSummary = [
 	'```',
 	'- Covered at [07:45] in detail',
 ].join('\n');
-const linkedSummary = convertTimestampsToLinksHelper(aiSummary, testVideoId, 'youtube');
+const linkedSummary = convertTimestampsToLinks(aiSummary, testVideoId, 'youtube');
 assert(linkedSummary.includes('**[05:23](https://www.youtube.com/watch?v=abc123XYZ&t=323s)**'));
 assert(linkedSummary.includes('[[TypeScript]]'));
 assert(linkedSummary.includes('`timeout: 12:30`'));
@@ -463,7 +347,7 @@ assert(linkedSummary.includes('[07:45](https://www.youtube.com/watch?v=abc123XYZ
 assert(!linkedSummary.includes('TS_PROTECTED_TOKEN'));
 
 // 26b.3: Nested protected tokens (inline code inside link text) restore fully
-const nested = convertTimestampsToLinksHelper('See [the `cfg` file](https://example.com) at 01:00', testVideoId, 'youtube');
+const nested = convertTimestampsToLinks('See [the `cfg` file](https://example.com) at 01:00', testVideoId, 'youtube');
 assert.strictEqual(nested, 'See [the `cfg` file](https://example.com) at [01:00](https://www.youtube.com/watch?v=abc123XYZ&t=60s)');
 
 // 26b.4: Per-run Media Extended options override permanent settings without changing them
@@ -482,13 +366,13 @@ assert.deepStrictEqual(
 assert.deepStrictEqual(permanentSettings, { mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true });
 
 // Transcript excluded for the run: companion note has no # Transcript section
-const meNoTranscript = buildMediaExtendedNoteHelper(testMetadata, '', testRelatedNote, { includeDescription: true });
+const meNoTranscript = buildMediaExtendedNote(testMetadata, '', testRelatedNote, { includeDescription: true });
 assert(meNoTranscript.includes('# Description\n\n'));
 assert(!meNoTranscript.includes('# Transcript'));
 assert(meNoTranscript.includes('# Related\n\n- [[TypeScript Summary Note]]'));
 
 // Both excluded: frontmatter + related link only
-const meBare = buildMediaExtendedNoteHelper(testMetadata, '', testRelatedNote, { includeDescription: false });
+const meBare = buildMediaExtendedNote(testMetadata, '', testRelatedNote, { includeDescription: false });
 assert(!meBare.includes('# Description'));
 assert(!meBare.includes('# Transcript'));
 assert(meBare.includes('# Related\n\n- [[TypeScript Summary Note]]'));
@@ -505,8 +389,6 @@ console.log('✓ Summary note YouTube timestamp links, per-run Media Extended op
 
 // Test 32: Add description / transcript to Media Extended notes (section detection, upsert, video detection)
 console.log('Testing Media Extended note section detection, insertion/replacement, and video detection...');
-
-
 
 function extractYouTubeUrlFromFrontmatterHelper(content) {
 	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -532,59 +414,48 @@ assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo: "[[local.
 assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo_url: https://www.youtube.com/watch?v=abc123XYZ00\nvideo: https://youtu.be/other\n---\n'), 'https://www.youtube.com/watch?v=abc123XYZ00');
 
 // 32.2: Section detection — level-1 only, case-insensitive, ignores frontmatter and code fences
-assert.strictEqual(findMarkdownSectionHelper(meNoteBare, 'Description'), null);
-assert.strictEqual(findMarkdownSectionHelper(meNoteBare, 'Transcript'), null);
-assert.notStrictEqual(findMarkdownSectionHelper(meNoteFull, 'Description'), null);
-assert.notStrictEqual(findMarkdownSectionHelper(meNoteFull, 'transcript'), null);
-assert.strictEqual(findMarkdownSectionHelper('## Description\n\nText', 'Description'), null);
-assert.strictEqual(findMarkdownSectionHelper('```\n# Description\n```\n', 'Description'), null);
-assert.strictEqual(findMarkdownSectionHelper('---\ntitle: "# Description"\n---\nBody', 'Description'), null);
+assert.strictEqual(findMarkdownSection(meNoteBare, 'Description'), null);
+assert.strictEqual(findMarkdownSection(meNoteBare, 'Transcript'), null);
+assert.notStrictEqual(findMarkdownSection(meNoteFull, 'Description'), null);
+assert.notStrictEqual(findMarkdownSection(meNoteFull, 'transcript'), null);
+assert.strictEqual(findMarkdownSection('## Description\n\nText', 'Description'), null);
+assert.strictEqual(findMarkdownSection('```\n# Description\n```\n', 'Description'), null);
+assert.strictEqual(findMarkdownSection('---\ntitle: "# Description"\n---\nBody', 'Description'), null);
 
 // 32.3: Insert description before # Transcript / # Related when missing
 const descBody = '[0:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Intro';
-const withDesc = upsertMarkdownSectionHelper(meNoteBare, 'Description', descBody, ['Transcript', 'Related']);
+const withDesc = upsertMarkdownSection(meNoteBare, 'Description', descBody, ['Transcript', 'Related']);
 assert.strictEqual(withDesc, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Related\n\n- [[Summary Note]]\n`);
 
 // 32.4: Insert transcript after description, before # Related
 const transcriptBody = '- [00:01](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1#t=00:01.00) Hello';
-const withBoth = upsertMarkdownSectionHelper(withDesc, 'Transcript', transcriptBody, ['Related']);
+const withBoth = upsertMarkdownSection(withDesc, 'Transcript', transcriptBody, ['Related']);
 assert.strictEqual(withBoth, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`);
 
 // 32.5: Replace an existing section in place, keeping other sections
-const replacedDesc = upsertMarkdownSectionHelper(meNoteFull, 'Description', 'New description', ['Transcript', 'Related']);
+const replacedDesc = upsertMarkdownSection(meNoteFull, 'Description', 'New description', ['Transcript', 'Related']);
 assert(replacedDesc.includes('# Description\n\nNew description\n\n# Transcript\n\n'));
 assert(!replacedDesc.includes('Old description'));
 assert(replacedDesc.includes('# Related\n\n- [[Summary Note]]\n'));
-const replacedTranscript = upsertMarkdownSectionHelper(meNoteFull, 'Transcript', transcriptBody, ['Related']);
+const replacedTranscript = upsertMarkdownSection(meNoteFull, 'Transcript', transcriptBody, ['Related']);
 assert(replacedTranscript.includes(`# Transcript\n\n${transcriptBody}\n\n# Related`));
 assert(!replacedTranscript.includes(') Hi\n'));
 assert.strictEqual((replacedTranscript.match(/^# Transcript$/gm) || []).length, 1);
 
 // 32.6: Appends at the end when no anchors exist; works with frontmatter-only notes and CRLF
-assert.strictEqual(upsertMarkdownSectionHelper(meFrontmatter, 'Transcript', transcriptBody, ['Related']), `${meFrontmatter}\n\n# Transcript\n\n${transcriptBody}\n`);
-assert.strictEqual(upsertMarkdownSectionHelper('---\na: 1\n---\r\n\r\nNotes\r\n', 'Description', 'D'), '---\na: 1\n---\n\nNotes\n\n# Description\n\nD\n');
+assert.strictEqual(upsertMarkdownSection(meFrontmatter, 'Transcript', transcriptBody, ['Related']), `${meFrontmatter}\n\n# Transcript\n\n${transcriptBody}\n`);
+assert.strictEqual(upsertMarkdownSection('---\na: 1\n---\r\n\r\nNotes\r\n', 'Description', 'D'), '---\na: 1\n---\n\nNotes\n\n# Description\n\nD\n');
 
 // 32.7: Subheadings inside a section belong to it; replacing removes them
 const withSubheading = `${meFrontmatter}\n\n# Description\n\nOld\n\n## Links\n\n- a\n\n# Related\n\n- [[X]]\n`;
-const replacedSub = upsertMarkdownSectionHelper(withSubheading, 'Description', 'New', ['Transcript', 'Related']);
+const replacedSub = upsertMarkdownSection(withSubheading, 'Description', 'New', ['Transcript', 'Related']);
 assert(!replacedSub.includes('## Links'));
 assert(replacedSub.includes('# Description\n\nNew\n\n# Related\n\n- [[X]]\n'));
 
 // 32.8a: Description always comes before Transcript
-function ensureSectionOrderHelper(content, first, second) {
-	const normalized = content.replace(/\r\n/g, '\n');
-	const firstSection = findMarkdownSectionHelper(normalized, first);
-	const secondSection = findMarkdownSectionHelper(normalized, second);
-	if (!firstSection || !secondSection || firstSection.start < secondSection.start) return content;
-	const lines = normalized.split('\n');
-	const moved = lines.slice(firstSection.start, firstSection.end).join('\n').trim();
-	const remaining = [...lines.slice(0, firstSection.start), ...lines.slice(firstSection.end)];
-	const head = remaining.slice(0, secondSection.start).join('\n').replace(/\s+$/, '');
-	const tail = remaining.slice(secondSection.start).join('\n').replace(/^\s+/, '').replace(/\s+$/, '');
-	return `${[head, moved, tail].filter(Boolean).join('\n\n')}\n`;
-}
+
 const addSection = (content, heading, body, insertBefore) =>
-	ensureSectionOrderHelper(upsertMarkdownSectionHelper(content, heading, body, insertBefore), 'Description', 'Transcript');
+	ensureSectionOrder(upsertMarkdownSection(content, heading, body, insertBefore), 'Description', 'Transcript');
 const expectedOrder = `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`;
 
 // Either command order produces Description → Transcript → Related
@@ -606,8 +477,8 @@ const withTranscriptAfterDesc = addSection(relatedFirst, 'Transcript', transcrip
 assert(withTranscriptAfterDesc.indexOf('# Description') < withTranscriptAfterDesc.indexOf('# Transcript'));
 
 // Already ordered or single-section notes are unchanged
-assert.strictEqual(ensureSectionOrderHelper(expectedOrder, 'Description', 'Transcript'), expectedOrder);
-assert.strictEqual(ensureSectionOrderHelper(meNoteBare, 'Description', 'Transcript'), meNoteBare);
+assert.strictEqual(ensureSectionOrder(expectedOrder, 'Description', 'Transcript'), expectedOrder);
+assert.strictEqual(ensureSectionOrder(meNoteBare, 'Description', 'Transcript'), meNoteBare);
 
 // 32.8: Description source — frontmatter first when enabled and non-empty, else fetch
 function resolveDescriptionSourceHelper(useFrontmatter, frontmatterDescription) {
@@ -624,7 +495,7 @@ assert.strictEqual(resolveDescriptionSourceHelper(false, 'Creator description'),
 assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_DESCRIPTION_FROM_FRONTMATTER = true;/);
 
 // Frontmatter description timestamps still become Media Extended links in the body
-const fmDescBody = convertDescriptionTimestampsToMediaExtendedHelper('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ');
+const fmDescBody = convertDescriptionTimestampsToMediaExtended('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ');
 assert(fmDescBody.includes('[01:23](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=83#t=01:23.00) Setup'));
 
 console.log('✓ Media Extended note section detection, insertion/replacement, and video detection passed');
@@ -643,30 +514,30 @@ const coverMeta = {
 const coverTranscript = '- [00:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Hello';
 
 // 35.1: Embed at the top of the body, above # Description, matching the frontmatter cover
-const withCover = buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note', { embedCover: true });
+const withCover = buildMediaExtendedNote(coverMeta, coverTranscript, 'Summary Note', { embedCover: true });
 const coverBody = withCover.slice(withCover.indexOf('\n---\n') + 5);
 assert(coverBody.startsWith('\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Description\n\n'));
 assert(withCover.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
 assert(withCover.trimEnd().endsWith('# Related\n\n- [[Summary Note]]'));
 
 // 35.2: Off → no embed (and the pure builder defaults to off)
-assert(!buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note', { embedCover: false }).includes('![Cover]'));
-assert(!buildMediaExtendedNoteHelper(coverMeta, coverTranscript, 'Summary Note').includes('![Cover]'));
+assert(!buildMediaExtendedNote(coverMeta, coverTranscript, 'Summary Note', { embedCover: false }).includes('![Cover]'));
+assert(!buildMediaExtendedNote(coverMeta, coverTranscript, 'Summary Note').includes('![Cover]'));
 
 // 35.3: Fallback cover (hqdefault) is used for both frontmatter and embed; default URL when no cover given
-const hqCover = buildMediaExtendedNoteHelper({ ...coverMeta, cover: 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp', videoId: 'jNQXAC9IVRw' }, '', undefined, { embedCover: true });
+const hqCover = buildMediaExtendedNote({ ...coverMeta, cover: 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp', videoId: 'jNQXAC9IVRw' }, '', undefined, { embedCover: true });
 assert(hqCover.includes('![Cover](https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp)'));
 assert(hqCover.includes('cover: "https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp"'));
-assert.strictEqual(getMediaExtendedCoverUrlHelper({ videoId: 'abc123XYZ00' }), 'https://i.ytimg.com/vi_webp/abc123XYZ00/maxresdefault.webp');
-assert.strictEqual(getMediaExtendedCoverUrlHelper({ videoId: 'x', cover: '"https://example.com/c.webp"' }), 'https://example.com/c.webp');
+assert.strictEqual(getMediaExtendedCoverUrl({ videoId: 'abc123XYZ00' }), 'https://i.ytimg.com/vi_webp/abc123XYZ00/maxresdefault.webp');
+assert.strictEqual(getMediaExtendedCoverUrl({ videoId: 'x', cover: '"https://example.com/c.webp"' }), 'https://example.com/c.webp');
 
 // 35.4: Embed only, no description/transcript/related → frontmatter + embed
-const coverOnly = buildMediaExtendedNoteHelper({ ...coverMeta, description: '' }, '', undefined, { embedCover: true });
+const coverOnly = buildMediaExtendedNote({ ...coverMeta, description: '' }, '', undefined, { embedCover: true });
 assert(coverOnly.endsWith('---\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n'));
 
 // 35.5: Adding a description later keeps the embed at the top
-const coverThenDesc = upsertMarkdownSectionHelper(
-	buildMediaExtendedNoteHelper({ ...coverMeta, description: '' }, '', 'Summary Note', { embedCover: true }),
+const coverThenDesc = upsertMarkdownSection(
+	buildMediaExtendedNote({ ...coverMeta, description: '' }, '', 'Summary Note', { embedCover: true }),
 	'Description', 'New description', ['Transcript', 'Related']
 );
 const coverThenDescBody = coverThenDesc.slice(coverThenDesc.indexOf('\n---\n') + 5);
@@ -674,7 +545,7 @@ assert(coverThenDescBody.startsWith('\n![Cover](https://i.ytimg.com/vi_webp/dQw4
 
 // 35.6: Insert at cursor — inserts at the captured position with no duplicate check
 function insertCoverAtHelper(content, offset, coverUrl) {
-	const embed = buildCoverEmbedHelper(coverUrl);
+	const embed = buildCoverEmbed(coverUrl);
 	return content.slice(0, offset) + embed + content.slice(offset);
 }
 const cursorNote = 'Line one\n\nLine two';
@@ -688,39 +559,21 @@ console.log('✓ Media Extended cover embed passed');
 // Test 39: Create the companion note in either direction (video matching, folder-scoped lookup, rebuild merges)
 console.log('Testing companion note creation in both directions...');
 
-function extractVideoIdFromUrlHelper(url) {
-	return url.match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/)?.[1] ?? null;
-}
-
-function frontmatterMatchesVideoHelper(frontmatter, keys, videoId) {
-	if (!frontmatter) return false;
-	return keys.some((key) => typeof frontmatter[key] === 'string' && extractVideoIdFromUrlHelper(frontmatter[key]) === videoId);
-}
-
-function keepExtraFrontmatterHelper(existingContent, freshContent) {
-	const pattern = /^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/;
-	const existingMatch = existingContent.replace(/\r\n/g, '\n').match(pattern);
-	const fresh = freshContent.replace(/\r\n/g, '\n');
-	const freshMatch = fresh.match(pattern);
-	if (!existingMatch?.[1] || !freshMatch) return freshContent;
-	return `---\n${mergeYamlBlocksHelper(existingMatch[1], freshMatch[1] ?? '')}\n---\n${fresh.slice(freshMatch[0].length)}`;
-}
-
 // 39.1: Video IDs from common URL shapes; non-YouTube values don't match
-assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123'), 'dQw4w9WgXcQ');
-assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/watch?list=PL123&v=dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
-assert.strictEqual(extractVideoIdFromUrlHelper('https://youtu.be/dQw4w9WgXcQ?t=42'), 'dQw4w9WgXcQ');
-assert.strictEqual(extractVideoIdFromUrlHelper('https://www.youtube.com/shorts/dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
-assert.strictEqual(extractVideoIdFromUrlHelper('[[local-video.mp4]]'), null);
-assert.strictEqual(extractVideoIdFromUrlHelper('https://vimeo.com/123456789'), null);
+assert.strictEqual(extractVideoIdFromUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrl('https://www.youtube.com/watch?list=PL123&v=dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrl('https://youtu.be/dQw4w9WgXcQ?t=42'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrl('https://www.youtube.com/shorts/dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+assert.strictEqual(extractVideoIdFromUrl('[[local-video.mp4]]'), null);
+assert.strictEqual(extractVideoIdFromUrl('https://vimeo.com/123456789'), null);
 
 // 39.2: Frontmatter matching per note type
-assert.strictEqual(frontmatterMatchesVideoHelper({ video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }, ['video_url'], 'dQw4w9WgXcQ'), true);
-assert.strictEqual(frontmatterMatchesVideoHelper({ video: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
-assert.strictEqual(frontmatterMatchesVideoHelper({ media: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
-assert.strictEqual(frontmatterMatchesVideoHelper({ video: 'https://youtu.be/jNQXAC9IVRw' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
-assert.strictEqual(frontmatterMatchesVideoHelper({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
-assert.strictEqual(frontmatterMatchesVideoHelper(undefined, ['video_url'], 'dQw4w9WgXcQ'), false);
+assert.strictEqual(frontmatterMatchesVideo({ video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }, ['video_url'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideo({ video: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideo({ media: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), true);
+assert.strictEqual(frontmatterMatchesVideo({ video: 'https://youtu.be/jNQXAC9IVRw' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
+assert.strictEqual(frontmatterMatchesVideo({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }, ['video', 'media'], 'dQw4w9WgXcQ'), false);
+assert.strictEqual(frontmatterMatchesVideo(undefined, ['video_url'], 'dQw4w9WgXcQ'), false);
 
 // 39.3: Only the target folder (and subfolders) is searched — matching notes elsewhere are ignored
 const vaultNotes = [
@@ -732,7 +585,7 @@ const vaultNotes = [
 	{ path: 'Media Library Extra/Not inside.md', frontmatter: { video: 'https://youtu.be/dQw4w9WgXcQ' } },
 ];
 const findInFolder = (folder, videoId, keys) =>
-	testFilterFilesByFolderPaths(vaultNotes, [folder]).filter((n) => frontmatterMatchesVideoHelper(n.frontmatter, keys, videoId)).map((n) => n.path);
+	filterFilesByFolderPaths(vaultNotes, [folder]).filter((n) => frontmatterMatchesVideo(n.frontmatter, keys, videoId)).map((n) => n.path);
 assert.deepStrictEqual(findInFolder('Media Library', 'dQw4w9WgXcQ', ['video', 'media']), ['Media Library/Never Gonna Give You Up.md', 'Media Library/Archive/Renamed copy.md']);
 assert.deepStrictEqual(findInFolder('Video Summaries', 'dQw4w9WgXcQ', ['video_url']), ['Video Summaries/Never Gonna Give You Up.md']);
 assert.deepStrictEqual(findInFolder('Video Summaries', 'jNQXAC9IVRw', ['video_url']), []);
@@ -740,14 +593,14 @@ assert.deepStrictEqual(findInFolder('Video Summaries', 'jNQXAC9IVRw', ['video_ur
 // 39.4: Rebuilding a Media Extended note keeps user-added frontmatter (and tags), replaces generated keys and body
 const userEditedMe = '---\nmx-uid: keepme\nvideo: https://youtu.be/dQw4w9WgXcQ\ntitle: Old\nmy_rating: 5\ntags:\n  - favorite\ncover: "[[old.jpg]]"\n---\n\nOld body with my notes\n';
 const freshMe = '---\nmx-uid: keepme\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: New Title\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\n---\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Related\n\n- [[Video Summaries/Video]]\n';
-const rebuiltMe = keepExtraFrontmatterHelper(userEditedMe, freshMe);
+const rebuiltMe = keepExtraFrontmatter(userEditedMe, freshMe);
 assert(rebuiltMe.includes('title: New Title'));
 assert(rebuiltMe.includes('my_rating: 5'));
 assert(rebuiltMe.includes('tags:\n  - favorite'));
 assert(rebuiltMe.includes('cover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"'));
 assert(!rebuiltMe.includes('Old body'));
 assert(rebuiltMe.endsWith('\n# Related\n\n- [[Video Summaries/Video]]\n'));
-assert.strictEqual(keepExtraFrontmatterHelper('No frontmatter', freshMe), freshMe);
+assert.strictEqual(keepExtraFrontmatter('No frontmatter', freshMe), freshMe);
 
 // 39.5: Regenerating a summary note merges new frontmatter into the existing one (keeps added keys, merges tags)
 const existingSummaryNote = '---\ntitle: "Old"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\nmy_status: watched\ntags:\n  - favorite\n---\n\nOld summary\n';

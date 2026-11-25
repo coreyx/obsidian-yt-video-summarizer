@@ -2,39 +2,10 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
-import {
-	sanitizeTag,
-	mergeFrontmatter,
-	extractTagsFromText,
-	buildMediaExtendedFrontmatterHelper,
-	deduplicateTagsHelper,
-	getVideoNoteKindHelper,
-	splitYamlBlocksHelper,
-	mergeYamlBlocksHelper,
-} from './helpers/legacy-copies.mjs';
 
 // Test 1: sanitizeFileName
-function sanitizeFileName(name) {
-	let sanitized = name
-		.replace(/[\\/:*?"<>|#^[\]]/g, '')
-		.replace(/[\x00-\x1f\x7f]/g, '')
-		.replace(/\s+/g, ' ')
-		.trim();
 
-	sanitized = sanitized.replace(/^[.\-\s]+|[.\-\s]+$/g, '');
-
-	const reserved = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
-	if (reserved.test(sanitized)) {
-		sanitized = `${sanitized}-video`;
-	}
-
-	if (sanitized.length > 100) {
-		sanitized = sanitized.substring(0, 100).trim();
-		sanitized = sanitized.replace(/^[.\-\s]+|[.\-\s]+$/g, '');
-	}
-
-	return sanitized || 'YouTube Summary';
-}
+const { buildFrontmatter, buildMediaExtendedFrontmatter, deduplicateTags, extractTagsFromText, extractYouTubeUrlFromNote, getVideoNoteKind, isBlankNoteForSummary, mergeFrontmatter, mergeYamlBlocks, refreshMediaExtendedNoteContent, sanitizeFileName, sanitizeTag, videoStatsFrontmatter } = await loadSource('src/utils/frontmatter.ts');
 
 console.log('Testing sanitizeFileName...');
 assert.strictEqual(
@@ -60,26 +31,6 @@ assert.strictEqual(sanitizeTag('foo--bar'), 'foo-bar');
 console.log('✓ sanitizeTag passed');
 
 // Test 3: buildFrontmatter
-function buildFrontmatter(data) {
-	const lines = ['---'];
-	lines.push(`title: ${JSON.stringify(data.title)}`);
-	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
-	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
-	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
-	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
-	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
-	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
-
-	if (data.tags && data.tags.length > 0) {
-		lines.push('tags:');
-		for (const tag of data.tags) {
-			lines.push(`  - ${tag}`);
-		}
-	}
-
-	lines.push('---');
-	return lines.join('\n');
-}
 
 console.log('Testing buildFrontmatter...');
 const testData = {
@@ -142,31 +93,6 @@ assert.deepStrictEqual(descTags, ['servercomponents', 'artificialintelligence', 
 console.log('✓ extractTagsFromText passed');
 
 // Test 8: extractYouTubeUrlFromNote
-function extractYouTubeUrlFromNote(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (fmMatch) {
-		const videoUrlMatch = fmMatch[1].match(/^video_url:\s*["']?([^"'\r\n]+)["']?/m);
-		if (videoUrlMatch && videoUrlMatch[1].trim()) {
-			return videoUrlMatch[1].trim();
-		}
-	}
-
-	const mdLinkMatch = content.match(
-		/\[[^\]]*\]\((https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?[^\s\)]*v=|embed\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}[^\s\)]*)\)/i
-	);
-	if (mdLinkMatch) {
-		return mdLinkMatch[1];
-	}
-
-	const urlMatch = content.match(
-		/https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?[^\s"'\)<>]*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}[^\s"'\)<>]*)/i
-	);
-	if (urlMatch) {
-		return urlMatch[0];
-	}
-
-	return null;
-}
 
 console.log('Testing extractYouTubeUrlFromNote...');
 const noteWithFm = `---
@@ -198,105 +124,13 @@ assert.strictEqual(extractYouTubeUrlFromNote(noteWithNoUrl), null);
 console.log('✓ extractYouTubeUrlFromNote passed');
 
 // Test 10: mergeFrontmatter with excludeTags (for metadata refresh)
-function mergeFrontmatterWithExclude(rawYaml, data, options) {
-	const lines = rawYaml.split(/\r?\n/);
-	const updatedKeys = new Set();
-	const newLines = [];
-
-	const targetKeys = {
-		title: `title: ${JSON.stringify(data.title)}`,
-		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
-		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
-		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
-		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
-		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
-		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
-	};
-
-	let inTagsBlock = false;
-	const existingTags = [];
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
-
-		if (keyMatch) {
-			const key = keyMatch[1];
-
-			if (key === 'tags') {
-				inTagsBlock = true;
-				updatedKeys.add('tags');
-				const inlineVal = keyMatch[2].trim();
-				if (inlineVal.startsWith('[') && inlineVal.endsWith(']')) {
-					const parsed = inlineVal
-						.slice(1, -1)
-						.split(',')
-						.map(s => s.trim().replace(/^['"]|['"]$/g, ''))
-						.filter(Boolean);
-					existingTags.push(...parsed);
-				} else if (inlineVal) {
-					existingTags.push(inlineVal.replace(/^['"]|['"]$/g, '').trim());
-				}
-				continue;
-			} else {
-				inTagsBlock = false;
-			}
-
-			if (key in targetKeys) {
-				newLines.push(targetKeys[key]);
-				updatedKeys.add(key);
-				continue;
-			}
-		}
-
-		if (inTagsBlock) {
-			const itemMatch = line.match(/^\s*-\s+(.*)$/);
-			if (itemMatch) {
-				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
-				continue;
-			} else if (line.trim().length > 0) {
-				inTagsBlock = false;
-			}
-		}
-
-		newLines.push(line);
-	}
-
-	for (const [key, line] of Object.entries(targetKeys)) {
-		if (!updatedKeys.has(key)) {
-			newLines.push(line);
-		}
-	}
-
-	if (options?.excludeTags) {
-		if (existingTags.length > 0) {
-			newLines.push('tags:');
-			for (const tag of existingTags.map(sanitizeTag).filter(Boolean)) {
-				newLines.push(`  - ${tag}`);
-			}
-		}
-	} else {
-		const combinedTags = Array.from(
-			new Set([...existingTags, ...(data.tags || [])])
-		).map(sanitizeTag).filter(Boolean);
-
-		if (combinedTags.length > 0) {
-			newLines.push('tags:');
-			for (const tag of combinedTags) {
-				newLines.push(`  - ${tag}`);
-			}
-		}
-	}
-
-	return newLines.join('\n').trim();
-}
 
 console.log('Testing mergeFrontmatter with excludeTags...');
 const oldYamlWithTags = `tags:
   - my-custom-tag
 title: "Old Title"`;
 
-const upgraded = mergeFrontmatterWithExclude(oldYamlWithTags, testData, { excludeTags: true });
+const upgraded = mergeFrontmatter(oldYamlWithTags, testData, { excludeTags: true });
 // Should preserve existing tag
 assert(upgraded.includes('tags:\n  - my-custom-tag'));
 // Should NOT include new testData tags (pop-culture, 80s-music)
@@ -309,182 +143,13 @@ console.log('✓ mergeFrontmatter with excludeTags passed');
 // Test 20: YouTube description in frontmatter, Data API tags injection, and tag deduplication
 console.log('Testing YouTube description in frontmatter and tag deduplication...');
 
-
-function buildFrontmatterWithDesc(data) {
-	const lines = ['---'];
-	lines.push(`title: ${JSON.stringify(data.title)}`);
-	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
-	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
-	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
-	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
-	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
-	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
-
-	if (data.description !== undefined && data.description !== null) {
-		if (data.description.trim()) {
-			lines.push('description: |-');
-			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-			for (const dLine of descLines) {
-				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-			}
-		} else {
-			lines.push('description: ""');
-		}
-	}
-
-	if (data.tags && data.tags.length > 0) {
-		lines.push('tags:');
-		for (const tag of deduplicateTagsHelper(data.tags)) {
-			lines.push(`  - ${tag}`);
-		}
-	}
-
-	lines.push('---');
-	return lines.join('\n');
-}
-
-function mergeFrontmatterWithDesc(rawYaml, data, options) {
-	const lines = rawYaml.split(/\r?\n/);
-	const updatedKeys = new Set();
-	const newLines = [];
-
-	const targetKeys = {
-		title: `title: ${JSON.stringify(data.title)}`,
-		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
-		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
-		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
-		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
-		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
-		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
-	};
-
-	let inTagsBlock = false;
-	let inDescBlock = false;
-	const existingTags = [];
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-
-		if (inDescBlock) {
-			if (/^\s+/.test(line) || line.trim() === '') {
-				if (data.description !== undefined) {
-					continue;
-				}
-			} else {
-				inDescBlock = false;
-			}
-		}
-
-		if (inTagsBlock) {
-			const itemMatch = line.match(/^\s*-\s+(.*)$/);
-			if (itemMatch) {
-				existingTags.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''));
-				continue;
-			} else if (line.trim().length > 0) {
-				inTagsBlock = false;
-			}
-		}
-
-		const keyMatch = line.match(/^([a-zA-Z0-9_-]+):(.*)$/);
-
-		if (keyMatch) {
-			const key = keyMatch[1];
-
-			if (key === 'tags') {
-				inTagsBlock = true;
-				inDescBlock = false;
-				updatedKeys.add('tags');
-				const inlineVal = keyMatch[2].trim();
-				if (inlineVal.startsWith('[') && inlineVal.endsWith(']')) {
-					const parsed = inlineVal
-						.slice(1, -1)
-						.split(',')
-						.map(s => s.trim().replace(/^['"]|['"]$/g, ''))
-						.filter(Boolean);
-					existingTags.push(...parsed);
-				} else if (inlineVal) {
-					existingTags.push(inlineVal.replace(/^['"]|['"]$/g, '').trim());
-				}
-				continue;
-			} else {
-				inTagsBlock = false;
-			}
-
-			if (key === 'description') {
-				updatedKeys.add('description');
-				if (data.description !== undefined) {
-					inDescBlock = true;
-					if (data.description.trim()) {
-						newLines.push('description: |-');
-						const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-						for (const dLine of descLines) {
-							newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-						}
-					} else {
-						newLines.push('description: ""');
-					}
-					continue;
-				} else {
-					newLines.push(line);
-					continue;
-				}
-			}
-
-			if (key in targetKeys) {
-				newLines.push(targetKeys[key]);
-				updatedKeys.add(key);
-				continue;
-			}
-		}
-
-		newLines.push(line);
-	}
-
-	for (const [key, line] of Object.entries(targetKeys)) {
-		if (!updatedKeys.has(key)) {
-			newLines.push(line);
-		}
-	}
-
-	if (data.description !== undefined && !updatedKeys.has('description')) {
-		if (data.description.trim()) {
-			newLines.push('description: |-');
-			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-			for (const dLine of descLines) {
-				newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-			}
-		} else {
-			newLines.push('description: ""');
-		}
-	}
-
-	if (options?.excludeTags) {
-		if (existingTags.length > 0) {
-			newLines.push('tags:');
-			for (const tag of deduplicateTagsHelper(existingTags)) {
-				newLines.push(`  - ${tag}`);
-			}
-		}
-	} else {
-		const combinedTags = deduplicateTagsHelper([...existingTags, ...(data.tags || [])]);
-		if (combinedTags.length > 0) {
-			newLines.push('tags:');
-			for (const tag of combinedTags) {
-				newLines.push(`  - ${tag}`);
-			}
-		}
-	}
-
-	return newLines.join('\n').trim();
-}
-
 // Case 1: Deduplication of tags between title, description, and Data API
 const test20TitleTags = extractTagsFromText('Deep Dive: #Obsidian & #Productivity for Developers #AI');
 const test20DescTags = extractTagsFromText('Check out #productivity, #Obsidian, and #machine-learning in 2026!');
 const test20DataApiTags = ['Obsidian', 'AI', 'Machine Learning', 'Productivity', 'Note Taking', 'obsidian'];
 
 const test20CombinedRawTags = [...test20TitleTags, ...test20DescTags, ...test20DataApiTags];
-const test20Deduplicated = deduplicateTagsHelper(test20CombinedRawTags);
+const test20Deduplicated = deduplicateTags(test20CombinedRawTags);
 
 // Ensure no duplicate 'obsidian', 'productivity', 'ai', 'machine-learning'
 assert.strictEqual(test20Deduplicated.filter(t => t === 'obsidian').length, 1);
@@ -495,7 +160,7 @@ assert.strictEqual(test20Deduplicated.includes('note-taking'), true);
 
 // Case 2: Deduplication collapsing run-together hashtag vs hyphenated Data API tag
 // e.g. #RickAstley in title/desc vs "Rick Astley" in Data API
-const hashtagAndApi = deduplicateTagsHelper(['#RickAstley', 'Rick Astley', '#NeverGonnaGiveYouUp', 'Never Gonna Give You Up']);
+const hashtagAndApi = deduplicateTags(['#RickAstley', 'Rick Astley', '#NeverGonnaGiveYouUp', 'Never Gonna Give You Up']);
 assert.strictEqual(hashtagAndApi.includes('rick-astley'), true);
 assert.strictEqual(hashtagAndApi.includes('rickastley'), false);
 assert.strictEqual(hashtagAndApi.includes('never-gonna-give-you-up'), true);
@@ -514,7 +179,7 @@ const dataWithDesc = {
 	tags: ['#AI', 'ai', 'Obsidian', '#Obsidian']
 };
 
-const builtWithDesc = buildFrontmatterWithDesc(dataWithDesc);
+const builtWithDesc = buildFrontmatter(dataWithDesc);
 assert(builtWithDesc.includes('description: |-\n  Line 1 of description\n  Line 2 of description with https://link.com\n\n  Enjoy the video!'));
 // Tags should be deduplicated inside frontmatter
 assert(builtWithDesc.includes('tags:\n  - ai\n  - obsidian'));
@@ -522,7 +187,7 @@ assert(!builtWithDesc.includes('- ai\n  - ai'));
 
 // Case 4: buildFrontmatter without description (undefined)
 const dataWithoutDesc = { ...dataWithDesc, description: undefined };
-const builtWithoutDesc = buildFrontmatterWithDesc(dataWithoutDesc);
+const builtWithoutDesc = buildFrontmatter(dataWithoutDesc);
 assert(!builtWithoutDesc.includes('description:'));
 
 // Case 5: mergeFrontmatter adding description and Data API tags to note without them
@@ -532,7 +197,7 @@ tags:
   - personal-notes
 title: "Old Title"`;
 
-const mergedWithDescAndTags = mergeFrontmatterWithDesc(oldNoteYaml, dataWithDesc);
+const mergedWithDescAndTags = mergeFrontmatter(oldNoteYaml, dataWithDesc);
 assert(mergedWithDescAndTags.includes('description: |-\n  Line 1 of description'));
 assert(mergedWithDescAndTags.includes('tags:\n  - personal-notes\n  - ai\n  - obsidian'));
 
@@ -544,7 +209,7 @@ description: |-
 tags:
   - old-tag`;
 
-const mergedReplacedDesc = mergeFrontmatterWithDesc(noteWithOldDesc, dataWithDesc);
+const mergedReplacedDesc = mergeFrontmatter(noteWithOldDesc, dataWithDesc);
 assert(mergedReplacedDesc.includes('Line 1 of description'));
 assert(!mergedReplacedDesc.includes('Old line 1'));
 assert(!mergedReplacedDesc.includes('Old line 2'));
@@ -574,26 +239,6 @@ function getAspectRatioFromPlayerDataHelper(playerData) {
 	return best ? formatAspectRatioHelper(best.width, best.height) : undefined;
 }
 
-function videoStatsFrontmatterHelper(metadata) {
-	return {
-		duration: metadata.duration,
-		published_at: metadata.publishedAt,
-		view_count: metadata.viewCount,
-		like_count: metadata.likeCount,
-		aspect_ratio: metadata.aspectRatio,
-	};
-}
-
-function buildVideoStatsLinesHelper(data) {
-	const lines = {};
-	if (typeof data.duration === 'number' && data.duration > 0) lines.duration = `duration: ${Math.round(data.duration)}`;
-	if (data.published_at && /^\d{4}-\d{2}-\d{2}$/.test(data.published_at)) lines.published_at = `published_at: ${data.published_at}`;
-	if (typeof data.view_count === 'number' && !isNaN(data.view_count)) lines.view_count = `view_count: ${data.view_count}`;
-	if (typeof data.like_count === 'number' && !isNaN(data.like_count)) lines.like_count = `like_count: ${data.like_count}`;
-	if (data.aspect_ratio && /^\d+ \/ \d+$/.test(data.aspect_ratio)) lines.aspect_ratio = `aspect_ratio: ${data.aspect_ratio}`;
-	return lines;
-}
-
 // 33.1: Aspect ratio reduction and detection (largest format wins; dimensions from real player responses)
 assert.strictEqual(formatAspectRatioHelper(3840, 2160), '16 / 9');
 assert.strictEqual(formatAspectRatioHelper(320, 240), '4 / 3');
@@ -612,9 +257,12 @@ assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { adaptiv
 assert.strictEqual(getAspectRatioFromPlayerDataHelper({}), undefined);
 assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { formats: [{ mimeType: 'audio/webm' }] } }), undefined);
 
-// 33.2: Metadata mapping and frontmatter lines in Media Extended-compatible formats
-const statsData = videoStatsFrontmatterHelper({ duration: 213.4, publishedAt: '2009-10-25', viewCount: 1822608029, likeCount: 19404514, aspectRatio: '16 / 9' });
-assert.deepStrictEqual(Object.values(buildVideoStatsLinesHelper(statsData)), [
+// 33.2: Metadata mapping and frontmatter lines in Media Extended-compatible formats (through buildFrontmatter)
+const statsBase = { title: 'T', channel_name: 'C', channel_username: '', channel_url: 'https://www.youtube.com/@c', video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'thumb', thumbnail_text: '' };
+const STATS_KEY = /^(duration|published_at|view_count|like_count|aspect_ratio):/;
+const statsLinesOf = (data) => buildFrontmatter({ ...statsBase, ...data }).split('\n').filter((line) => STATS_KEY.test(line));
+const statsData = videoStatsFrontmatter({ duration: 213.4, publishedAt: '2009-10-25', viewCount: 1822608029, likeCount: 19404514, aspectRatio: '16 / 9' });
+assert.deepStrictEqual(statsLinesOf(statsData), [
 	'duration: 213',
 	'published_at: 2009-10-25',
 	'view_count: 1822608029',
@@ -622,74 +270,43 @@ assert.deepStrictEqual(Object.values(buildVideoStatsLinesHelper(statsData)), [
 	'aspect_ratio: 16 / 9',
 ]);
 // Zero counts are kept (a real value); missing or malformed values are omitted
-assert.deepStrictEqual(buildVideoStatsLinesHelper({ view_count: 0, like_count: 0 }), { view_count: 'view_count: 0', like_count: 'like_count: 0' });
-assert.deepStrictEqual(buildVideoStatsLinesHelper(videoStatsFrontmatterHelper({})), {});
-assert.deepStrictEqual(buildVideoStatsLinesHelper({ duration: 0, published_at: 'Oct 25, 2009', aspect_ratio: '16:9', view_count: NaN }), {});
+assert.deepStrictEqual(statsLinesOf({ view_count: 0, like_count: 0 }), ['view_count: 0', 'like_count: 0']);
+assert.deepStrictEqual(statsLinesOf(videoStatsFrontmatter({})), []);
+assert.deepStrictEqual(statsLinesOf({ duration: 0, published_at: 'Oct 25, 2009', aspect_ratio: '16:9', view_count: NaN }), []);
 
 // 33.3: Merging into existing frontmatter replaces stale stats in place and appends missing ones
-function mergeStatsHelper(rawYaml, data) {
-	const targets = buildVideoStatsLinesHelper(data);
-	const updated = new Set();
-	const out = rawYaml.split('\n').map((line) => {
-		const key = line.match(/^([a-zA-Z0-9_-]+):/)?.[1];
-		if (key && key in targets) {
-			updated.add(key);
-			return targets[key];
-		}
-		return line;
-	});
-	for (const [key, line] of Object.entries(targets)) {
-		if (!updated.has(key)) out.push(line);
-	}
-	return out.join('\n');
-}
-const mergedStats = mergeStatsHelper('title: "T"\nview_count: 5\ncustom: keep', statsData);
-assert.strictEqual(mergedStats, 'title: "T"\nview_count: 1822608029\ncustom: keep\nduration: 213\npublished_at: 2009-10-25\nlike_count: 19404514\naspect_ratio: 16 / 9');
+const mergedStats = mergeFrontmatter('title: "T"\nview_count: 5\ncustom: keep', { ...statsBase, ...statsData }).split('\n');
+assert.deepStrictEqual(mergedStats.slice(0, 3), ['title: "T"', 'view_count: 1822608029', 'custom: keep']);
+assert.deepStrictEqual(mergedStats.slice(3).filter((line) => STATS_KEY.test(line)), [
+	'duration: 213',
+	'published_at: 2009-10-25',
+	'like_count: 19404514',
+	'aspect_ratio: 16 / 9',
+]);
 
 console.log('✓ Video stats frontmatter and aspect ratio detection passed');
 
 // Test 34: Refresh video metadata (note classification, YAML block merge, Media Extended frontmatter refresh)
 console.log('Testing refresh video metadata classification and frontmatter merging...');
 
-
-
-
-function refreshMediaExtendedNoteContentHelper(content, metadata) {
-	const normalized = content.replace(/\r\n/g, '\n');
-	const fmMatch = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
-	const refreshExistingYaml = fmMatch?.[1] ?? '';
-	const existingUid = refreshExistingYaml.match(/^mx-uid:\s*([A-Za-z0-9_-]+)/m)?.[1];
-	const fresh = buildMediaExtendedFrontmatterHelper({ ...metadata, mxUid: existingUid ?? metadata.mxUid });
-	let freshYaml = fresh.replace(/^---\n/, '').replace(/\n---$/, '');
-	if (/^media:/m.test(refreshExistingYaml) && !/^video:/m.test(refreshExistingYaml)) {
-		freshYaml = freshYaml.split('\n').filter((line) => !line.startsWith('video:')).join('\n');
-	}
-	if (!fmMatch) {
-		const body = normalized.replace(/^\s+/, '');
-		return body ? `${fresh}\n\n${body}` : `${fresh}\n`;
-	}
-	const body = normalized.slice(fmMatch[0].length);
-	return `---\n${mergeYamlBlocksHelper(refreshExistingYaml, freshYaml)}\n---\n${body}`;
-}
-
 // 34.1: Classification
-assert.strictEqual(getVideoNoteKindHelper('---\nmx-uid: abc\n---\n', 'Notes/x.md', 'Media Library'), 'mediaExtended');
-assert.strictEqual(getVideoNoteKindHelper('---\ntitle: x\n---\n', 'Media Library/x.md', 'Media Library'), 'mediaExtended');
-assert.strictEqual(getVideoNoteKindHelper('---\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n---\n', 'Video Summaries/x.md', 'Media Library'), 'summary');
-assert.strictEqual(getVideoNoteKindHelper('Just a link https://youtu.be/dQw4w9WgXcQ in a note', 'Notes/x.md', 'Media Library'), null);
-assert.strictEqual(getVideoNoteKindHelper('---\ntitle: x\n---\n', 'Notes/x.md', 'Media Library'), null);
+assert.strictEqual(getVideoNoteKind('---\nmx-uid: abc\n---\n', 'Notes/x.md', 'Media Library'), 'mediaExtended');
+assert.strictEqual(getVideoNoteKind('---\ntitle: x\n---\n', 'Media Library/x.md', 'Media Library'), 'mediaExtended');
+assert.strictEqual(getVideoNoteKind('---\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\n---\n', 'Video Summaries/x.md', 'Media Library'), 'summary');
+assert.strictEqual(getVideoNoteKind('Just a link https://youtu.be/dQw4w9WgXcQ in a note', 'Notes/x.md', 'Media Library'), null);
+assert.strictEqual(getVideoNoteKind('---\ntitle: x\n---\n', 'Notes/x.md', 'Media Library'), null);
 
 // 34.2: YAML block merge — replaces in place (incl. multi-line blocks), appends new keys, keeps others and comments
 const refreshExistingYaml = 'mx-uid: keepme\ntitle: Old\n# my comment\ndescription: |-\n  Old line 1\n\n  Old line 2\ncustom: value\ncover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"';
 const refreshUpdatesYaml = 'title: New\ndescription: |-\n  New desc\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\naspect_ratio: 16 / 9';
 assert.strictEqual(
-	mergeYamlBlocksHelper(refreshExistingYaml, refreshUpdatesYaml),
+	mergeYamlBlocks(refreshExistingYaml, refreshUpdatesYaml),
 	'mx-uid: keepme\ntitle: New\n# my comment\ndescription: |-\n  New desc\ncustom: value\ncover: "https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp"\naspect_ratio: 16 / 9'
 );
 
 // 34.3: Media Extended refresh — fixes the old wikilink cover, keeps mx-uid, custom keys, and the body
 const oldMeNote = '---\nmx-uid: vcxchy79gecb4s69v25oxq9s\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Old Title\ndescription: ""\nduration: 200\ncreator: Rick Astley\nmy_rating: 5\ncover: "[[mx-cover-youtube_dQw4w9WgXcQ.jpg]]"\naspect_ratio: 427 / 240\n---\n\n# Description\n\nBody text\n\n# Related\n\n- [[Summary]]\n';
-const refreshedMe = refreshMediaExtendedNoteContentHelper(oldMeNote, {
+const refreshedMe = refreshMediaExtendedNoteContent(oldMeNote, {
 	videoId: 'dQw4w9WgXcQ',
 	title: 'Rick Astley - Never Gonna Give You Up',
 	description: 'Fresh description',
@@ -716,12 +333,12 @@ assert.strictEqual((refreshedMe.match(/^cover:/gm) || []).length, 1);
 
 // Refreshing twice is stable (idempotent)
 const refreshMeta = { videoId: 'dQw4w9WgXcQ', title: 'T', creator: 'C', cover: 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/hqdefault.webp' };
-const refreshedOnce = refreshMediaExtendedNoteContentHelper(oldMeNote, refreshMeta);
-assert.strictEqual(refreshMediaExtendedNoteContentHelper(refreshedOnce, refreshMeta), refreshedOnce);
+const refreshedOnce = refreshMediaExtendedNoteContent(oldMeNote, refreshMeta);
+assert.strictEqual(refreshMediaExtendedNoteContent(refreshedOnce, refreshMeta), refreshedOnce);
 
 // 34.4: Notes that use `media:` don't get a duplicate `video:` key
 const mediaKeyNote = '---\nmx-uid: abc\nmedia: https://www.youtube.com/watch?v=dQw4w9WgXcQ\n---\nBody\n';
-const refreshedMediaKey = refreshMediaExtendedNoteContentHelper(mediaKeyNote, refreshMeta);
+const refreshedMediaKey = refreshMediaExtendedNoteContent(mediaKeyNote, refreshMeta);
 assert(!/^video:/m.test(refreshedMediaKey));
 assert(refreshedMediaKey.includes('media: https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
 assert(refreshedMediaKey.endsWith('---\nBody\n'));
@@ -731,38 +348,26 @@ console.log('✓ Refresh video metadata classification and frontmatter merging p
 // Test 36: Blank-note detection for the summarizer ("Untitled" notes with tags-only frontmatter)
 console.log('Testing blank-note detection for Untitled notes with tags-only frontmatter...');
 
-function isBlankNoteForSummaryHelper(content, noteName) {
-	if (content.trim() === '') return true;
-	if (!/^untitled/i.test(noteName.trim())) return false;
-	const fmMatch = content.match(/^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/);
-	if (!fmMatch) return false;
-	if (content.slice(fmMatch[0].length).trim() !== '') return false;
-	const keys = splitYamlBlocksHelper((fmMatch[1] ?? '').replace(/\r\n/g, '\n'))
-		.filter((block) => block.lines.some((line) => line.trim() !== ''))
-		.map((block) => block.key);
-	return keys.every((key) => key === 'tags');
-}
-
 const tagsOnlyList = '---\ntags:\n  - inbox\n  - video\n---\n';
 const tagsOnlyInline = '---\ntags: [inbox, video]\n---';
 
 // 36.1: Empty notes are blank regardless of name
-assert.strictEqual(isBlankNoteForSummaryHelper('', 'My Note'), true);
-assert.strictEqual(isBlankNoteForSummaryHelper('  \n\n', 'Anything'), true);
+assert.strictEqual(isBlankNoteForSummary('', 'My Note'), true);
+assert.strictEqual(isBlankNoteForSummary('  \n\n', 'Anything'), true);
 
 // 36.2: Untitled + tags-only frontmatter + no body → blank (list, inline, CRLF, trailing whitespace, numbered Untitled)
-assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyList, 'Untitled'), true);
-assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyInline, 'Untitled 3'), true);
-assert.strictEqual(isBlankNoteForSummaryHelper('---\r\ntags:\r\n  - inbox\r\n---\r\n\r\n', 'Untitled'), true);
-assert.strictEqual(isBlankNoteForSummaryHelper(`${tagsOnlyList}\n   \n`, 'untitled 2'), true);
-assert.strictEqual(isBlankNoteForSummaryHelper('---\n---\n', 'Untitled'), true);
+assert.strictEqual(isBlankNoteForSummary(tagsOnlyList, 'Untitled'), true);
+assert.strictEqual(isBlankNoteForSummary(tagsOnlyInline, 'Untitled 3'), true);
+assert.strictEqual(isBlankNoteForSummary('---\r\ntags:\r\n  - inbox\r\n---\r\n\r\n', 'Untitled'), true);
+assert.strictEqual(isBlankNoteForSummary(`${tagsOnlyList}\n   \n`, 'untitled 2'), true);
+assert.strictEqual(isBlankNoteForSummary('---\n---\n', 'Untitled'), true);
 
 // 36.3: Any condition failing → not blank
-assert.strictEqual(isBlankNoteForSummaryHelper(tagsOnlyList, 'Meeting notes'), false); // name
-assert.strictEqual(isBlankNoteForSummaryHelper(`${tagsOnlyList}\nSome text`, 'Untitled'), false); // body
-assert.strictEqual(isBlankNoteForSummaryHelper('---\ntags:\n  - a\ncreated: 2026-10-02\n---\n', 'Untitled'), false); // other key
-assert.strictEqual(isBlankNoteForSummaryHelper('---\naliases: [x]\n---\n', 'Untitled'), false); // non-tags key only
-assert.strictEqual(isBlankNoteForSummaryHelper('Just text', 'Untitled'), false); // body, no frontmatter
+assert.strictEqual(isBlankNoteForSummary(tagsOnlyList, 'Meeting notes'), false); // name
+assert.strictEqual(isBlankNoteForSummary(`${tagsOnlyList}\nSome text`, 'Untitled'), false); // body
+assert.strictEqual(isBlankNoteForSummary('---\ntags:\n  - a\ncreated: 2026-10-02\n---\n', 'Untitled'), false); // other key
+assert.strictEqual(isBlankNoteForSummary('---\naliases: [x]\n---\n', 'Untitled'), false); // non-tags key only
+assert.strictEqual(isBlankNoteForSummary('Just text', 'Untitled'), false); // body, no frontmatter
 
 // 36.4: Writing the summary into a tags-only note keeps the user's tags and adds the summary frontmatter + body
 const blankFmData = {
