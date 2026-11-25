@@ -2,8 +2,18 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
+import { loadSettingsManager } from './helpers/settings.mjs';
 
-const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await loadSource('src/defaults.ts');
+const {
+	DEFAULT_PROMPT,
+	DEFAULT_SELECTED_MODEL,
+	LEGACY_DEFAULT_PROMPTS,
+	RETIRED_ANTHROPIC_MODELS,
+	RETIRED_GEMINI_MODELS,
+	RETIRED_OPENAI_MODELS,
+	upgradeSavedPrompt,
+} = await loadSource('src/defaults.ts');
+const { defaultMediaExtendedRunOptions, resolveCompanionNoteOptions } = await loadSource('src/utils/mediaExtendedOptions.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 
 // Test 12: Gemini model retirement and migration
@@ -23,49 +33,43 @@ const retiredModels = [
 	'gemini-pro-vision'
 ];
 
-const mockGeminiProvider = {
-	name: 'Gemini',
-	type: 'gemini',
-	isBuiltIn: true,
-	models: [
-		{ name: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash Deprecated' },
-		{ name: 'gemini-2.0-flash-lite', displayName: 'Gemini 2.0 Flash-Lite Deprecated' },
-		{ name: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash (Recommended)' },
-		{ name: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash' },
-	]
-};
-
-// Simulate pruning
-const prunedModels = mockGeminiProvider.models.filter(
-	(m) => !retiredModels.includes(m.name)
-);
-assert.strictEqual(prunedModels.length, 2);
-assert.deepStrictEqual(prunedModels.map((m) => m.name), ['gemini-3.8-flash', 'gemini-3.5-flash']);
-
-// Simulate migration of selectedModelId
-function migrateSelectedModelId(selectedModelId, providers, defaultModel) {
-	if (!selectedModelId) return defaultModel;
-	const [provider, model] = selectedModelId.split(':');
-	if (provider.toLowerCase() === 'gemini' && retiredModels.includes(model)) {
-		return defaultModel;
-	}
-	const valid = providers.some((p) => p.name === provider && p.models.some((m) => m.name === model));
-	return valid ? selectedModelId : defaultModel;
+// Every model in the list above is retired by the plugin
+for (const model of retiredModels) {
+	assert(RETIRED_GEMINI_MODELS.includes(model), `${model} should be retired`);
 }
+assert.strictEqual(DEFAULT_SELECTED_MODEL, 'Gemini:gemini-3.8-flash');
 
-const defaultModel = 'Gemini:gemini-3.8-flash';
-assert.strictEqual(
-	migrateSelectedModelId('Gemini:gemini-2.0-flash', [{ name: 'Gemini', models: prunedModels }], defaultModel),
-	'Gemini:gemini-3.8-flash'
-);
-assert.strictEqual(
-	migrateSelectedModelId('Gemini:gemini-3.8-flash', [{ name: 'Gemini', models: prunedModels }], defaultModel),
-	'Gemini:gemini-3.8-flash'
-);
-assert.strictEqual(
-	migrateSelectedModelId('Gemini:non-existent', [{ name: 'Gemini', models: prunedModels }], defaultModel),
-	'Gemini:gemini-3.8-flash'
-);
+// Saved settings as an existing install has them: a Gemini provider still listing retired models
+const savedWithGemini = (selectedModelId) => ({
+	settings: {
+		providers: [{
+			name: 'Gemini',
+			type: 'gemini',
+			isBuiltIn: true,
+			apiKey: '',
+			models: [
+				{ name: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash Deprecated' },
+				{ name: 'gemini-2.0-flash-lite', displayName: 'Gemini 2.0 Flash-Lite Deprecated' },
+				{ name: 'gemini-3.8-flash', displayName: 'Gemini 3.8 Flash (Recommended)' },
+				{ name: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash' },
+			],
+		}],
+		selectedModelId,
+	},
+});
+const modelNamesOf = (settings, providerName) => settings.providers.find((p) => p.name === providerName).models.map((m) => m.name);
+
+// Loading prunes the retired models and moves a retired selection to the default model
+const retiredGeminiLoad = await loadSettingsManager(savedWithGemini('Gemini:gemini-2.0-flash'));
+const loadedGeminiModels = modelNamesOf(retiredGeminiLoad.lastSaved(), 'Gemini');
+assert(!loadedGeminiModels.includes('gemini-2.0-flash'));
+assert(!loadedGeminiModels.includes('gemini-2.0-flash-lite'));
+assert(loadedGeminiModels.includes('gemini-3.8-flash') && loadedGeminiModels.includes('gemini-3.5-flash'));
+assert.strictEqual(retiredGeminiLoad.lastSaved().selectedModelId, DEFAULT_SELECTED_MODEL);
+
+// A current model stays selected; one that no longer exists moves to the default
+assert.strictEqual((await loadSettingsManager(savedWithGemini('Gemini:gemini-3.5-flash'))).lastSaved().selectedModelId, 'Gemini:gemini-3.5-flash');
+assert.strictEqual((await loadSettingsManager(savedWithGemini('Gemini:non-existent'))).lastSaved().selectedModelId, DEFAULT_SELECTED_MODEL);
 console.log('✓ Gemini model retirement and migration passed');
 
 // Test 13: Anthropic and OpenAI model retirement and migration
@@ -96,102 +100,98 @@ const retiredOpenAI = [
 	'o1-preview'
 ];
 
-const mockAnthropicProvider = {
-	name: 'Anthropic',
-	type: 'anthropic',
-	models: [
-		{ name: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4 Deprecated' },
-		{ name: 'claude-sonnet-5-5', displayName: 'Claude Sonnet 5.5 (Recommended)' },
-		{ name: 'claude-opus-5-5', displayName: 'Claude Opus 5.5' },
-	]
-};
-
-const prunedAnthropic = mockAnthropicProvider.models.filter(
-	(m) => !retiredAnthropic.includes(m.name)
-);
-assert.strictEqual(prunedAnthropic.length, 2);
-assert.deepStrictEqual(prunedAnthropic.map((m) => m.name), ['claude-sonnet-5-5', 'claude-opus-5-5']);
-
-const mockOpenAIProvider = {
-	name: 'OpenAI',
-	type: 'openai',
-	models: [
-		{ name: 'gpt-4-0613', displayName: 'GPT-4 0613' },
-		{ name: 'gpt-6', displayName: 'GPT-6 (Astra)' },
-		{ name: 'gpt-4o', displayName: 'GPT-4o' },
-	]
-};
-
-const prunedOpenAI = mockOpenAIProvider.models.filter(
-	(m) => !retiredOpenAI.includes(m.name)
-);
-assert.strictEqual(prunedOpenAI.length, 2);
-assert.deepStrictEqual(prunedOpenAI.map((m) => m.name), ['gpt-6', 'gpt-4o']);
-
-// Test migration of retired models
-function multiProviderMigrate(selectedModelId, providers, defaultModel) {
-	if (!selectedModelId) return defaultModel;
-	const [provider, model] = selectedModelId.split(':');
-	const lower = provider.toLowerCase();
-	if (lower === 'anthropic' && retiredAnthropic.includes(model)) return defaultModel;
-	if (lower === 'openai' && retiredOpenAI.includes(model)) return defaultModel;
-	if (lower === 'gemini' && retiredModels.includes(model)) return defaultModel;
-	const valid = providers.some((p) => p.name === provider && p.models.some((m) => m.name === model));
-	return valid ? selectedModelId : defaultModel;
+for (const model of retiredAnthropic) {
+	assert(RETIRED_ANTHROPIC_MODELS.includes(model), `${model} should be retired`);
+}
+for (const model of retiredOpenAI) {
+	assert(RETIRED_OPENAI_MODELS.includes(model), `${model} should be retired`);
 }
 
-const allProviders = [
-	{ name: 'Gemini', models: prunedModels },
-	{ name: 'Anthropic', models: prunedAnthropic },
-	{ name: 'OpenAI', models: prunedOpenAI }
-];
+// Saved Anthropic and OpenAI providers that still list retired models
+const savedWithAllProviders = (selectedModelId) => ({
+	settings: {
+		providers: [
+			{
+				name: 'Anthropic',
+				type: 'anthropic',
+				isBuiltIn: true,
+				apiKey: '',
+				models: [
+					{ name: 'claude-sonnet-4-20250514', displayName: 'Claude Sonnet 4 Deprecated' },
+					{ name: 'claude-sonnet-5-5', displayName: 'Claude Sonnet 5.5 (Recommended)' },
+					{ name: 'claude-opus-5-5', displayName: 'Claude Opus 5.5' },
+				],
+			},
+			{
+				name: 'OpenAI',
+				type: 'openai',
+				isBuiltIn: true,
+				apiKey: '',
+				models: [
+					{ name: 'gpt-4-0613', displayName: 'GPT-4 0613' },
+					{ name: 'gpt-6', displayName: 'GPT-6 (Astra)' },
+					{ name: 'gpt-4o', displayName: 'GPT-4o' },
+				],
+			},
+		],
+		selectedModelId,
+	},
+});
 
-assert.strictEqual(
-	multiProviderMigrate('Anthropic:claude-sonnet-4-20250514', allProviders, defaultModel),
-	'Gemini:gemini-3.8-flash'
-);
-assert.strictEqual(
-	multiProviderMigrate('Anthropic:claude-sonnet-5-5', allProviders, defaultModel),
-	'Anthropic:claude-sonnet-5-5'
-);
-assert.strictEqual(
-	multiProviderMigrate('OpenAI:gpt-4-0613', allProviders, defaultModel),
-	'Gemini:gemini-3.8-flash'
-);
-assert.strictEqual(
-	multiProviderMigrate('OpenAI:gpt-6', allProviders, defaultModel),
-	'OpenAI:gpt-6'
-);
+const multiLoad = await loadSettingsManager(savedWithAllProviders('Anthropic:claude-sonnet-4-20250514'));
+assert(!modelNamesOf(multiLoad.lastSaved(), 'Anthropic').includes('claude-sonnet-4-20250514'));
+assert(modelNamesOf(multiLoad.lastSaved(), 'Anthropic').includes('claude-sonnet-5-5'));
+assert(!modelNamesOf(multiLoad.lastSaved(), 'OpenAI').includes('gpt-4-0613'));
+assert(modelNamesOf(multiLoad.lastSaved(), 'OpenAI').includes('gpt-6'));
+// A model the user added themselves is kept when it isn't retired
+assert(modelNamesOf(multiLoad.lastSaved(), 'OpenAI').includes('gpt-4o'));
+
+// Retired selections move to the default; current ones stay
+const selectedAfterLoad = async (selectedModelId) => (await loadSettingsManager(savedWithAllProviders(selectedModelId))).lastSaved().selectedModelId;
+assert.strictEqual(await selectedAfterLoad('Anthropic:claude-sonnet-4-20250514'), DEFAULT_SELECTED_MODEL);
+assert.strictEqual(await selectedAfterLoad('Anthropic:claude-sonnet-5-5'), 'Anthropic:claude-sonnet-5-5');
+assert.strictEqual(await selectedAfterLoad('OpenAI:gpt-4-0613'), DEFAULT_SELECTED_MODEL);
+assert.strictEqual(await selectedAfterLoad('OpenAI:gpt-6'), 'OpenAI:gpt-6');
 console.log('✓ Anthropic and OpenAI model retirement and migration passed');
 
 // Test 24: Summary prompt Media Extended checkbox and per-run override resolution
 console.log('Testing summary prompt Media Extended checkbox override resolution...');
 
-function resolveMediaExtendedOption(settingValue, overrideValue) {
-	return overrideValue !== undefined ? overrideValue : settingValue;
+const withMediaExtendedSettings = (createNote, includeDescription, includeTranscript) => loadSettingsManager({
+	settings: {
+		providers: [],
+		createMediaExtendedNotes: createNote,
+		mediaExtendedIncludeDescription: includeDescription,
+		mediaExtendedIncludeTranscript: includeTranscript,
+	},
+});
+
+// Case 1 & 2: The prompt's checkboxes start from the permanent settings
+for (const enabled of [true, false]) {
+	const { manager } = await withMediaExtendedSettings(enabled, enabled, !enabled);
+	assert.deepStrictEqual(defaultMediaExtendedRunOptions(manager), {
+		createNote: enabled,
+		includeDescription: enabled,
+		includeTranscript: !enabled,
+	});
 }
 
-// Case 1: Inherits true when permanent setting is true and override is undefined
-let permanentSetting = true;
-assert.strictEqual(resolveMediaExtendedOption(permanentSetting, undefined), true);
-assert.strictEqual(permanentSetting, true); // permanent setting unchanged
+// Case 3 & 4: A choice made in the prompt applies to this run only; the permanent settings and the saved data don't change
+for (const enabled of [true, false]) {
+	const { manager, saves } = await withMediaExtendedSettings(enabled, enabled, enabled);
+	const savesBefore = saves.length;
+	const runOptions = { ...defaultMediaExtendedRunOptions(manager), createNote: !enabled, includeDescription: !enabled, includeTranscript: !enabled };
+	assert.deepStrictEqual(resolveCompanionNoteOptions(runOptions, manager), { includeDescription: !enabled, includeTranscript: !enabled });
+	assert.strictEqual(manager.getCreateMediaExtendedNotes(), enabled);
+	assert.strictEqual(manager.getMediaExtendedIncludeDescription(), enabled);
+	assert.strictEqual(manager.getMediaExtendedIncludeTranscript(), enabled);
+	assert.strictEqual(saves.length, savesBefore, 'nothing is saved for a one-run choice');
+}
 
-// Case 2: Inherits false when permanent setting is false and override is undefined
-permanentSetting = false;
-assert.strictEqual(resolveMediaExtendedOption(permanentSetting, undefined), false);
-assert.strictEqual(permanentSetting, false); // permanent setting unchanged
-
-// Case 3: Overridden to false at prompt when permanent setting is true
-permanentSetting = true;
-const promptChoiceOff = false;
-assert.strictEqual(resolveMediaExtendedOption(permanentSetting, promptChoiceOff), false);
-assert.strictEqual(permanentSetting, true); // permanent setting untouched!
-
-// Case 4: Overridden to true at prompt when permanent setting is false
-permanentSetting = false;
-const promptChoiceOn = true;
-assert.strictEqual(resolveMediaExtendedOption(permanentSetting, promptChoiceOn), true);
-assert.strictEqual(permanentSetting, false); // permanent setting untouched!
+// Without a choice for this run, the companion note follows the permanent settings
+const { manager: unchangedManager } = await withMediaExtendedSettings(true, false, true);
+assert.deepStrictEqual(resolveCompanionNoteOptions(undefined, unchangedManager), { includeDescription: false, includeTranscript: true });
+assert.deepStrictEqual(resolveCompanionNoteOptions({ includeDescription: true }, unchangedManager), { includeDescription: true, includeTranscript: true });
 
 console.log('✓ Summary prompt Media Extended checkbox override resolution passed');
 

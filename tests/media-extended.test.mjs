@@ -2,9 +2,11 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
+import { loadSettingsManager } from './helpers/settings.mjs';
 import { setRequestUrlHandler } from './helpers/obsidian-stub.mjs';
 
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
+const { resolveCompanionNoteOptions } = await loadSource('src/utils/mediaExtendedOptions.ts');
 const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 const { resolveMediaExtendedPluginStatus } = await loadSource('src/utils/mediaExtendedPlugin.ts');
 
@@ -358,19 +360,18 @@ const nested = convertTimestampsToLinks('See [the `cfg` file](https://example.co
 assert.strictEqual(nested, 'See [the `cfg` file](https://example.com) at [01:00](https://www.youtube.com/watch?v=abc123XYZ&t=60s)');
 
 // 26b.4: Per-run Media Extended options override permanent settings without changing them
-function resolveCompanionOptionsHelper(settings, runOptions) {
-	return {
-		includeDescription: runOptions?.includeDescription ?? settings.mediaExtendedIncludeDescription,
-		includeTranscript: runOptions?.includeTranscript ?? settings.mediaExtendedIncludeTranscript,
-	};
-}
-const permanentSettings = { mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true };
-assert.deepStrictEqual(resolveCompanionOptionsHelper(permanentSettings), { includeDescription: true, includeTranscript: true });
+const { manager: companionSettings, saves: companionSaves } = await loadSettingsManager({
+	settings: { providers: [], mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true },
+});
+const savesBeforeRun = companionSaves.length;
+assert.deepStrictEqual(resolveCompanionNoteOptions(undefined, companionSettings), { includeDescription: true, includeTranscript: true });
 assert.deepStrictEqual(
-	resolveCompanionOptionsHelper(permanentSettings, { createNote: true, includeDescription: false, includeTranscript: false }),
+	resolveCompanionNoteOptions({ createNote: true, includeDescription: false, includeTranscript: false }, companionSettings),
 	{ includeDescription: false, includeTranscript: false }
 );
-assert.deepStrictEqual(permanentSettings, { mediaExtendedIncludeDescription: true, mediaExtendedIncludeTranscript: true });
+assert.strictEqual(companionSettings.getMediaExtendedIncludeDescription(), true);
+assert.strictEqual(companionSettings.getMediaExtendedIncludeTranscript(), true);
+assert.strictEqual(companionSaves.length, savesBeforeRun);
 
 // Transcript excluded for the run: companion note has no # Transcript section
 const meNoTranscript = buildMediaExtendedNote(testMetadata, '', testRelatedNote, { includeDescription: true });

@@ -84,7 +84,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 ### Settings
 
 #### [MODIFY] `tests/settings.test.mjs`
-- [ ] **TASK-12:** Test the real `SettingsManager` (constructed with a fake plugin whose `loadData()` returns fixture settings and whose `saveData()` records what was saved) in place of the copies in Test 12 (`migrateSelectedModelId`), Test 13 (`multiProviderMigrate`), Test 24 (`resolveMediaExtendedOption`), Test 25 (`testSyncLMStudioProvider`), and Test 26b (`resolveCompanionOptionsHelper`). Any copy whose migration path no longer exists in `settingsManager.ts` is deleted and listed in the walkthrough.
+- [x] **TASK-12:** Test the real `SettingsManager` (constructed with a fake plugin whose `loadData()` returns fixture settings and whose `saveData()` records what was saved) in place of the copies in Test 12 (`migrateSelectedModelId`), Test 13 (`multiProviderMigrate`), Test 24 (`resolveMediaExtendedOption`), Test 25 (`testSyncLMStudioProvider`), and Test 26b (`resolveCompanionOptionsHelper`). Any copy whose migration path no longer exists in `settingsManager.ts` is deleted and listed in the walkthrough.
 
 ### Summary note logic now inside `main.ts`
 

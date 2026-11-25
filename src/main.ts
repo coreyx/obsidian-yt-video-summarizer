@@ -50,6 +50,7 @@ import {
 import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData } from './utils/vaultTags';
 import { collectVideoTags } from './utils/youtubeMetadata';
+import { defaultMediaExtendedRunOptions, resolveCompanionNoteOptions } from './utils/mediaExtendedOptions';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
 
@@ -455,11 +456,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * Builds the per-run Media Extended options from the permanent settings.
 	 */
 	private getDefaultMediaExtendedRunOptions(): MediaExtendedRunOptions {
-		return {
-			createNote: this.settings.getCreateMediaExtendedNotes(),
-			includeDescription: this.settings.getMediaExtendedIncludeDescription(),
-			includeTranscript: this.settings.getMediaExtendedIncludeTranscript(),
-		};
+		return defaultMediaExtendedRunOptions(this.settings);
 	}
 
 	/**
@@ -1162,8 +1159,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		runOptions?: Pick<MediaExtendedRunOptions, 'includeDescription' | 'includeTranscript'>,
 		existingCompanion?: TFile | null
 	): Promise<TFile | null> {
-		const includeDescription = runOptions?.includeDescription ?? this.settings.getMediaExtendedIncludeDescription();
-		const includeTranscript = runOptions?.includeTranscript ?? this.settings.getMediaExtendedIncludeTranscript();
+		const { includeDescription, includeTranscript } = resolveCompanionNoteOptions(runOptions, this.settings);
 
 		const folderPath = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 		await this.ensureFolderExists(folderPath);
