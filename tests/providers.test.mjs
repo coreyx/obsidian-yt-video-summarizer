@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
 const { getLMStudioNativeModelsUrl, normalizeOpenAIBaseUrl, parseLMStudioModels } = await loadSource('src/services/lmStudio.ts');
+const { buildChatCompletionParams, toLegacyMaxTokensParams } = await loadSource('src/services/providers/openai.ts');
 const { parseTopicTags } = await loadSource('src/utils/vaultTags.ts');
 
 // Test 6: Topics parsing from LLM response
@@ -21,52 +22,37 @@ console.log('✓ parseTopicTags passed');
 
 // Test 14: OpenAI parameter construction (max_completion_tokens & reasoning temperature)
 console.log('Testing OpenAI parameter construction...');
-function buildOpenAIParams(model, prompt, maxTokens, temperature) {
-	const isReasoningModel = /^(o[134])/i.test(model);
-	const params = {
-		model,
-		messages: [{ role: 'user', content: prompt }],
-		max_completion_tokens: maxTokens,
-	};
-	if (!isReasoningModel) {
-		params.temperature = temperature;
-	}
-	return params;
-}
-
 // For standard models (gpt-4o, gpt-5.x, etc.)
-const standardParams = buildOpenAIParams('gpt-4o', 'Summarize this', 4000, 0.7);
+const standardParams = buildChatCompletionParams('gpt-4o', 'Summarize this', 4000, 0.7);
+assert.deepStrictEqual(standardParams.messages, [{ role: 'user', content: 'Summarize this' }]);
 assert.strictEqual(standardParams.max_completion_tokens, 4000);
 assert.strictEqual(standardParams.max_tokens, undefined);
 assert.strictEqual(standardParams.temperature, 0.7);
 
 // For reasoning models (o1, o3-mini, o4-mini)
-const reasoningParams = buildOpenAIParams('o3-mini', 'Summarize this', 4000, 0.7);
-assert.strictEqual(reasoningParams.max_completion_tokens, 4000);
-assert.strictEqual(reasoningParams.max_tokens, undefined);
-assert.strictEqual(reasoningParams.temperature, undefined); // Must be omitted for reasoning models
-
-// Fallback logic simulation
-function simulateFallback(params, error) {
-	if (
-		params.max_completion_tokens !== undefined &&
-		error?.message &&
-		(error.message.includes('max_completion_tokens') || error.message.includes('extra fields'))
-	) {
-		const fallbackParams = { ...params };
-		fallbackParams.max_tokens = fallbackParams.max_completion_tokens;
-		delete fallbackParams.max_completion_tokens;
-		return fallbackParams;
-	}
-	throw error;
+for (const model of ['o1', 'o3-mini', 'O4-mini']) {
+	const reasoningParams = buildChatCompletionParams(model, 'Summarize this', 4000, 0.7);
+	assert.strictEqual(reasoningParams.max_completion_tokens, 4000);
+	assert.strictEqual(reasoningParams.max_tokens, undefined);
+	assert.strictEqual('temperature' in reasoningParams, false, `${model}: temperature must be omitted for reasoning models`);
 }
 
-const fallbackResult = simulateFallback(
-	{ model: 'legacy-model', max_completion_tokens: 1000 },
-	{ message: 'unrecognized parameter: max_completion_tokens' }
-);
-assert.strictEqual(fallbackResult.max_tokens, 1000);
-assert.strictEqual(fallbackResult.max_completion_tokens, undefined);
+// Fallback to max_tokens when a server rejects max_completion_tokens, for each way servers word it
+const legacyParams = { model: 'legacy-model', max_completion_tokens: 1000 };
+for (const message of [
+	'unrecognized parameter: max_completion_tokens',
+	'Extra fields not permitted',
+	'Unknown parameter: foo',
+	'Unsupported parameter',
+]) {
+	const fallbackResult = toLegacyMaxTokensParams(legacyParams, { message });
+	assert.strictEqual(fallbackResult.max_tokens, 1000, message);
+	assert.strictEqual('max_completion_tokens' in fallbackResult, false, message);
+}
+assert.strictEqual(legacyParams.max_completion_tokens, 1000, 'the original request is left unchanged');
+// No retry for unrelated errors, or for a request that never sent max_completion_tokens
+assert.strictEqual(toLegacyMaxTokensParams(legacyParams, new Error('401 Unauthorized')), null);
+assert.strictEqual(toLegacyMaxTokensParams({ model: 'm', max_tokens: 1000 }, { message: 'unrecognized parameter' }), null);
 console.log('✓ OpenAI parameter construction passed');
 
 // Test 25: OpenAI-compatible URL normalization, LM Studio model parsing & provider sync

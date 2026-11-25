@@ -6,6 +6,43 @@ import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopic
 import { normalizeOpenAIBaseUrl } from '../lmStudio';
 import { obsidianFetch } from '../../utils/obsidianFetch';
 
+/**
+ * Builds the Chat Completions request for a text prompt. Uses `max_completion_tokens` (the current
+ * parameter), and leaves out `temperature` for OpenAI reasoning models (o1, o3, o4), which reject it.
+ */
+export function buildChatCompletionParams(model: string, prompt: string, maxTokens: number, temperature: number): any {
+    const params: any = {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_completion_tokens: maxTokens,
+    };
+    if (!/^(o[134])/i.test(model)) {
+        params.temperature = temperature;
+    }
+    return params;
+}
+
+/**
+ * Returns a copy of `params` that sends the token limit as the older `max_tokens` when `error` shows the
+ * server rejected `max_completion_tokens` (common for legacy or OpenAI-compatible servers), or `null` when
+ * the error is about something else and retrying wouldn't help.
+ */
+export function toLegacyMaxTokensParams(params: any, error: unknown): any | null {
+    const errMsg = String((error as any)?.message || error || '').toLowerCase();
+    const rejectedParameter =
+        errMsg.includes('max_completion_tokens') ||
+        errMsg.includes('extra fields') ||
+        errMsg.includes('unrecognized') ||
+        errMsg.includes('unknown parameter') ||
+        errMsg.includes('unsupported parameter');
+    if (params.max_completion_tokens === undefined || !rejectedParameter) {
+        return null;
+    }
+    const fallbackParams = { ...params, max_tokens: params.max_completion_tokens };
+    delete fallbackParams.max_completion_tokens;
+    return fallbackParams;
+}
+
 export class OpenAIProvider implements AIModelProvider {
     private client: OpenAI;
     private model: string;
@@ -50,19 +87,8 @@ export class OpenAIProvider implements AIModelProvider {
         try {
             return await this.client.chat.completions.create(params);
         } catch (error: any) {
-            // If a legacy or custom OpenAI-compatible server rejects max_completion_tokens, fall back to max_tokens
-            const errMsg = String(error?.message || error || '').toLowerCase();
-            if (
-                params.max_completion_tokens !== undefined &&
-                (errMsg.includes('max_completion_tokens') ||
-                 errMsg.includes('extra fields') ||
-                 errMsg.includes('unrecognized') ||
-                 errMsg.includes('unknown parameter') ||
-                 errMsg.includes('unsupported parameter'))
-            ) {
-                const fallbackParams = { ...params };
-                fallbackParams.max_tokens = fallbackParams.max_completion_tokens;
-                delete fallbackParams.max_completion_tokens;
+            const fallbackParams = toLegacyMaxTokensParams(params, error);
+            if (fallbackParams) {
                 return await this.client.chat.completions.create(fallbackParams);
             }
             throw error;
@@ -71,17 +97,9 @@ export class OpenAIProvider implements AIModelProvider {
 
     async summarizeVideo(videoId: string, prompt: string): Promise<string> {
         try {
-            const isReasoningModel = /^(o[134])/i.test(this.model);
-            const params: any = {
-                model: this.model,
-                messages: [{ role: 'user', content: prompt }],
-                max_completion_tokens: this.maxTokens,
-            };
-            if (!isReasoningModel) {
-                params.temperature = this.temperature;
-            }
-
-            const completion = await this.createChatCompletion(params);
+            const completion = await this.createChatCompletion(
+                buildChatCompletionParams(this.model, prompt, this.maxTokens, this.temperature)
+            );
 
             let text = completion.choices[0]?.message?.content || '';
             
@@ -128,18 +146,8 @@ export class OpenAIProvider implements AIModelProvider {
 
     async generateTopics(summaryText: string, options?: GenerateTopicsOptions): Promise<string[]> {
         try {
-            const isReasoningModel = /^(o[134])/i.test(this.model);
             const prompt = buildTopicGenerationPrompt(summaryText, options);
-            const params: any = {
-                model: this.model,
-                messages: [{ role: 'user', content: prompt }],
-                max_completion_tokens: 200,
-            };
-            if (!isReasoningModel) {
-                params.temperature = 0.2;
-            }
-
-            const completion = await this.createChatCompletion(params);
+            const completion = await this.createChatCompletion(buildChatCompletionParams(this.model, prompt, 200, 0.2));
             return parseTopicTags(completion.choices[0]?.message?.content || '');
         } catch (error) {
             console.warn('OpenAI topic tag generation failed:', error);
@@ -149,17 +157,8 @@ export class OpenAIProvider implements AIModelProvider {
 
     async inferVideoTopics(transcriptText: string, title?: string): Promise<string[]> {
         try {
-            const isReasoningModel = /^(o[134])/i.test(this.model);
-            const params: any = {
-                model: this.model,
-                messages: [{ role: 'user', content: buildVideoTopicsPrompt(transcriptText, title) }],
-                max_completion_tokens: 200,
-            };
-            if (!isReasoningModel) {
-                params.temperature = 0.2;
-            }
-
-            const completion = await this.createChatCompletion(params);
+            const prompt = buildVideoTopicsPrompt(transcriptText, title);
+            const completion = await this.createChatCompletion(buildChatCompletionParams(this.model, prompt, 200, 0.2));
             return parseVideoTopics(completion.choices[0]?.message?.content || '');
         } catch (error) {
             console.warn('OpenAI video topic inference failed:', error);
