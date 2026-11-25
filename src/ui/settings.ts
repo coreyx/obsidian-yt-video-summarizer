@@ -8,6 +8,7 @@ import { ConfirmModal } from './modals/ConfirmModal';
 import { YouTubeSummarizerPlugin } from '../main';
 import {
     getMediaExtendedPluginStatus,
+    shouldPromptToInstallMediaExtended,
     MediaExtendedPluginStatus,
     openMediaExtendedPluginPage,
 } from '../utils/mediaExtendedPlugin';
@@ -401,8 +402,9 @@ export class SettingsTab extends PluginSettingTab {
                     .setValue(this.settings.getCreateMediaExtendedNotes())
                     .onChange(async (value) => {
                         await this.settings.updateCreateMediaExtendedNotes(value);
-                        if (value) {
-                            await this.promptToInstallMediaExtended();
+                        const pluginStatus = getMediaExtendedPluginStatus(this.app);
+                        if (shouldPromptToInstallMediaExtended(value, pluginStatus)) {
+                            await this.promptToInstallMediaExtended(pluginStatus);
                         }
                     })
             );
@@ -486,16 +488,11 @@ export class SettingsTab extends PluginSettingTab {
     }
 
     /**
-     * When Media Extended note creation is turned on but the Media Extended plugin isn't installed
-     * (or is disabled), offers to open its page in Community plugins. The setting stays on either way,
-     * since the notes work as regular Markdown.
+     * Offers to open the Media Extended plugin's page in Community plugins, when Media Extended note creation
+     * was turned on but the plugin isn't installed (or is disabled). The setting stays on either way, since
+     * the notes work as regular Markdown.
      */
-    private async promptToInstallMediaExtended(): Promise<void> {
-        const status = getMediaExtendedPluginStatus(this.app);
-        if (status !== 'not-installed' && status !== 'disabled') {
-            return;
-        }
-
+    private async promptToInstallMediaExtended(status: MediaExtendedPluginStatus): Promise<void> {
         const notInstalled = status === 'not-installed';
         const openPage = await ConfirmModal.confirm(
             this.app,

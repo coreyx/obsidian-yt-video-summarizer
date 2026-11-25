@@ -23,16 +23,14 @@ import {
 	buildMediaExtendedNote,
 	convertDescriptionTimestampsToMediaExtended,
 	convertTimestampsToLinks,
-	ensureSectionOrder,
+	findNotesForVideo,
 	extractFrontmatterTags,
 	extractVideoIdFromUrl,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
 	filterFilesByFolder,
-	filterFilesByFolderPaths,
 	formatTranscript,
 	FrontmatterData,
-	frontmatterMatchesVideo,
 	getVideoNoteKind,
 	hasMarkdownSection,
 	hasRelatedMediaExtendedLink,
@@ -44,6 +42,7 @@ import {
 	stripWikilinksFromTechnicalTerms,
 	updateNoteContentWithFrontmatter,
 	upsertMarkdownSection,
+	upsertMediaExtendedSection,
 	videoStatsFrontmatter,
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
@@ -653,8 +652,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * `keys`. Only that folder is searched, never the whole vault.
 	 */
 	private findVideoNotesInFolder(folderPath: string, videoId: string, keys: string[]): TFile[] {
-		return filterFilesByFolderPaths(this.app.vault.getMarkdownFiles(), [folderPath]).filter((file) =>
-			frontmatterMatchesVideo(this.app.metadataCache.getFileCache(file)?.frontmatter, keys, videoId)
+		return findNotesForVideo(this.app.vault.getMarkdownFiles(), folderPath, videoId, keys, (file) =>
+			this.app.metadataCache.getFileCache(file)?.frontmatter
 		);
 	}
 
@@ -1237,12 +1236,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				body = formatTranscript(transcript.lines, videoId, { format: 'mediaExtended' });
 			}
 
-			// Keep the companion note order: # Description, # Transcript, # Related
-			// (Description is always moved above Transcript, even if the note was out of order)
-			const insertBefore = section === 'description' ? ['Transcript', 'Related'] : ['Related'];
-			await this.app.vault.process(file, (current) =>
-				ensureSectionOrder(upsertMarkdownSection(current, heading, body, insertBefore), 'Description', 'Transcript')
-			);
+			// Keeps the companion note order: # Description, # Transcript, # Related
+			await this.app.vault.process(file, (current) => upsertMediaExtendedSection(current, section, body));
 			progress.done(`Added ${section} to "${file.basename}"${source}`);
 		} catch (error) {
 			progress.fail(`Failed to add ${section}: ${error.message}`);

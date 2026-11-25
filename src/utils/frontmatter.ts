@@ -1340,6 +1340,32 @@ export function ensureSectionOrder(content: string, first: string, second: strin
 }
 
 /**
+ * Writes the `# Description` or `# Transcript` section of a Media Extended companion note, replacing it when
+ * present, and keeps the note's section order: Description, Transcript, then Related. A Description found
+ * below the Transcript is moved above it.
+ */
+export function upsertMediaExtendedSection(content: string, section: 'description' | 'transcript', body: string): string {
+	const heading = section === 'description' ? 'Description' : 'Transcript';
+	const insertBefore = section === 'description' ? ['Transcript', 'Related'] : ['Related'];
+	return ensureSectionOrder(upsertMarkdownSection(content, heading, body, insertBefore), 'Description', 'Transcript');
+}
+
+/**
+ * Finds the notes in `folderPath` (and its subfolders) whose frontmatter links to `videoId` under one of `keys`
+ * (e.g. `video_url` for summary notes, `video` / `media` for Media Extended notes).
+ * @param frontmatterOf - Returns a note's parsed frontmatter (from Obsidian's metadata cache).
+ */
+export function findNotesForVideo<T extends { path: string }>(
+	files: T[],
+	folderPath: string,
+	videoId: string,
+	keys: string[],
+	frontmatterOf: (file: T) => Record<string, unknown> | undefined | null
+): T[] {
+	return filterFilesByFolderPaths(files, [folderPath]).filter((file) => frontmatterMatchesVideo(frontmatterOf(file), keys, videoId));
+}
+
+/**
  * Filters a list of files by target folder paths (prefix match).
  * If targetFolders is empty, returns all files.
  */

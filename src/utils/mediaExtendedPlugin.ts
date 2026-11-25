@@ -43,3 +43,15 @@ export function getMediaExtendedPluginStatus(app: App): MediaExtendedPluginStatu
 export function openMediaExtendedPluginPage(): void {
 	window.open(`obsidian://show-plugin?id=${MEDIA_EXTENDED_PLUGIN_ID}`);
 }
+
+/**
+ * Whether turning on Media Extended note creation should offer to install or enable the Media Extended plugin:
+ * only when the setting was just turned on and the plugin is known to be missing or disabled. An 'unknown'
+ * status never prompts.
+ */
+export function shouldPromptToInstallMediaExtended(
+	turnedOn: boolean,
+	status: MediaExtendedPluginStatus
+): boolean {
+	return turnedOn && (status === 'not-installed' || status === 'disabled');
+}

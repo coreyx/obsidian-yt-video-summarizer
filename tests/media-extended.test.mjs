@@ -8,8 +8,32 @@ import { setRequestUrlHandler } from './helpers/obsidian-stub.mjs';
 
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { resolveCompanionNoteOptions } = await loadSource('src/utils/mediaExtendedOptions.ts');
-const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, extractYouTubeUrlFromNote, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
-const { resolveMediaExtendedPluginStatus } = await loadSource('src/utils/mediaExtendedPlugin.ts');
+const {
+	addRelatedLink,
+	buildCoverEmbed,
+	buildMediaExtendedFrontmatter,
+	buildMediaExtendedNote,
+	convertDescriptionTimestampsToMediaExtended,
+	convertDescriptionTimestampsToYouTube,
+	convertTimestampsToLinks,
+	ensureSectionOrder,
+	extractVideoIdFromUrl,
+	extractYouTubeUrlFromNote,
+	findMarkdownSection,
+	findNotesForVideo,
+	formatTranscript,
+	frontmatterMatchesVideo,
+	generateMxUid,
+	getMediaExtendedCoverUrl,
+	hasRelatedMediaExtendedLink,
+	isMediaExtendedCompanionNote,
+	keepExtraFrontmatter,
+	mergeFrontmatter,
+	parseTimestampToMediaExtendedUrl,
+	upsertMarkdownSection,
+	upsertMediaExtendedSection,
+} = await loadSource('src/utils/frontmatter.ts');
+const { resolveMediaExtendedPluginStatus, shouldPromptToInstallMediaExtended } = await loadSource('src/utils/mediaExtendedPlugin.ts');
 const { frontmatterDescriptionToUse, insertTextAt } = await loadSource('src/utils/summaryNote.ts');
 
 // Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
@@ -210,7 +234,7 @@ console.log('✓ Missing companion note detection passed');
 // Test 26: Description in Media Extended note, timestamp conversion, section headings, and empty lines
 console.log('Testing Media Extended note description, timestamp conversion, and section headings...');
 
-// 26.1: parseTimestampToMediaExtendedUrlHelper unit tests
+// 26.1: parseTimestampToMediaExtendedUrl
 const testVideoId = 'abc123XYZ';
 assert.strictEqual(
 	parseTimestampToMediaExtendedUrl('0:00', testVideoId),
@@ -226,7 +250,7 @@ assert.strictEqual(
 );
 assert.strictEqual(parseTimestampToMediaExtendedUrl('invalid', testVideoId), null);
 
-// 26.2: convertDescriptionTimestampsToMediaExtendedHelper tests
+// 26.2: convertDescriptionTimestampsToMediaExtended
 const sampleRawDescription = `Welcome to this tutorial!
 Chapters:
 0:00 - Introduction
@@ -276,7 +300,7 @@ assert(convertedDesc.includes('16:9 widescreen'));
 assert.strictEqual(convertDescriptionTimestampsToMediaExtended('', testVideoId), '');
 assert.strictEqual(convertDescriptionTimestampsToMediaExtended(undefined, testVideoId), undefined);
 
-// 26.4: buildMediaExtendedNoteHelper with sections and empty lines
+// 26.4: buildMediaExtendedNote with sections and empty lines
 const testMetadata = {
 	mxUid: 'test12345678901234567890',
 	videoId: testVideoId,
@@ -451,26 +475,24 @@ assert(replacedSub.includes('# Description\n\nNew\n\n# Related\n\n- [[X]]\n'));
 
 // 32.8a: Description always comes before Transcript
 
-const addSection = (content, heading, body, insertBefore) =>
-	ensureSectionOrder(upsertMarkdownSection(content, heading, body, insertBefore), 'Description', 'Transcript');
 const expectedOrder = `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`;
 
 // Either command order produces Description → Transcript → Related
-const transcriptFirst = addSection(meNoteBare, 'Transcript', transcriptBody, ['Related']);
-assert.strictEqual(addSection(transcriptFirst, 'Description', descBody, ['Transcript', 'Related']), expectedOrder);
-const descriptionFirst = addSection(meNoteBare, 'Description', descBody, ['Transcript', 'Related']);
-assert.strictEqual(addSection(descriptionFirst, 'Transcript', transcriptBody, ['Related']), expectedOrder);
+const transcriptFirst = upsertMediaExtendedSection(meNoteBare, 'transcript', transcriptBody);
+assert.strictEqual(upsertMediaExtendedSection(transcriptFirst, 'description', descBody), expectedOrder);
+const descriptionFirst = upsertMediaExtendedSection(meNoteBare, 'description', descBody);
+assert.strictEqual(upsertMediaExtendedSection(descriptionFirst, 'transcript', transcriptBody), expectedOrder);
 
 // Out-of-order note (Transcript above Description): replacing either section fixes the order
 const outOfOrder = `${meFrontmatter}\n\n# Transcript\n\nOld transcript\n\n# Description\n\nOld description\n\n# Related\n\n- [[Summary Note]]\n`;
-const fixedByDesc = addSection(outOfOrder, 'Description', descBody, ['Transcript', 'Related']);
+const fixedByDesc = upsertMediaExtendedSection(outOfOrder, 'description', descBody);
 assert.strictEqual(fixedByDesc, `${meFrontmatter}\n\n# Description\n\n${descBody}\n\n# Transcript\n\nOld transcript\n\n# Related\n\n- [[Summary Note]]\n`);
-const fixedByTranscript = addSection(outOfOrder, 'Transcript', transcriptBody, ['Related']);
+const fixedByTranscript = upsertMediaExtendedSection(outOfOrder, 'transcript', transcriptBody);
 assert.strictEqual(fixedByTranscript, `${meFrontmatter}\n\n# Description\n\nOld description\n\n# Transcript\n\n${transcriptBody}\n\n# Related\n\n- [[Summary Note]]\n`);
 
 // # Related above an existing # Description: adding the transcript still lands it after Description
 const relatedFirst = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n\n# Description\n\n${descBody}\n`;
-const withTranscriptAfterDesc = addSection(relatedFirst, 'Transcript', transcriptBody, ['Related']);
+const withTranscriptAfterDesc = upsertMediaExtendedSection(relatedFirst, 'transcript', transcriptBody);
 assert(withTranscriptAfterDesc.indexOf('# Description') < withTranscriptAfterDesc.indexOf('# Transcript'));
 
 // Already ordered or single-section notes are unchanged
@@ -577,7 +599,7 @@ const vaultNotes = [
 	{ path: 'Media Library Extra/Not inside.md', frontmatter: { video: 'https://youtu.be/dQw4w9WgXcQ' } },
 ];
 const findInFolder = (folder, videoId, keys) =>
-	filterFilesByFolderPaths(vaultNotes, [folder]).filter((n) => frontmatterMatchesVideo(n.frontmatter, keys, videoId)).map((n) => n.path);
+	findNotesForVideo(vaultNotes, folder, videoId, keys, (note) => note.frontmatter).map((note) => note.path);
 assert.deepStrictEqual(findInFolder('Media Library', 'dQw4w9WgXcQ', ['video', 'media']), ['Media Library/Never Gonna Give You Up.md', 'Media Library/Archive/Renamed copy.md']);
 assert.deepStrictEqual(findInFolder('Video Summaries', 'dQw4w9WgXcQ', ['video_url']), ['Video Summaries/Never Gonna Give You Up.md']);
 assert.deepStrictEqual(findInFolder('Video Summaries', 'jNQXAC9IVRw', ['video_url']), []);
@@ -613,8 +635,6 @@ console.log('✓ Companion note creation in both directions passed');
 // Test 40: Media Extended is optional — plugin detection, default off, and grouped settings
 console.log('Testing Media Extended plugin detection, default, and settings grouping...');
 
-const MEDIA_EXTENDED_PLUGIN_ID_HELPER = 'media-extended';
-
 // 40.1: Detection from Obsidian's community plugin registry
 assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(['media-extended']), plugins: { 'media-extended': {} } }), 'enabled');
 assert.strictEqual(resolveMediaExtendedPluginStatus({ manifests: { 'media-extended': {} }, enabledPlugins: new Set(), plugins: {} }), 'disabled');
@@ -625,12 +645,11 @@ assert.strictEqual(resolveMediaExtendedPluginStatus(undefined), 'unknown');
 assert.strictEqual(resolveMediaExtendedPluginStatus({}), 'unknown');
 
 // 40.2: Prompt only when turning the setting on and the plugin is missing or disabled
-const shouldPromptToInstall = (turnedOn, status) => turnedOn && (status === 'not-installed' || status === 'disabled');
-assert.strictEqual(shouldPromptToInstall(true, 'not-installed'), true);
-assert.strictEqual(shouldPromptToInstall(true, 'disabled'), true);
-assert.strictEqual(shouldPromptToInstall(true, 'enabled'), false);
-assert.strictEqual(shouldPromptToInstall(true, 'unknown'), false);
-assert.strictEqual(shouldPromptToInstall(false, 'not-installed'), false);
+assert.strictEqual(shouldPromptToInstallMediaExtended(true, 'not-installed'), true);
+assert.strictEqual(shouldPromptToInstallMediaExtended(true, 'disabled'), true);
+assert.strictEqual(shouldPromptToInstallMediaExtended(true, 'enabled'), false);
+assert.strictEqual(shouldPromptToInstallMediaExtended(true, 'unknown'), false);
+assert.strictEqual(shouldPromptToInstallMediaExtended(false, 'not-installed'), false);
 
 // 40.3: Creating Media Extended notes is off by default; the note-content options keep their defaults
 const defaultsNow = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
@@ -671,8 +690,8 @@ for (const call of mediaExtendedSettingCalls) {
 for (const other of ['displaySummarySection', 'displayTagsAndMetadataSection', 'displayMaintenanceSection']) {
 	assert(!/MediaExtended(Folder|Include|EmbedCover)|CreateMediaExtended/.test(sectionBody(other)), `${other} should have no Media Extended settings`);
 }
-// Turning the create toggle on triggers the install prompt
-assert.match(mediaExtendedTab, /updateCreateMediaExtendedNotes\(value\);\s*if \(value\) \{\s*await this\.promptToInstallMediaExtended\(\);/);
+// Turning the create toggle on triggers the install prompt (shouldPromptToInstallMediaExtended is tested in 40.2)
+assert.match(mediaExtendedTab, /updateCreateMediaExtendedNotes\(value\);[\s\S]{0,120}if \(shouldPromptToInstallMediaExtended\(value, pluginStatus\)\) \{\s*await this\.promptToInstallMediaExtended\(pluginStatus\);/);
 // Five tabs in a sensible order
 assert.deepStrictEqual(
 	[...settingsSource.matchAll(/\{ name: '([^']+)', id: '[^']+', render:/g)].map((m) => m[1]),

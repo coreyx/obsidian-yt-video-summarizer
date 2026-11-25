@@ -2,8 +2,8 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
-const { buildTopicGenerationPrompt, buildVaultTagData, collectVaultTagCounts, compressVaultTags, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
+const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags } = await loadSource('src/utils/frontmatter.ts');
+const { buildTopicGenerationPrompt, buildVaultTagData, collectVaultTagCounts, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
 const { YouTubeSummarizerPlugin } = await loadSource('src/main.ts');
 
 // Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication

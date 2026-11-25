@@ -2,7 +2,7 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
+const { buildSummaryBody } = await loadSource('src/utils/summaryNote.ts');
 const { formatTimestampParts, formatTranscript } = await loadSource('src/utils/frontmatter.ts');
 
 // Test 17: Transcript formatting and timestamp links

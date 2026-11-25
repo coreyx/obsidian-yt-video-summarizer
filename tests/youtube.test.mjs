@@ -5,7 +5,7 @@ import { loadSource } from './helpers/loadSource.mjs';
 const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { collectVideoTags, findPlaylistIdInDescription, tagsFromDataApiItem, tagsFromPlayerDataKeywords, tagsFromWatchPageHtml } = await loadSource('src/utils/youtubeMetadata.ts');
-const { buildFrontmatter, deduplicateTags, extractTagsFromText, mergeFrontmatter, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
+const { buildFrontmatter, mergeFrontmatter } = await loadSource('src/utils/frontmatter.ts');
 
 // Test 5: decodeHTML with preserveNewlines
 
@@ -100,7 +100,6 @@ console.log('✓ YouTube Data API and metadata tags extraction passed');
 // Test 21: Creator playlist discovery, frontmatter serialization, and body formatting
 console.log('Testing creator playlist discovery, frontmatter, and body formatting...');
 
-// Helper functions mirroring YouTubeService and frontmatter methods
 // Case 1: Extract playlist ID & index from video URL
 const urlWithPlaylist = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s&index=4';
 assert.strictEqual(YouTubeService.extractPlaylistId(urlWithPlaylist), 'PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s');

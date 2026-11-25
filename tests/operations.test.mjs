@@ -4,65 +4,12 @@ import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 import { notices, resetNotices } from './helpers/obsidian-stub.mjs';
 
-const { formatBatchReportAsMarkdown } = await loadSource('src/utils/BatchProgressTracker.ts');
+const { BatchProgressTracker, formatBatchReportAsMarkdown } = await loadSource('src/utils/BatchProgressTracker.ts');
 const progressModule = await loadSource('src/utils/OperationProgress.ts');
 
 // Test 29: Batch operation progress tracking, item logging, and markdown reporting
 
 console.log('Testing batch operation progress tracking, item logging, and markdown reporting...');
-
-class MockBatchProgressTracker {
-	constructor(host, operationName, scope, total) {
-		this.host = host;
-		this.report = {
-			operationName,
-			scope,
-			startTime: Date.now(),
-			total,
-			succeeded: 0,
-			skipped: 0,
-			failed: 0,
-			items: []
-		};
-		this.updates = [];
-	}
-
-	update(current, fileName, detail) {
-		const pct = this.report.total > 0 ? Math.round((current / this.report.total) * 100) : 100;
-		this.updates.push({ current, fileName, detail, pct });
-	}
-
-	recordItem(item) {
-		item.timestamp = item.timestamp || Date.now();
-		this.report.items.push(item);
-		if (item.status === 'success') this.report.succeeded++;
-		else if (item.status === 'skipped') this.report.skipped++;
-		else if (item.status === 'error') this.report.failed++;
-		this.update(this.report.items.length, item.fileName, item.status.toUpperCase());
-	}
-
-	finish() {
-		this.report.endTime = Date.now();
-		this.host.setLastBatchReport(this.report);
-		return this.report;
-	}
-
-	static finishEmpty(host, operationName, scope, message) {
-		const report = {
-			operationName,
-			scope,
-			startTime: Date.now(),
-			endTime: Date.now(),
-			total: 0,
-			succeeded: 0,
-			skipped: 0,
-			failed: 0,
-			items: []
-		};
-		host.setLastBatchReport(report);
-		return report;
-	}
-}
 
 class MockHost {
 	constructor() {
@@ -75,7 +22,21 @@ class MockHost {
 
 // 29.1: Basic recording and tallies
 const host1 = new MockHost();
-const tracker1 = new MockBatchProgressTracker(host1, 'Refresh video metadata', 'vault', 3);
+resetNotices();
+const tracker1 = new BatchProgressTracker(host1, 'Refresh video metadata', 'vault', 3);
+// Record every progress message the live notice shows (it is updated in place)
+const progressNotice = notices[0];
+assert.strictEqual(progressNotice.message, '[0/3] Starting Refresh video metadata in vault...');
+const progressMessages = [];
+const setProgressMessage = progressNotice.setMessage.bind(progressNotice);
+progressNotice.setMessage = (message) => {
+	progressMessages.push(message);
+	return setProgressMessage(message);
+};
+// Each recorded item is also logged to the console; keep the test output readable
+const consoleLog = console.log;
+const consoleError = console.error;
+console.log = console.error = () => {};
 
 tracker1.recordItem({
 	filePath: 'Notes/Video 1.md',
@@ -101,6 +62,8 @@ tracker1.recordItem({
 	message: 'HTTP 403: Quota exceeded'
 });
 
+console.log = consoleLog;
+console.error = consoleError;
 const report1 = tracker1.finish();
 assert.strictEqual(report1.total, 3);
 assert.strictEqual(report1.succeeded, 1);
@@ -110,16 +73,18 @@ assert.strictEqual(report1.items.length, 3);
 assert.strictEqual(host1.lastReport, report1);
 assert(report1.endTime >= report1.startTime);
 
-// 29.2: Progress update percentages
-assert.deepStrictEqual(tracker1.updates, [
-	{ current: 1, fileName: 'Video 1', detail: 'SUCCESS', pct: 33 },
-	{ current: 2, fileName: 'Video 2', detail: 'SKIPPED', pct: 67 },
-	{ current: 3, fileName: 'Video 3', detail: 'ERROR', pct: 100 }
+// 29.2: Progress update percentages, as shown in the live notice; it closes when the run finishes
+assert.deepStrictEqual(progressMessages, [
+	'[1/3] (33%) Refresh video metadata: Video 1 - SUCCESS',
+	'[2/3] (67%) Refresh video metadata: Video 2 - SKIPPED',
+	'[3/3] (100%) Refresh video metadata: Video 3 - ERROR',
 ]);
+assert.strictEqual(progressNotice.hidden, true);
+assert.strictEqual(notices.at(-1).message, 'Refresh video metadata complete! 1 succeeded, 1 skipped, 1 failed. View logs via command or settings.');
 
 // 29.3: finishEmpty handling
 const host2 = new MockHost();
-const emptyReport = MockBatchProgressTracker.finishEmpty(
+const emptyReport = BatchProgressTracker.finishEmpty(
 	host2,
 	'Refresh video metadata',
 	'folder "Podcasts"',
@@ -131,6 +96,7 @@ assert.strictEqual(emptyReport.skipped, 0);
 assert.strictEqual(emptyReport.failed, 0);
 assert.strictEqual(emptyReport.items.length, 0);
 assert.strictEqual(host2.lastReport, emptyReport);
+assert.strictEqual(notices.at(-1).message, 'All notes already up-to-date!');
 
 const emptyMarkdown = formatBatchReportAsMarkdown(emptyReport);
 assert(emptyMarkdown.includes('# Batch Operation Report: Refresh video metadata'));

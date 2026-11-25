@@ -4,7 +4,20 @@ import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
-const { buildFrontmatter, buildMediaExtendedFrontmatter, deduplicateTags, extractTagsFromText, extractYouTubeUrlFromNote, getVideoNoteKind, isBlankNoteForSummary, mergeFrontmatter, mergeYamlBlocks, refreshMediaExtendedNoteContent, sanitizeFileName, sanitizeTag, videoStatsFrontmatter } = await loadSource('src/utils/frontmatter.ts');
+const {
+	buildFrontmatter,
+	deduplicateTags,
+	extractTagsFromText,
+	extractYouTubeUrlFromNote,
+	getVideoNoteKind,
+	isBlankNoteForSummary,
+	mergeFrontmatter,
+	mergeYamlBlocks,
+	refreshMediaExtendedNoteContent,
+	sanitizeFileName,
+	sanitizeTag,
+	videoStatsFrontmatter,
+} = await loadSource('src/utils/frontmatter.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 const videoTopics = await loadSource('src/utils/videoTopics.ts');
 
