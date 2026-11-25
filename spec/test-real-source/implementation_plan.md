@@ -44,7 +44,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 - [x] **TASK-3:** Switch Tests 42, 44, 45, and 46 to `loadSource()` and remove their inline esbuild setup.
 
 #### [NEW] `tests/*.test.mjs`, [DELETE] `tests/test-features.mjs`, [MODIFY] `package.json`
-- [ ] **TASK-4:** Split `tests/test-features.mjs` into one file per area, moving each numbered test unchanged (assertions and copies as they are, so this step changes no behavior) and keeping its `// Test <n>` header so later tasks can still name it:
+- [x] **TASK-4:** Split `tests/test-features.mjs` into one file per area, moving each numbered test unchanged (assertions and copies as they are, so this step changes no behavior) and keeping its `// Test <n>` header so later tasks can still name it:
   - `frontmatter.test.mjs`: building and merging frontmatter, tags in frontmatter, sanitizing, sections, the `topic` property.
   - `timestamps.test.mjs`: timestamp parsing, links, and transcript formatting.
   - `media-extended.test.mjs`: companion notes, covers, Related links, plugin detection.

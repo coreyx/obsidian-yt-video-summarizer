@@ -152,7 +152,7 @@ AI topic tagging operates seamlessly across all supported providers:
 
 ## 9. Verification & Unit Tests
 
-The functionality is tested in [`tests/test-features.mjs`](tests/test-features.mjs):
+The functionality is tested in [`tests/tags.test.mjs`](tests/tags.test.mjs):
 - **Test 28.1**: Group prefix extraction across nested hierarchies.
 - **Test 28.2**: Tag frequency sorting and sanitization.
 - **Test 28.3**: Prompt generation verifying question inclusion, prefix exposure, and rule enforcement.
