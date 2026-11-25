@@ -71,7 +71,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 - [x] **TASK-8:** Move the tag-extraction and playlist-from-description parsing that is written inline in `youtube.ts` into exported pure functions, with TSDoc: tags from a YouTube Data API response body, tags from player-data `keywords`, tags from the HTML `<meta name="keywords">` fallback, merging all tag sources, and finding a playlist link/title in a video description. `YouTubeService` calls them in place of the inline code.
 
 #### [MODIFY] `tests/youtube.test.mjs`
-- [ ] **TASK-9:** Point Test 18 (`extractTagsFromDataApiResponse`, `extractTagsFromPlayerDataKeywords`, `extractTagsFromHtmlFallback`, `mergeAllVideoTags`) and Test 21 (`extractPlaylistFromDescHelper`) at the functions from TASK-8, and delete the copies.
+- [x] **TASK-9:** Point Test 18 (`extractTagsFromDataApiResponse`, `extractTagsFromPlayerDataKeywords`, `extractTagsFromHtmlFallback`, `mergeAllVideoTags`) and Test 21 (`extractPlaylistFromDescHelper`) at the functions from TASK-8, and delete the copies.
 
 ### AI providers
 

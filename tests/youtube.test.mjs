@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
+const { collectVideoTags, findPlaylistIdInDescription, tagsFromDataApiItem, tagsFromPlayerDataKeywords, tagsFromWatchPageHtml } = await loadSource('src/utils/youtubeMetadata.ts');
 const { buildFrontmatter, deduplicateTags, extractTagsFromText, mergeFrontmatter, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
 
 // Test 5: decodeHTML with preserveNewlines
@@ -24,68 +25,6 @@ console.log('✓ decodeHTML passed');
 // Test 18: YouTube Data API and metadata tags extraction
 console.log('Testing YouTube Data API and metadata tags extraction...');
 
-function extractTagsFromDataApiResponse(jsonText) {
-	try {
-		const data = JSON.parse(jsonText);
-		const tags = data.items?.[0]?.snippet?.tags;
-		if (Array.isArray(tags)) {
-			return tags.filter((t) => typeof t === 'string' && t.trim().length > 0);
-		}
-	} catch {
-		// ignore
-	}
-	return [];
-}
-
-function extractTagsFromPlayerDataKeywords(playerData) {
-	if (Array.isArray(playerData?.videoDetails?.keywords)) {
-		return playerData.videoDetails.keywords.filter(
-			(k) => typeof k === 'string' && k.trim().length > 0
-		);
-	}
-	return [];
-}
-
-function extractTagsFromHtmlFallback(html) {
-	const jsonMatch = html.match(/"keywords":\s*(\[[^\]]+\])/);
-	if (jsonMatch) {
-		try {
-			const parsed = JSON.parse(jsonMatch[1]);
-			if (Array.isArray(parsed)) {
-				return parsed.filter((k) => typeof k === 'string' && k.trim().length > 0);
-			}
-		} catch {
-			// ignore
-		}
-	}
-	const metaMatch = html.match(/<meta\s+name="keywords"\s+content="([^"]+)"/i);
-	if (metaMatch) {
-		return metaMatch[1].split(',').map((t) => t.trim()).filter(Boolean);
-	}
-	return [];
-}
-
-function mergeAllVideoTags(transcriptTitle, transcriptDesc, transcriptTags, topicTags, extractYtTags, detectHashtags) {
-	const detectedTags = detectHashtags
-		? Array.from(new Set([
-				...extractTagsFromText(transcriptTitle),
-				...extractTagsFromText(transcriptDesc || ''),
-		  ]))
-		: [];
-
-	const ytDataApiTags = (extractYtTags && transcriptTags)
-		? transcriptTags
-		: [];
-
-	return Array.from(
-		new Set(
-			[...detectedTags, ...ytDataApiTags, ...(topicTags || [])]
-				.map(sanitizeTag)
-				.filter(Boolean)
-		)
-	);
-}
-
 // Case 1: Parsing Data API v3 JSON response
 const mockDataApiResponse = JSON.stringify({
 	items: [{
@@ -96,7 +35,7 @@ const mockDataApiResponse = JSON.stringify({
 		}
 	}]
 });
-const parsedApiTags = extractTagsFromDataApiResponse(mockDataApiResponse);
+const parsedApiTags = tagsFromDataApiItem(JSON.parse(mockDataApiResponse).items[0]);
 assert.deepStrictEqual(parsedApiTags, ['Rick Astley', 'Never Gonna Give You Up', '80s Music', 'Rickroll']);
 
 // Case 2: Parsing InnerTube player data keywords
@@ -105,15 +44,19 @@ const mockPlayerData = {
 		keywords: ['Obsidian', 'Note Taking', 'PKM', 'Productivity Tools']
 	}
 };
-const parsedKeywords = extractTagsFromPlayerDataKeywords(mockPlayerData);
+const parsedKeywords = tagsFromPlayerDataKeywords(mockPlayerData);
 assert.deepStrictEqual(parsedKeywords, ['Obsidian', 'Note Taking', 'PKM', 'Productivity Tools']);
 
 // Case 3: Parsing HTML fallback (JSON or meta tag)
 const mockHtmlWithJson = '<html><head><script>var ytInitialPlayerResponse = {"videoDetails":{"keywords":["Markdown","Knowledge Base"]}};</script></head></html>';
-assert.deepStrictEqual(extractTagsFromHtmlFallback(mockHtmlWithJson), ['Markdown', 'Knowledge Base']);
+assert.deepStrictEqual(tagsFromWatchPageHtml(mockHtmlWithJson), ['Markdown', 'Knowledge Base']);
 
 const mockHtmlWithMeta = '<html><head><meta name="keywords" content="Zettelkasten, Second Brain, Workflow"></head></html>';
-assert.deepStrictEqual(extractTagsFromHtmlFallback(mockHtmlWithMeta), ['Zettelkasten', 'Second Brain', 'Workflow']);
+assert.deepStrictEqual(tagsFromWatchPageHtml(mockHtmlWithMeta), ['Zettelkasten', 'Second Brain', 'Workflow']);
+
+// The cases below pass the sources positionally; collectVideoTags takes them as named options
+const mergeAllVideoTags = (title, description, youtubeTags, topicTags, includeYouTubeTags, detectHashtags) =>
+	collectVideoTags({ title, description, youtubeTags, topicTags, includeYouTubeTags, detectHashtags });
 
 // Case 4: Merging with title/description hashtags and topic tags (on by default)
 const sampleTitle = 'Mastering Obsidian in 2026 #Obsidian #Productivity';
@@ -125,12 +68,13 @@ const mergedEnabled = mergeAllVideoTags(sampleTitle, sampleDesc, sampleYtTags, s
 // Should contain hashtags from title/desc
 assert.strictEqual(mergedEnabled.includes('obsidian'), true);
 assert.strictEqual(mergedEnabled.includes('productivity'), true);
-assert.strictEqual(mergedEnabled.includes('secondbrain'), true);
 assert.strictEqual(mergedEnabled.includes('pkm'), true);
 // Should contain YouTube Data API tags sanitized
 assert.strictEqual(mergedEnabled.includes('obsidian-app'), true);
 assert.strictEqual(mergedEnabled.includes('note-taking'), true);
+// The #SecondBrain hashtag and the "Second Brain" YouTube tag collapse into one tag, keeping the hyphenated form
 assert.strictEqual(mergedEnabled.includes('second-brain'), true);
+assert.strictEqual(mergedEnabled.includes('secondbrain'), false);
 assert.strictEqual(mergedEnabled.includes('knowledge-management'), true);
 // Should contain topic tags
 assert.strictEqual(mergedEnabled.includes('digital-notes'), true);
@@ -156,18 +100,6 @@ console.log('✓ YouTube Data API and metadata tags extraction passed');
 console.log('Testing creator playlist discovery, frontmatter, and body formatting...');
 
 // Helper functions mirroring YouTubeService and frontmatter methods
-function extractPlaylistFromDescHelper(desc) {
-	if (!desc) return null;
-	const match = desc.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:playlist\?list=|watch\?[^\s"'\)<>]*list=)([a-zA-Z0-9_-]+)/i);
-	if (match) {
-		const id = match[1];
-		if (!id.startsWith('RD') && id !== 'WL' && id !== 'LL') {
-			return id;
-		}
-	}
-	return null;
-}
-
 function formatMetaLine(author, channelUrl, videoUrl, playlist, discoverPlaylist = true) {
 	let line = `👤 [${author}](${channelUrl})  🔗 [Watch video](${videoUrl})`;
 	if (discoverPlaylist && playlist) {
@@ -194,7 +126,7 @@ assert.strictEqual(YouTubeService.extractPlaylistId('https://www.youtube.com/wat
 
 // Case 3: Extract playlist link from description
 const descWithPlaylist = 'Check out the complete series here:\nhttps://www.youtube.com/playlist?list=PLabc1234567890xyz\nSubscribe!';
-assert.strictEqual(extractPlaylistFromDescHelper(descWithPlaylist), 'PLabc1234567890xyz');
+assert.strictEqual(findPlaylistIdInDescription(descWithPlaylist), 'PLabc1234567890xyz');
 
 // Case 4: buildFrontmatter with playlist fields
 const dataWithPlaylist = {
