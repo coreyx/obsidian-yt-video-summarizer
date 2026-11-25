@@ -807,9 +807,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Builds a video summary note's body and frontmatter from a fetched transcript: runs the AI summary and
-	 * thumbnail text extraction, collects tags (title/description hashtags, YouTube tags, AI topic tags,
-	 * deduplicated), and renders the body. Throws if the AI summary fails.
+	 * Builds a video summary note's body and frontmatter from a fetched transcript: runs the AI summary,
+	 * thumbnail text extraction, and topic inference, collects tags (title/description hashtags, YouTube tags,
+	 * AI topic tags, deduplicated), and renders the body. Throws if the AI summary fails.
 	 */
 	private async buildSummaryNoteParts(
 		transcript: TranscriptResponse,
@@ -822,8 +822,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			throw new Error('AI provider not initialized. Please check your settings.');
 		}
 
-		// Build the prompt, then run summary generation and thumbnail text recognition concurrently
-		const prompt = this.buildPrompt(transcript.lines.map((line) => line.text).join(' '), customPrompt);
+		// Build the prompt, then run summary generation, thumbnail text recognition, and topic inference concurrently
+		const transcriptText = transcript.lines.map((line) => line.text).join(' ');
+		const prompt = this.buildPrompt(transcriptText, customPrompt);
 		progress?.setStage(`Generating summary with ${this.getActiveModelLabel()}`);
 		const summaryPromise = this.provider.summarizeVideo(transcript.videoId, prompt);
 
@@ -842,7 +843,18 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			return '';
 		})();
 
-		const [rawSummary, thumbnailText] = await Promise.all([summaryPromise, thumbnailTextPromise]);
+		const topicsPromise = (async (): Promise<string[]> => {
+			try {
+				if (this.settings.getInferTopics() && this.provider?.inferVideoTopics) {
+					return await this.provider.inferVideoTopics(transcriptText, transcript.title);
+				}
+			} catch (e) {
+				console.warn('Failed to infer video topics:', e);
+			}
+			return [];
+		})();
+
+		const [rawSummary, thumbnailText, topics] = await Promise.all([summaryPromise, thumbnailTextPromise, topicsPromise]);
 		const summary = this.settings.getLinkTechnicalTerms()
 			? rawSummary
 			: stripWikilinksFromTechnicalTerms(rawSummary);
@@ -896,14 +908,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			: undefined;
 		const fmData: FrontmatterData = {
 			title: transcript.title,
+			video_url: url,
 			channel_name: transcript.author,
 			channel_username: transcript.channelUsername || '',
 			channel_url: transcript.channelUrl,
-			video_url: url,
 			...videoStatsFrontmatter(transcript),
 			thumbnail: thumbnailUrl,
 			thumbnail_text: thumbnailText,
 			description: this.settings.getAddDescriptionToFrontmatter() ? transcript.description : undefined,
+			topic: topics.length > 0 ? topics : undefined,
 			tags: frontmatterTags,
 			playlist_title: pTitle,
 			playlist_url: playlist?.url,
@@ -1726,11 +1739,11 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			: undefined;
 		const fmData: FrontmatterData = {
 			title: metadata.title,
+			// Keep the note's own URL (it may carry playlist parameters)
+			video_url: url,
 			channel_name: metadata.author,
 			channel_username: metadata.channelUsername || '',
 			channel_url: metadata.channelUrl,
-			// Keep the note's own URL (it may carry playlist parameters)
-			video_url: url,
 			...videoStatsFrontmatter(metadata),
 			thumbnail: thumbnailUrl,
 			thumbnail_text: typeof existingThumbnailText === 'string' ? existingThumbnailText : '',
@@ -1972,10 +1985,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const playlist = this.settings.getDiscoverPlaylist() ? transcript.playlist : undefined;
 			const fmData: FrontmatterData = {
 				title: transcript.title,
+				video_url: url,
 				channel_name: transcript.author,
 				channel_username: transcript.channelUsername || '',
 				channel_url: transcript.channelUrl,
-				video_url: url,
 				...videoStatsFrontmatter(transcript),
 				thumbnail: thumbnailUrl,
 				thumbnail_text: '',

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
 import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 export class AnthropicProvider implements AIModelProvider {
     private client: Anthropic;
@@ -114,6 +115,24 @@ export class AnthropicProvider implements AIModelProvider {
             return [];
         } catch (error) {
             console.warn('Anthropic topic tag generation failed:', error);
+            return [];
+        }
+    }
+
+    async inferVideoTopics(transcriptText: string, title?: string): Promise<string[]> {
+        try {
+            const response = await this.client.messages.create({
+                model: this.model,
+                max_tokens: 200,
+                temperature: 0.2,
+                messages: [{ role: 'user', content: buildVideoTopicsPrompt(transcriptText, title) }]
+            });
+            if (response.content[0]?.type === 'text') {
+                return parseVideoTopics(response.content[0].text);
+            }
+            return [];
+        } catch (error) {
+            console.warn('Anthropic video topic inference failed:', error);
             return [];
         }
     }

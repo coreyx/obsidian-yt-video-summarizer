@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
 import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 export class GeminiProvider implements AIModelProvider {
     private client: GoogleGenerativeAI;
@@ -91,6 +92,24 @@ export class GeminiProvider implements AIModelProvider {
             return this.parseTopics(response.text());
         } catch (error) {
             console.warn('Gemini topic tag generation failed:', error);
+            return [];
+        }
+    }
+
+    async inferVideoTopics(transcriptText: string, title?: string): Promise<string[]> {
+        try {
+            const model = this.client.getGenerativeModel({
+                model: this.model,
+                generationConfig: {
+                    maxOutputTokens: 200,
+                    temperature: 0.2
+                }
+            });
+            const result = await model.generateContent(buildVideoTopicsPrompt(transcriptText, title));
+            const response = await result.response;
+            return parseVideoTopics(response.text());
+        } catch (error) {
+            console.warn('Gemini video topic inference failed:', error);
             return [];
         }
     }

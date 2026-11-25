@@ -9,6 +9,7 @@ import {
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
     DEFAULT_ADD_TOPICS_AS_TAGS,
+    DEFAULT_INFER_TOPICS,
     DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
     DEFAULT_ADD_TAGS_TO_FRONTMATTER,
     DEFAULT_ADD_INLINE_TAGS,
@@ -51,6 +52,7 @@ export class SettingsManager implements PluginSettings {
             maxTokens: DEFAULT_MAX_TOKENS,
             temperature: DEFAULT_TEMPERATURE,
             addTopicsAsTags: DEFAULT_ADD_TOPICS_AS_TAGS,
+            inferTopics: DEFAULT_INFER_TOPICS,
             detectTagsInDescriptionAndTitle: DEFAULT_DETECT_TAGS_IN_DESCRIPTION_AND_TITLE,
             addTagsToFrontmatter: DEFAULT_ADD_TAGS_TO_FRONTMATTER,
             addInlineTags: DEFAULT_ADD_INLINE_TAGS,
@@ -94,6 +96,7 @@ export class SettingsManager implements PluginSettings {
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
                 temperature: rawSettings.temperature ?? this.settings.temperature,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                inferTopics: rawSettings.inferTopics ?? this.settings.inferTopics,
                 detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
@@ -139,6 +142,7 @@ export class SettingsManager implements PluginSettings {
                 maxTokens: rawSettings.maxTokens ?? this.settings.maxTokens,
                 temperature: rawSettings.temperature ?? this.settings.temperature,
                 addTopicsAsTags: rawSettings.addTopicsAsTags ?? this.settings.addTopicsAsTags,
+                inferTopics: rawSettings.inferTopics ?? this.settings.inferTopics,
                 detectTagsInDescriptionAndTitle: rawSettings.detectTagsInDescriptionAndTitle ?? this.settings.detectTagsInDescriptionAndTitle,
                 addTagsToFrontmatter: rawSettings.addTagsToFrontmatter ?? this.settings.addTagsToFrontmatter,
                 addInlineTags: rawSettings.addInlineTags ?? this.settings.addInlineTags,
@@ -390,6 +394,15 @@ export class SettingsManager implements PluginSettings {
 
     updateAddTopicsAsTags(value: boolean): void {
         this.settings.addTopicsAsTags = value;
+        this.saveData();
+    }
+
+    getInferTopics(): boolean {
+        return this.settings.inferTopics ?? DEFAULT_INFER_TOPICS;
+    }
+
+    updateInferTopics(value: boolean): void {
+        this.settings.inferTopics = value;
         this.saveData();
     }
 

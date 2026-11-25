@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
 import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 import { normalizeOpenAIBaseUrl } from '../lmStudio';
 import { obsidianFetch } from '../../utils/obsidianFetch';
@@ -142,6 +143,26 @@ export class OpenAIProvider implements AIModelProvider {
             return this.parseTopics(completion.choices[0]?.message?.content || '');
         } catch (error) {
             console.warn('OpenAI topic tag generation failed:', error);
+            return [];
+        }
+    }
+
+    async inferVideoTopics(transcriptText: string, title?: string): Promise<string[]> {
+        try {
+            const isReasoningModel = /^(o[134])/i.test(this.model);
+            const params: any = {
+                model: this.model,
+                messages: [{ role: 'user', content: buildVideoTopicsPrompt(transcriptText, title) }],
+                max_completion_tokens: 200,
+            };
+            if (!isReasoningModel) {
+                params.temperature = 0.2;
+            }
+
+            const completion = await this.createChatCompletion(params);
+            return parseVideoTopics(completion.choices[0]?.message?.content || '');
+        } catch (error) {
+            console.warn('OpenAI video topic inference failed:', error);
             return [];
         }
     }

@@ -3,13 +3,15 @@ import { TranscriptLine } from '../types';
 
 export interface FrontmatterData {
 	title: string;
+	video_url: string;
 	channel_name: string;
 	channel_username: string;
 	channel_url: string;
-	video_url: string;
 	thumbnail: string;
 	thumbnail_text: string;
 	description?: string;
+	/** Up to three AI-inferred subject areas (Title Case). Left out when none were inferred. */
+	topic?: string[];
 	tags?: string[];
 	duration?: number;
 	published_at?: string;
@@ -78,15 +80,42 @@ function buildVideoStatsLines(data: FrontmatterData): Record<string, string> {
 }
 
 /**
+ * Formats a string as a YAML list item value, quoting it only when YAML would otherwise read it as
+ * something other than plain text (e.g. a colon, a leading dash, or a value like `true` or `2024`).
+ */
+function yamlListValue(value: string): string {
+	const needsQuotes = /[:#[\]{},&*!|>'"%@`]/.test(value)
+		|| /^[-?\s]|\s$/.test(value)
+		|| /^(?:true|false|yes|no|on|off|null|~|[-+.\d]+)$/i.test(value);
+	return needsQuotes ? JSON.stringify(value) : value;
+}
+
+/**
+ * Builds the `topic` list lines, or none when there are no topics. Duplicates (case-insensitive) are dropped.
+ */
+function buildTopicLines(topics: string[] | undefined): string[] {
+	const seen = new Set<string>();
+	const unique = (topics ?? [])
+		.map((topic) => (typeof topic === 'string' ? topic.trim() : ''))
+		.filter((topic) => {
+			const key = topic.toLowerCase();
+			if (!topic || seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
+	return unique.length > 0 ? ['topic:', ...unique.map((topic) => `  - ${yamlListValue(topic)}`)] : [];
+}
+
+/**
  * Builds a YAML frontmatter string from structured metadata.
  */
 export function buildFrontmatter(data: FrontmatterData): string {
 	const lines: string[] = ['---'];
 	lines.push(`title: ${JSON.stringify(data.title)}`);
+	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
 	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
 	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
 	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
-	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
 	lines.push(`thumbnail: ${JSON.stringify(data.thumbnail)}`);
 	lines.push(`thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`);
 	lines.push(...Object.values(buildVideoStatsLines(data)));
@@ -123,6 +152,8 @@ export function buildFrontmatter(data: FrontmatterData): string {
 		}
 	}
 
+	lines.push(...buildTopicLines(data.topic));
+
 	if (data.tags && data.tags.length > 0) {
 		lines.push('tags:');
 		for (const tag of deduplicateTags(data.tags)) {
@@ -137,6 +168,7 @@ export function buildFrontmatter(data: FrontmatterData): string {
 /**
  * Merges new frontmatter metadata into an existing raw YAML string.
  * Preserves other frontmatter properties and merges tags (unless excludeTags is true).
+ * New topics replace the note's `topic` list; when no topics are given, the existing list is kept.
  */
 export function mergeFrontmatter(
 	rawYaml: string,
@@ -151,10 +183,10 @@ export function mergeFrontmatter(
 
 	const targetKeys: Record<string, string> = {
 		title: `title: ${JSON.stringify(data.title)}`,
+		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
 		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
 		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
 		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
-		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
 		thumbnail: `thumbnail: ${JSON.stringify(data.thumbnail)}`,
 		thumbnail_text: `thumbnail_text: ${JSON.stringify(data.thumbnail_text || '')}`,
 		...buildVideoStatsLines(data),
@@ -176,12 +208,22 @@ export function mergeFrontmatter(
 		targetKeys['playlist_count'] = `playlist_count: ${data.playlist_count}`;
 	}
 
+	// Topics are a fixed-size AI answer, so fresh ones replace the old list instead of merging like tags
+	const topicLines = buildTopicLines(data.topic);
+	let inTopicBlock = false;
 	let inTagsBlock = false;
 	let inDescBlock = false;
 	const existingTags: string[] = [];
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+
+		if (inTopicBlock) {
+			if (/^\s/.test(line) || /^-(\s|$)/.test(line) || line.trim() === '') {
+				continue;
+			}
+			inTopicBlock = false;
+		}
 
 		if (inDescBlock) {
 			if (/^\s+/.test(line) || line.trim() === '') {
@@ -227,6 +269,16 @@ export function mergeFrontmatter(
 				continue;
 			} else {
 				inTagsBlock = false;
+			}
+
+			if (key === 'topic' && topicLines.length > 0) {
+				if (!updatedKeys.has('topic')) {
+					newLines.push(...topicLines);
+					updatedKeys.add('topic');
+				}
+				inTopicBlock = true;
+				inDescBlock = false;
+				continue;
 			}
 
 			if (key === 'description') {
@@ -284,6 +336,10 @@ export function mergeFrontmatter(
 		} else {
 			newLines.push('description: ""');
 		}
+	}
+
+	if (!updatedKeys.has('topic') && !existingKeys.has('topic')) {
+		newLines.push(...topicLines);
 	}
 
 	// Handle tags

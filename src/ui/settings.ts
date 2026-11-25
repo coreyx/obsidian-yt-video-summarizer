@@ -511,7 +511,7 @@ export class SettingsTab extends PluginSettingTab {
         }
     }
 
-    /** Tags & Metadata tab: tags, the video description, and YouTube data sources */
+    /** Tags & Metadata tab: tags, topics, the video description, and YouTube data sources */
     private displayTagsAndMetadataSection(containerEl: HTMLElement): void {
         new Setting(containerEl)
             .setName('Tags')
@@ -577,6 +577,22 @@ export class SettingsTab extends PluginSettingTab {
                     .setValue(this.settings.getAddInlineTags())
                     .onChange(async (value) => {
                         await this.settings.updateAddInlineTags(value);
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('Topics')
+            .setHeading();
+
+        // Infer topics into the topic frontmatter property
+        new Setting(containerEl)
+            .setName('Infer topics')
+            .setDesc('Use your configured AI model to infer up to 3 topics from the video transcript and add them to the "topic" frontmatter property (e.g. Machine Learning, Personal Finance). This makes one extra, small AI request per summary (enabled by default).')
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.settings.getInferTopics())
+                    .onChange(async (value) => {
+                        await this.settings.updateInferTopics(value);
                     })
             );
 

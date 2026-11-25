@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `topic` frontmatter property: the active AI model infers up to 3 topics from the video transcript (Title Case, e.g. `Machine Learning`) and writes them as a list just before `tags`. Controlled by the new **Infer topics** setting under Tags & Metadata (on by default). Regenerating a summary replaces the list; *Refresh video metadata* leaves it alone.
+
+### Changed
+
+- New video summary notes list `video_url` right after `title`, ahead of `channel_name`. Existing notes keep their property order.
+
 ---
 
 ## [1.20.0] - 2026-10-13

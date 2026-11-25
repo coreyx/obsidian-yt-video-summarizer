@@ -41,6 +41,7 @@ export interface StoredSettings {
 	maxTokens: number;
 	temperature: number;
 	addTopicsAsTags?: boolean;
+	inferTopics?: boolean;
 	detectTagsInDescriptionAndTitle?: boolean;
 	addTagsToFrontmatter?: boolean;
 	addInlineTags?: boolean;
@@ -127,6 +128,9 @@ export interface PluginSettings {
 
 	getAddTopicsAsTags(): boolean;
 	updateAddTopicsAsTags(value: boolean): void;
+
+	getInferTopics(): boolean;
+	updateInferTopics(value: boolean): void;
 
 	getDetectTagsInDescriptionAndTitle(): boolean;
 	updateDetectTagsInDescriptionAndTitle(value: boolean): void;
@@ -283,6 +287,8 @@ export interface AIModelProvider {
 	summarizeVideo(videoId: string, prompt: string): Promise<string>;
 	extractThumbnailText?(imageBase64: string, mimeType?: string): Promise<string>;
 	generateTopics?(summaryText: string, options?: GenerateTopicsOptions): Promise<string[]>;
+	/** Infers up to three Title Case topics for the `topic` frontmatter property from a video's transcript */
+	inferVideoTopics?(transcriptText: string, title?: string): Promise<string[]>;
 }
 
 /** Transcript configuration options */

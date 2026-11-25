@@ -4274,6 +4274,101 @@ assert(strippedInsights.includes('- Read [[this note]] first'));
 
 console.log('✓ Actionable insights prompt section and saved prompt upgrade passed');
 
+// Test 46: video_url follows title, and the AI-inferred `topic` list property (real frontmatter.ts / videoTopics.ts)
+console.log('Testing video_url order and the topic frontmatter property...');
+
+const topicsBundle = await esbuildBuild({
+	entryPoints: [fileURLToPath(new URL('../src/utils/videoTopics.ts', import.meta.url))],
+	bundle: true,
+	format: 'esm',
+	write: false,
+	logLevel: 'silent',
+});
+const videoTopics = await import(
+	`data:text/javascript;base64,${Buffer.from(topicsBundle.outputFiles[0].text).toString('base64')}`
+);
+
+const topicData = {
+	title: 'Topic Test',
+	channel_name: 'Channel',
+	channel_username: '@channel',
+	channel_url: 'https://www.youtube.com/@channel',
+	video_url: 'https://www.youtube.com/watch?v=MdxaU0l3FzI',
+	thumbnail: 'https://img.youtube.com/vi/MdxaU0l3FzI/maxresdefault.jpg',
+	thumbnail_text: '',
+	description: 'A description',
+	topic: ['Machine Learning', 'Personal Finance', 'machine learning'],
+	tags: ['ai'],
+};
+const keysOf = (yaml) => yaml.split('\n').map((line) => line.match(/^([A-Za-z0-9_-]+):/)?.[1]).filter(Boolean);
+
+// 46.1: New notes: video_url sits between title and channel_name; topic is a list just before tags
+const topicBuilt = realFrontmatter.buildFrontmatter(topicData);
+const builtKeys = keysOf(topicBuilt);
+assert.deepStrictEqual(builtKeys.slice(0, 3), ['title', 'video_url', 'channel_name']);
+assert.strictEqual(builtKeys.indexOf('topic'), builtKeys.indexOf('tags') - 1);
+assert(topicBuilt.includes('topic:\n  - Machine Learning\n  - Personal Finance\ntags:'), 'topic list is deduplicated, case-insensitively');
+
+// 46.2: No topics, no topic property
+assert(!realFrontmatter.buildFrontmatter({ ...topicData, topic: undefined }).includes('topic:'));
+assert(!realFrontmatter.buildFrontmatter({ ...topicData, topic: [] }).includes('topic:'));
+
+// 46.3: Topics YAML would misread are quoted
+const quotedBuilt = realFrontmatter.buildFrontmatter({ ...topicData, topic: ['C++: Basics', 'True', '2024'] });
+assert(quotedBuilt.includes('  - "C++: Basics"\n  - "True"\n  - "2024"'));
+
+// 46.4: Merging: new topics replace the existing list in place; other keys are kept
+const existingTopicYaml = 'title: "Old"\ntopic:\n  - Old Topic\n  - Another\nmy_key: kept\ntags:\n  - old-tag\n';
+const mergedTopics = realFrontmatter.mergeFrontmatter(existingTopicYaml, topicData);
+assert(mergedTopics.includes('topic:\n  - Machine Learning\n  - Personal Finance\nmy_key: kept'));
+assert(!mergedTopics.includes('Old Topic'));
+assert.strictEqual(keysOf(mergedTopics).filter((k) => k === 'topic').length, 1);
+
+// 46.5: Merging without topics (inference off or failed, or a metadata refresh) keeps the existing list
+const keptTopics = realFrontmatter.mergeFrontmatter(existingTopicYaml, { ...topicData, topic: undefined }, { excludeTags: true });
+assert(keptTopics.includes('topic:\n  - Old Topic\n  - Another\n'));
+
+// 46.6: Merging into a note without topic adds it before tags
+const addedTopics = realFrontmatter.mergeFrontmatter('title: "Old"\ntags:\n  - old-tag\n', topicData);
+const addedKeys = keysOf(addedTopics);
+assert.strictEqual(addedKeys.indexOf('topic'), addedKeys.indexOf('tags') - 1);
+
+// 46.7: Merging replaces an inline topic value and a list with unindented items
+assert(realFrontmatter.mergeFrontmatter('topic: Old\n', topicData).startsWith('topic:\n  - Machine Learning'));
+const unindented = realFrontmatter.mergeFrontmatter('topic:\n- Old\n- Older\nfavorite: true\n', topicData);
+assert(!unindented.includes('Old'));
+assert(unindented.includes('favorite: true'));
+
+// 46.8: Parsing the model's reply: at most 3, Title Case, cleaned of list markers / quotes / wikilinks, deduplicated
+assert.deepStrictEqual(
+	videoTopics.parseVideoTopics('1. machine learning\n- "Personal Finance"\n* [[home automation]]\nCooking'),
+	['Machine Learning', 'Personal Finance', 'Home Automation']
+);
+assert.deepStrictEqual(videoTopics.parseVideoTopics('AI Safety, ai safety, history of science'), ['AI Safety', 'History of Science']);
+assert.deepStrictEqual(videoTopics.parseVideoTopics('Topics:\n#iOS Development.'), ['iOS Development']);
+assert.deepStrictEqual(videoTopics.parseVideoTopics(''), []);
+assert.deepStrictEqual(videoTopics.parseVideoTopics(`${'word '.repeat(20)}\n42`), []);
+
+// 46.9: The prompt carries the title and transcript; long transcripts are sampled from start, middle, and end
+const topicPrompt = videoTopics.buildVideoTopicsPrompt('short transcript text', 'My Video');
+assert(topicPrompt.includes('Video title: My Video') && topicPrompt.includes('short transcript text'));
+assert(topicPrompt.includes('between 1 and 3 topics'));
+const longTranscript = `START ${'a '.repeat(20000)}MIDDLE ${'b '.repeat(20000)}END`;
+const sampled = videoTopics.sampleTranscriptForTopics(longTranscript, 3000);
+assert(sampled.length <= 3000 + 20);
+assert(sampled.startsWith('START') && sampled.endsWith('END') && sampled.includes('MIDDLE'));
+
+// 46.10: Every provider implements inference, and the summary pipeline writes it behind the setting
+for (const name of ['anthropic', 'gemini', 'openai']) {
+	const source = readFileSync(new URL(`../src/services/providers/${name}.ts`, import.meta.url), 'utf8');
+	assert(source.includes('async inferVideoTopics('), `${name} provider infers topics`);
+}
+const mainSourceForTopics = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+assert(mainSourceForTopics.includes('this.settings.getInferTopics() && this.provider?.inferVideoTopics'));
+assert(mainSourceForTopics.includes('topic: topics.length > 0 ? topics : undefined'));
+
+console.log('✓ video_url order and topic frontmatter property passed');
+
 console.log('\nAll tests passed successfully!');
 
 
