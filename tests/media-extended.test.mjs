@@ -2,13 +2,15 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
+import { createFakeEditor } from './helpers/obsidianFakes.mjs';
 import { loadSettingsManager } from './helpers/settings.mjs';
 import { setRequestUrlHandler } from './helpers/obsidian-stub.mjs';
 
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { resolveCompanionNoteOptions } = await loadSource('src/utils/mediaExtendedOptions.ts');
-const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
+const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, extractYouTubeUrlFromNote, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 const { resolveMediaExtendedPluginStatus } = await loadSource('src/utils/mediaExtendedPlugin.ts');
+const { frontmatterDescriptionToUse, insertTextAt } = await loadSource('src/utils/summaryNote.ts');
 
 // Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
 
@@ -398,28 +400,15 @@ console.log('✓ Summary note YouTube timestamp links, per-run Media Extended op
 // Test 32: Add description / transcript to Media Extended notes (section detection, upsert, video detection)
 console.log('Testing Media Extended note section detection, insertion/replacement, and video detection...');
 
-function extractYouTubeUrlFromFrontmatterHelper(content) {
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (!fmMatch) return null;
-	for (const key of ['video_url', 'video', 'media']) {
-		const m = fmMatch[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
-		const value = m?.[1].trim();
-		if (value && (key === 'video_url' || /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(value))) {
-			return value;
-		}
-	}
-	return null;
-}
-
 const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
 const meNoteBare = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n`;
 const meNoteFull = `${meFrontmatter}\n\n# Description\n\nOld description\n\n# Transcript\n\n- [00:00](https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=0#t=00:00.00) Hi\n\n# Related\n\n- [[Summary Note]]\n`;
 
 // 32.1: Video detection from Media Extended frontmatter (video / media keys), ignoring non-YouTube values
-assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper(meNoteBare), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nmedia: https://youtu.be/dQw4w9WgXcQ\n---\n'), 'https://youtu.be/dQw4w9WgXcQ');
-assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo: "[[local.mp4]]"\n---\n'), null);
-assert.strictEqual(extractYouTubeUrlFromFrontmatterHelper('---\nvideo_url: https://www.youtube.com/watch?v=abc123XYZ00\nvideo: https://youtu.be/other\n---\n'), 'https://www.youtube.com/watch?v=abc123XYZ00');
+assert.strictEqual(extractYouTubeUrlFromNote(meNoteBare), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+assert.strictEqual(extractYouTubeUrlFromNote('---\nmedia: https://youtu.be/dQw4w9WgXcQ\n---\n'), 'https://youtu.be/dQw4w9WgXcQ');
+assert.strictEqual(extractYouTubeUrlFromNote('---\nvideo: "[[local.mp4]]"\n---\n'), null);
+assert.strictEqual(extractYouTubeUrlFromNote('---\nvideo_url: https://www.youtube.com/watch?v=abc123XYZ00\nvideo: https://youtu.be/other\n---\n'), 'https://www.youtube.com/watch?v=abc123XYZ00');
 
 // 32.2: Section detection — level-1 only, case-insensitive, ignores frontmatter and code fences
 assert.strictEqual(findMarkdownSection(meNoteBare, 'Description'), null);
@@ -489,17 +478,12 @@ assert.strictEqual(ensureSectionOrder(expectedOrder, 'Description', 'Transcript'
 assert.strictEqual(ensureSectionOrder(meNoteBare, 'Description', 'Transcript'), meNoteBare);
 
 // 32.8: Description source — frontmatter first when enabled and non-empty, else fetch
-function resolveDescriptionSourceHelper(useFrontmatter, frontmatterDescription) {
-	return useFrontmatter && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()
-		? 'frontmatter'
-		: 'fetch';
-}
-assert.strictEqual(resolveDescriptionSourceHelper(true, 'Creator description\n0:00 Intro'), 'frontmatter');
-assert.strictEqual(resolveDescriptionSourceHelper(true, ''), 'fetch');
-assert.strictEqual(resolveDescriptionSourceHelper(true, '   '), 'fetch');
-assert.strictEqual(resolveDescriptionSourceHelper(true, undefined), 'fetch');
-assert.strictEqual(resolveDescriptionSourceHelper(true, 123), 'fetch');
-assert.strictEqual(resolveDescriptionSourceHelper(false, 'Creator description'), 'fetch');
+assert.strictEqual(frontmatterDescriptionToUse(true, 'Creator description\n0:00 Intro'), 'Creator description\n0:00 Intro');
+assert.strictEqual(frontmatterDescriptionToUse(true, ''), null);
+assert.strictEqual(frontmatterDescriptionToUse(true, '   '), null);
+assert.strictEqual(frontmatterDescriptionToUse(true, undefined), null);
+assert.strictEqual(frontmatterDescriptionToUse(true, 123), null);
+assert.strictEqual(frontmatterDescriptionToUse(false, 'Creator description'), null);
 assert.match(defaultsSource, /DEFAULT_MEDIA_EXTENDED_DESCRIPTION_FROM_FRONTMATTER = true;/);
 
 // Frontmatter description timestamps still become Media Extended links in the body
@@ -551,16 +535,16 @@ const coverThenDesc = upsertMarkdownSection(
 const coverThenDescBody = coverThenDesc.slice(coverThenDesc.indexOf('\n---\n') + 5);
 assert(coverThenDescBody.startsWith('\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)\n\n# Description\n\nNew description\n\n# Related'));
 
-// 35.6: Insert at cursor — inserts at the captured position with no duplicate check
-function insertCoverAtHelper(content, offset, coverUrl) {
-	const embed = buildCoverEmbed(coverUrl);
-	return content.slice(0, offset) + embed + content.slice(offset);
-}
+// 35.6: Insert at cursor — inserts at the captured position with no duplicate check, cursor after the embed
 const cursorNote = 'Line one\n\nLine two';
-const inserted = insertCoverAtHelper(cursorNote, cursorNote.indexOf('\n\nLine two') + 2, 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
-assert.strictEqual(inserted, 'Line one\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)Line two');
-const insertedTwice = insertCoverAtHelper(inserted, 0, 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
-assert.strictEqual((insertedTwice.match(/!\[Cover\]/g) || []).length, 2);
+const coverEmbed = buildCoverEmbed('https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+const coverEditor = createFakeEditor(cursorNote, { cursor: cursorNote.indexOf('\n\nLine two') + 2 });
+const capturedPosition = coverEditor.getCursor('to');
+insertTextAt(coverEditor, capturedPosition, coverEmbed);
+assert.strictEqual(coverEditor.getValue(), 'Line one\n\n![Cover](https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp)Line two');
+assert.strictEqual(coverEditor.cursorOffset(), cursorNote.indexOf('\n\nLine two') + 2 + coverEmbed.length);
+insertTextAt(coverEditor, coverEditor.offsetToPos(0), coverEmbed);
+assert.strictEqual((coverEditor.getValue().match(/!\[Cover\]/g) || []).length, 2);
 
 console.log('✓ Media Extended cover embed passed');
 

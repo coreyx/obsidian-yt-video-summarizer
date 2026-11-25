@@ -2,9 +2,18 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
+import { createFakeApp, createFakeEditor } from './helpers/obsidianFakes.mjs';
 
-const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
-const { convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
+const {
+	buildSummaryBody,
+	chooseSummaryTarget,
+	composeSummaryNoteContent,
+	findAvailableNotePath,
+	insertLinkAtCursor,
+	normalizeFolderSetting,
+	replaceInNote,
+} = await loadSource('src/utils/summaryNote.ts');
+const { buildFrontmatter, convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
 const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
@@ -219,77 +228,88 @@ console.log('✓ Folder filtering and folder-scoped discovery passed');
 // Test 31: Video summary note placement (blank note vs. new note in fallback folder)
 console.log('Testing video summary note placement, fallback folder paths, and source note link handling...');
 
-function normalizeVideoSummaryFolderHelper(value) {
-	return (value ?? 'Video Summaries').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Video Summaries';
-}
-
-// Mirrors summarizeVideo Step 0: blank note → write into it; body and/or frontmatter (or no file) → new note
-function resolveSummaryTargetHelper(editorText, hasSourceFile) {
-	return hasSourceFile && editorText.trim() === '' ? 'current-note' : 'new-note';
-}
-
-function getAvailableNotePathHelper(existingPaths, folderPath, baseName, currentPath, extension = 'md') {
-	const parentDir = folderPath && folderPath !== '/' ? `${folderPath}/` : '';
-	let targetPath = `${parentDir}${baseName}.${extension}`;
-	let counter = 1;
-	while (existingPaths.has(targetPath) && targetPath !== currentPath) {
-		targetPath = `${parentDir}${baseName} (${counter}).${extension}`;
-		counter++;
-	}
-	return targetPath;
-}
-
 // 31.1: Fallback folder default and normalization
-assert.strictEqual(normalizeVideoSummaryFolderHelper(undefined), 'Video Summaries');
-assert.strictEqual(normalizeVideoSummaryFolderHelper('   '), 'Video Summaries');
-assert.strictEqual(normalizeVideoSummaryFolderHelper('/Notes\\Videos/'), 'Notes/Videos');
+assert.strictEqual(normalizeFolderSetting(undefined, 'Video Summaries'), 'Video Summaries');
+assert.strictEqual(normalizeFolderSetting('   ', 'Video Summaries'), 'Video Summaries');
+assert.strictEqual(normalizeFolderSetting('/Notes\\Videos/', 'Video Summaries'), 'Notes/Videos');
 assert.match(defaultsSource, /DEFAULT_VIDEO_SUMMARY_FOLDER = 'Video Summaries';/);
 
-// 31.2: Target resolution
-assert.strictEqual(resolveSummaryTargetHelper('', true), 'current-note');
-assert.strictEqual(resolveSummaryTargetHelper('  \n\n ', true), 'current-note');
-assert.strictEqual(resolveSummaryTargetHelper('Some notes', true), 'new-note');
-assert.strictEqual(resolveSummaryTargetHelper('---\ntags: [a]\n---\n', true), 'new-note');
-assert.strictEqual(resolveSummaryTargetHelper('---\ntags: [a]\n---\n\nBody', true), 'new-note');
-assert.strictEqual(resolveSummaryTargetHelper('', false), 'new-note');
+// 31.2: Target resolution — a blank note receives the summary; any other note (or none) gets a new note
+assert.strictEqual(chooseSummaryTarget('', 'My Note'), 'current-note');
+assert.strictEqual(chooseSummaryTarget('  \n\n ', 'My Note'), 'current-note');
+assert.strictEqual(chooseSummaryTarget('Some notes', 'Untitled'), 'new-note');
+// Tags-only frontmatter counts as blank only in a new "Untitled" note (e.g. tags from a template)
+assert.strictEqual(chooseSummaryTarget('---\ntags: [a]\n---\n', 'Untitled 2'), 'current-note');
+assert.strictEqual(chooseSummaryTarget('---\ntags: [a]\n---\n', 'My Note'), 'new-note');
+assert.strictEqual(chooseSummaryTarget('---\ntags: [a]\n---\n\nBody', 'Untitled'), 'new-note');
+assert.strictEqual(chooseSummaryTarget('', null), 'new-note');
 
 // 31.3: Collision-free paths in the fallback folder (renaming a note onto its own path is a no-op)
 const existing = new Set(['Video Summaries/My Video.md', 'Video Summaries/My Video (1).md']);
-assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'Other Video'), 'Video Summaries/Other Video.md');
-assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'My Video'), 'Video Summaries/My Video (2).md');
-assert.strictEqual(getAvailableNotePathHelper(existing, 'Video Summaries', 'My Video', 'Video Summaries/My Video.md'), 'Video Summaries/My Video.md');
-assert.strictEqual(getAvailableNotePathHelper(new Set(), '', 'Root Note'), 'Root Note.md');
+const exists = (path) => existing.has(path);
+assert.strictEqual(findAvailableNotePath('Video Summaries', 'Other Video', exists), 'Video Summaries/Other Video.md');
+assert.strictEqual(findAvailableNotePath('Video Summaries', 'My Video', exists), 'Video Summaries/My Video (2).md');
+assert.strictEqual(findAvailableNotePath('Video Summaries', 'My Video', exists, 'Video Summaries/My Video.md'), 'Video Summaries/My Video.md');
+assert.strictEqual(findAvailableNotePath('', 'Root Note', () => false), 'Root Note.md');
+assert.strictEqual(findAvailableNotePath('/', 'Root Note', () => false), 'Root Note.md');
+assert.strictEqual(findAvailableNotePath('Media', 'cover', () => false, undefined, 'jpg'), 'Media/cover.jpg');
 
 // 31.4: Link inserted at the cursor, updated after rename, removed on failure
-function insertAtHelper(content, offset, text) {
-	return content.slice(0, offset) + text + content.slice(offset);
-}
 const sourceBefore = 'Watch this: https://youtu.be/dQw4w9WgXcQ\nMore notes below.';
+const urlStart = sourceBefore.indexOf('https://');
 const urlEnd = sourceBefore.indexOf('\n');
 const placeholderLink = '[[YouTube Summary dQw4w9WgXcQ]]';
-const withLink = insertAtHelper(sourceBefore, urlEnd, ` ${placeholderLink}`);
-assert.strictEqual(withLink, 'Watch this: https://youtu.be/dQw4w9WgXcQ [[YouTube Summary dQw4w9WgXcQ]]\nMore notes below.');
 
-// User keeps typing elsewhere in the note while the summary runs
-const editedMeanwhile = `${withLink}\nA new line typed during summarization.`;
+// With the URL selected, the URL is kept and the link goes after it; the cursor ends up after the link
+const sourceEditor = createFakeEditor(sourceBefore, { selection: [urlStart, urlEnd] });
+const linkPrefix = insertLinkAtCursor(sourceEditor, placeholderLink);
+assert.strictEqual(linkPrefix, ' ');
+assert.strictEqual(sourceEditor.getValue(), 'Watch this: https://youtu.be/dQw4w9WgXcQ [[YouTube Summary dQw4w9WgXcQ]]\nMore notes below.');
+assert.strictEqual(sourceEditor.cursorOffset(), urlEnd + ` ${placeholderLink}`.length);
+assert.strictEqual(sourceEditor.somethingSelected(), false);
+
+// With nothing selected, the link goes at the cursor with no space
+const plainEditor = createFakeEditor('Notes: ', { cursor: 7 });
+assert.strictEqual(insertLinkAtCursor(plainEditor, placeholderLink), '');
+assert.strictEqual(plainEditor.getValue(), `Notes: ${placeholderLink}`);
+
+// The user keeps typing elsewhere in the note while the summary runs; the rename updates only the link
+sourceEditor.replaceRange('\nA new line typed during summarization.', sourceEditor.offsetToPos(sourceEditor.getValue().length));
+const sourceApp = createFakeApp({ files: { 'Source.md': sourceBefore }, openEditors: { 'Source.md': sourceEditor } });
+const sourceNote = { path: 'Source.md' };
 const renamedLink = '[[Never Gonna Give You Up]]';
-const afterRename = editedMeanwhile.replace(placeholderLink, () => renamedLink);
-assert(afterRename.includes('https://youtu.be/dQw4w9WgXcQ [[Never Gonna Give You Up]]\n'));
-assert(afterRename.endsWith('A new line typed during summarization.'));
-// Idempotent if Obsidian already updated the link itself
-assert.strictEqual(afterRename.replace(placeholderLink, () => renamedLink), afterRename);
+assert.strictEqual(await replaceInNote(sourceApp, sourceNote, placeholderLink, renamedLink), true);
+assert(sourceEditor.getValue().includes('https://youtu.be/dQw4w9WgXcQ [[Never Gonna Give You Up]]\n'));
+assert(sourceEditor.getValue().endsWith('A new line typed during summarization.'));
+// Nothing to do if Obsidian already updated the link itself
+assert.strictEqual(await replaceInNote(sourceApp, sourceNote, placeholderLink, renamedLink), false);
 
 // Failure cleanup removes exactly the inserted text
-const afterCleanup = afterRename.replace(` ${renamedLink}`, '');
-assert.strictEqual(afterCleanup, `${sourceBefore}\nA new line typed during summarization.`);
+await replaceInNote(sourceApp, sourceNote, `${linkPrefix}${renamedLink}`, '');
+assert.strictEqual(sourceEditor.getValue(), `${sourceBefore}\nA new line typed during summarization.`);
 
-// 31.5: Writing into a blank note that the user typed into during summarization appends instead of overwriting
-function writeSummaryHelper(current, isNewNote, fm, body) {
-	return isNewNote || current.trim() === '' ? `${fm}\n\n${body}` : `${current.trimEnd()}\n\n${body}`;
-}
-assert.strictEqual(writeSummaryHelper('Summarizing https://youtu.be/x…\n', true, '---\ntitle: T\n---', 'Body'), '---\ntitle: T\n---\n\nBody');
-assert.strictEqual(writeSummaryHelper('', false, '---\ntitle: T\n---', 'Body'), '---\ntitle: T\n---\n\nBody');
-assert.strictEqual(writeSummaryHelper('Typed meanwhile\n', false, '---\ntitle: T\n---', 'Body'), 'Typed meanwhile\n\nBody');
+// 31.5: What the summary note ends up containing
+const summaryFm = {
+	title: 'T',
+	video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+	channel_name: 'C',
+	channel_username: '',
+	channel_url: 'https://www.youtube.com/@c',
+	thumbnail: 'thumb',
+	thumbnail_text: '',
+	tags: ['new-tag'],
+};
+const fmBlock = buildFrontmatter(summaryFm);
+// A new note's placeholder text, or a blank note, is replaced by frontmatter and body
+assert.strictEqual(composeSummaryNoteContent('Summarizing https://youtu.be/x…\n', true, summaryFm, 'Body'), `${fmBlock}\n\nBody`);
+assert.strictEqual(composeSummaryNoteContent('', false, summaryFm, 'Body'), `${fmBlock}\n\nBody`);
+// Text typed into the blank note meanwhile is kept: the body is appended and the frontmatter added
+assert.strictEqual(composeSummaryNoteContent('Typed meanwhile\n', false, summaryFm, 'Body'), `${fmBlock}\n\nTyped meanwhile\n\nBody`);
+// An "Untitled" note's own tags are kept alongside the new ones
+const mergedIntoTagged = composeSummaryNoteContent('---\ntags:\n  - mine\n---\n', false, summaryFm, 'Body');
+assert(mergedIntoTagged.includes('tags:\n  - mine\n  - new-tag\n---'));
+assert(mergedIntoTagged.includes('title: "T"'));
+assert(mergedIntoTagged.trimEnd().endsWith('Body'));
 
 console.log('✓ Video summary note placement, fallback folder paths, and source note link handling passed');
 
@@ -339,52 +359,38 @@ console.log('✓ Add description to video summary note passed');
 // Test 41: The link to a new summary note is updated even when the source note's editor is unsaved
 console.log('Testing summary link update against unsaved editor content...');
 
-// Mirrors replaceInNote(): an open editor wins over the on-disk content
-async function testReplaceInNote(openEditors, disk, path, search, replacement) {
-	for (const editor of openEditors) {
-		if (editor.path !== path) continue;
-		const index = editor.value.indexOf(search);
-		if (index !== -1) {
-			editor.value = editor.value.slice(0, index) + replacement + editor.value.slice(index + search.length);
-			return true;
-		}
-	}
-	const found = disk[path].includes(search);
-	disk[path] = disk[path].replace(search, () => replacement);
-	return found;
-}
-
 const unsavedLink = '[[YouTube Summary MdxaU0l3FzI]]';
 const titledLink = '[[Some $1 Video Title]]';
+const note = { path: 'Note.md' };
 
 // 41.1: The link was just inserted, so it is in the editor but not yet on disk
-const unsavedDisk = { 'Note.md': 'Intro\n' };
-const unsavedEditors = [{ path: 'Note.md', value: `Intro\n${unsavedLink}` }];
-assert.strictEqual(await testReplaceInNote(unsavedEditors, unsavedDisk, 'Note.md', unsavedLink, titledLink), true);
-assert.strictEqual(unsavedEditors[0].value, `Intro\n${titledLink}`);
-assert.strictEqual(unsavedDisk['Note.md'], 'Intro\n'); // disk is left for the editor's own save
+const unsavedEditor = createFakeEditor(`Intro\n${unsavedLink}`);
+const unsavedApp = createFakeApp({ files: { 'Note.md': 'Intro\n' }, openEditors: { 'Note.md': unsavedEditor } });
+assert.strictEqual(await replaceInNote(unsavedApp, note, unsavedLink, titledLink), true);
+assert.strictEqual(unsavedEditor.getValue(), `Intro\n${titledLink}`);
+assert.strictEqual(unsavedApp.files['Note.md'], 'Intro\n'); // disk is left for the editor's own save
 
-// 41.2: The note is no longer open: the saved file is changed
-const closedDisk = { 'Note.md': `Intro\n${unsavedLink}` };
-assert.strictEqual(await testReplaceInNote([], closedDisk, 'Note.md', unsavedLink, titledLink), true);
-assert.strictEqual(closedDisk['Note.md'], `Intro\n${titledLink}`);
+// 41.2: The note is no longer open: the saved file is changed ("$1" in the link is kept literally)
+const closedApp = createFakeApp({ files: { 'Note.md': `Intro\n${unsavedLink}` } });
+assert.strictEqual(await replaceInNote(closedApp, note, unsavedLink, titledLink), true);
+assert.strictEqual(closedApp.files['Note.md'], `Intro\n${titledLink}`);
 
 // 41.3: Another note open in an editor is never touched, and a link Obsidian already updated is a no-op
-const otherEditors = [{ path: 'Other.md', value: unsavedLink }];
-const updatedDisk = { 'Note.md': `Intro\n${titledLink}` };
-assert.strictEqual(await testReplaceInNote(otherEditors, updatedDisk, 'Note.md', unsavedLink, titledLink), false);
-assert.strictEqual(otherEditors[0].value, unsavedLink);
-assert.strictEqual(updatedDisk['Note.md'], `Intro\n${titledLink}`);
+const otherEditor = createFakeEditor(unsavedLink);
+const updatedApp = createFakeApp({ files: { 'Note.md': `Intro\n${titledLink}` }, openEditors: { 'Other.md': otherEditor } });
+assert.strictEqual(await replaceInNote(updatedApp, note, unsavedLink, titledLink), false);
+assert.strictEqual(otherEditor.getValue(), unsavedLink);
+assert.strictEqual(updatedApp.files['Note.md'], `Intro\n${titledLink}`);
 
 // 41.4: Failure cleanup removes the unsaved link the same way
-const cleanupEditors = [{ path: 'Note.md', value: `https://youtu.be/MdxaU0l3FzI ${unsavedLink} tail` }];
-await testReplaceInNote(cleanupEditors, { 'Note.md': '' }, 'Note.md', ` ${unsavedLink}`, '');
-assert.strictEqual(cleanupEditors[0].value, 'https://youtu.be/MdxaU0l3FzI tail');
+const cleanupEditor = createFakeEditor(`https://youtu.be/MdxaU0l3FzI ${unsavedLink} tail`);
+await replaceInNote(createFakeApp({ files: { 'Note.md': '' }, openEditors: { 'Note.md': cleanupEditor } }), note, ` ${unsavedLink}`, '');
+assert.strictEqual(cleanupEditor.getValue(), 'https://youtu.be/MdxaU0l3FzI tail');
 
 // 41.5: Both the rename and the cleanup go through replaceInNote, not vault.process on the source note
 const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
-assert(mainSource.includes('await this.replaceInNote(sourceFile, oldLink, newLink);'));
-assert(mainSource.includes("await this.replaceInNote(sourceFile, `${linkPrefix}${link}`, '');"));
+assert(mainSource.includes('await replaceInNote(this.app, sourceFile, oldLink, newLink);'));
+assert(mainSource.includes("await replaceInNote(this.app, sourceFile, `${linkPrefix}${link}`, '');"));
 assert(!/vault\.process\(sourceFile,/.test(mainSource));
 
 console.log('✓ Summary link update against unsaved editor content passed');

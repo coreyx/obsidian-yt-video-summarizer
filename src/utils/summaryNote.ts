@@ -1,5 +1,13 @@
+import { App, Editor, EditorPosition, MarkdownView, TFile } from 'obsidian';
 import { PlaylistInfo, TranscriptResponse } from '../types';
-import { convertTimestampsToLinks, formatTranscript } from './frontmatter';
+import {
+	buildFrontmatter,
+	convertTimestampsToLinks,
+	formatTranscript,
+	FrontmatterData,
+	isBlankNoteForSummary,
+	updateNoteContentWithFrontmatter,
+} from './frontmatter';
 
 /**
  * Rendering and placement decisions for video summary notes, kept apart from the plugin class so they can be
@@ -80,4 +88,119 @@ export function buildSummaryBody(options: SummaryBodyOptions): string {
 	}
 
 	return parts.join('\n\n');
+}
+
+/**
+ * Normalizes a folder setting into a vault folder path (forward slashes, no leading or trailing slash),
+ * using `fallback` when the setting is empty.
+ */
+export function normalizeFolderSetting(value: string | undefined | null, fallback: string): string {
+	return (value ?? '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || fallback;
+}
+
+/**
+ * Decides where a new summary goes: into the note it was started from when that note is blank (see
+ * `isBlankNoteForSummary`), otherwise into a new note in the video summaries folder, linked from the cursor.
+ * @param sourceBasename - The basename of the note the command ran in, or `null` when there is none.
+ */
+export function chooseSummaryTarget(editorText: string, sourceBasename: string | null): 'current-note' | 'new-note' {
+	return sourceBasename !== null && isBlankNoteForSummary(editorText, sourceBasename) ? 'current-note' : 'new-note';
+}
+
+/**
+ * Returns a vault path for `baseName` in `folderPath` that doesn't collide with an existing file, appending
+ * " (1)", " (2)", ... as needed. `currentPath` counts as free, so renaming a note onto its own path is a no-op.
+ * @param exists - Whether a file already exists at a vault path.
+ */
+export function findAvailableNotePath(
+	folderPath: string,
+	baseName: string,
+	exists: (path: string) => boolean,
+	currentPath?: string,
+	extension = 'md'
+): string {
+	const parentDir = folderPath && folderPath !== '/' ? `${folderPath}/` : '';
+	let targetPath = `${parentDir}${baseName}.${extension}`;
+	let counter = 1;
+	while (exists(targetPath) && targetPath !== currentPath) {
+		targetPath = `${parentDir}${baseName} (${counter}).${extension}`;
+		counter++;
+	}
+	return targetPath;
+}
+
+/**
+ * The content a summary note ends up with. A new note, or a blank one, gets the frontmatter and body. A blank
+ * note that has tags-only frontmatter, or that the user typed into while the summary ran, keeps what it has:
+ * the body is appended and the frontmatter merged in, so existing tags are kept alongside the new ones.
+ * @param current - The note's content just before writing.
+ * @param isNewNote - Whether the note was created for this summary (its placeholder text is replaced).
+ */
+export function composeSummaryNoteContent(current: string, isNewNote: boolean, fmData: FrontmatterData, body: string): string {
+	return isNewNote || current.trim() === ''
+		? `${buildFrontmatter(fmData)}\n\n${body}`
+		: updateNoteContentWithFrontmatter(`${current.trimEnd()}\n\n${body}`, fmData);
+}
+
+/** The editor methods the insertion helpers use (a subset of Obsidian's `Editor`). */
+type InsertionEditor = Pick<Editor, 'replaceRange' | 'setCursor' | 'offsetToPos' | 'posToOffset'>;
+
+/** Inserts `text` at `position` and puts the cursor right after it. */
+export function insertTextAt(editor: InsertionEditor, position: EditorPosition, text: string): void {
+	editor.replaceRange(text, position);
+	editor.setCursor(editor.offsetToPos(editor.posToOffset(position) + text.length));
+}
+
+/**
+ * Inserts a link to a new summary note at the cursor. When text is selected (typically the video URL the
+ * command ran on), the selection is kept and the link goes after it, separated by a space.
+ * @returns The text put in front of the link (`' '` or `''`), so the exact insertion can be removed later.
+ */
+export function insertLinkAtCursor(editor: InsertionEditor & Pick<Editor, 'somethingSelected' | 'getCursor'>, link: string): string {
+	const linkPrefix = editor.somethingSelected() ? ' ' : '';
+	insertTextAt(editor, editor.getCursor('to'), `${linkPrefix}${link}`);
+	return linkPrefix;
+}
+
+/**
+ * Returns the frontmatter description to copy into a note body, or `null` when the description should be
+ * fetched from YouTube instead: the setting is off, or the frontmatter has no non-empty description.
+ * @param useFrontmatter - The *Use frontmatter description when adding description to body* setting.
+ */
+export function frontmatterDescriptionToUse(useFrontmatter: boolean, frontmatterDescription: unknown): string | null {
+	return useFrontmatter && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()
+		? frontmatterDescription
+		: null;
+}
+
+/**
+ * Replaces the first occurrence of `search` in a note and returns whether it was found.
+ * A note that is open in an editor is changed through that editor: its latest edits may not be saved
+ * yet, and vault.process() only sees what is on disk.
+ */
+export async function replaceInNote(
+	app: Pick<App, 'workspace' | 'vault'>,
+	file: TFile,
+	search: string,
+	replacement: string
+): Promise<boolean> {
+	for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView) || view.file?.path !== file.path) {
+			continue;
+		}
+		const editor = view.editor;
+		const index = editor.getValue().indexOf(search);
+		if (index !== -1) {
+			editor.replaceRange(replacement, editor.offsetToPos(index), editor.offsetToPos(index + search.length));
+			return true;
+		}
+	}
+
+	let found = false;
+	await app.vault.process(file, (content) => {
+		found = content.includes(search);
+		return content.replace(search, () => replacement);
+	});
+	return found;
 }

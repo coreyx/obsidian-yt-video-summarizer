@@ -35,7 +35,6 @@ import {
 	frontmatterMatchesVideo,
 	getVideoNoteKind,
 	hasMarkdownSection,
-	isBlankNoteForSummary,
 	hasRelatedMediaExtendedLink,
 	isMediaExtendedCompanionNote,
 	keepExtraFrontmatter,
@@ -50,7 +49,17 @@ import {
 import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData } from './utils/vaultTags';
 import { collectVideoTags } from './utils/youtubeMetadata';
-import { buildSummaryBody } from './utils/summaryNote';
+import {
+	buildSummaryBody,
+	chooseSummaryTarget,
+	composeSummaryNoteContent,
+	findAvailableNotePath,
+	frontmatterDescriptionToUse,
+	insertLinkAtCursor,
+	insertTextAt,
+	normalizeFolderSetting,
+	replaceInNote,
+} from './utils/summaryNote';
 import { defaultMediaExtendedRunOptions, resolveCompanionNoteOptions } from './utils/mediaExtendedOptions';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
@@ -499,7 +508,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// new note in the video summaries folder.
 			const sourceFile = view?.file ?? null;
 			let targetFile: TFile;
-			if (sourceFile && isBlankNoteForSummary(editor.getValue(), sourceFile.basename)) {
+			if (sourceFile && chooseSummaryTarget(editor.getValue(), sourceFile.basename) === 'current-note') {
 				targetFile = sourceFile;
 			} else {
 				pendingNote = await this.createPendingSummaryNote(url, editor, sourceFile);
@@ -559,9 +568,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// merge frontmatter instead, so existing tags are kept alongside any new ones.
 			progress.setStage('Writing note');
 			await this.app.vault.process(targetFile, (current) =>
-				pendingNote || current.trim() === ''
-					? `${buildFrontmatter(fmData)}\n\n${bodyContent}`
-					: updateNoteContentWithFrontmatter(`${current.trimEnd()}\n\n${bodyContent}`, fmData)
+				composeSummaryNoteContent(current, pendingNote !== null, fmData, bodyContent)
 			);
 			succeeded = true;
 
@@ -928,7 +935,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * Returns the normalized default / fallback folder for new video summary notes.
 	 */
 	private getVideoSummaryFolderPath(): string {
-		return this.settings.getVideoSummaryFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Video Summaries';
+		return normalizeFolderSetting(this.settings.getVideoSummaryFolder(), 'Video Summaries');
 	}
 
 	/**
@@ -936,14 +943,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * appending " (1)", " (2)", ... as needed. `currentPath` is treated as free (for renames).
 	 */
 	private getAvailableNotePath(folderPath: string, baseName: string, currentPath?: string, extension = 'md'): string {
-		const parentDir = folderPath && folderPath !== '/' ? `${folderPath}/` : '';
-		let targetPath = `${parentDir}${baseName}.${extension}`;
-		let counter = 1;
-		while (this.app.vault.getAbstractFileByPath(targetPath) && targetPath !== currentPath) {
-			targetPath = `${parentDir}${baseName} (${counter}).${extension}`;
-			counter++;
-		}
-		return targetPath;
+		return findAvailableNotePath(folderPath, baseName, (path) => this.app.vault.getAbstractFileByPath(path) !== null, currentPath, extension);
 	}
 
 	/**
@@ -961,42 +961,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const pending: PendingSummaryNote = { file, sourceFile };
 		if (sourceFile) {
 			const link = this.app.fileManager.generateMarkdownLink(file, sourceFile.path);
-			// Keep a selected URL intact and put the link after it
-			const linkPrefix = editor.somethingSelected() ? ' ' : '';
-			const insertAt = editor.getCursor('to');
-			editor.replaceRange(`${linkPrefix}${link}`, insertAt);
-			editor.setCursor(editor.offsetToPos(editor.posToOffset(insertAt) + linkPrefix.length + link.length));
+			pending.linkPrefix = insertLinkAtCursor(editor, link);
 			pending.link = link;
-			pending.linkPrefix = linkPrefix;
 		}
 		return pending;
-	}
-
-	/**
-	 * Replaces the first occurrence of `search` in a note and returns whether it was found.
-	 * A note that is open in an editor is changed through that editor: its latest edits may not be saved
-	 * yet, and vault.process() only sees what is on disk.
-	 */
-	private async replaceInNote(file: TFile, search: string, replacement: string): Promise<boolean> {
-		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) {
-				continue;
-			}
-			const editor = view.editor;
-			const index = editor.getValue().indexOf(search);
-			if (index !== -1) {
-				editor.replaceRange(replacement, editor.offsetToPos(index), editor.offsetToPos(index + search.length));
-				return true;
-			}
-		}
-
-		let found = false;
-		await this.app.vault.process(file, (content) => {
-			found = content.includes(search);
-			return content.replace(search, () => replacement);
-		});
-		return found;
 	}
 
 	/**
@@ -1022,7 +990,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		if (sourceFile && oldLink) {
 			const newLink = this.app.fileManager.generateMarkdownLink(pending.file, sourceFile.path);
 			if (newLink !== oldLink) {
-				await this.replaceInNote(sourceFile, oldLink, newLink);
+				await replaceInNote(this.app, sourceFile, oldLink, newLink);
 			}
 			pending.link = newLink;
 		}
@@ -1035,7 +1003,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		try {
 			const { sourceFile, link, linkPrefix = '' } = pending;
 			if (sourceFile && link) {
-				await this.replaceInNote(sourceFile, `${linkPrefix}${link}`, '');
+				await replaceInNote(this.app, sourceFile, `${linkPrefix}${link}`, '');
 			}
 			await this.app.fileManager.trashFile(pending.file);
 		} catch (error) {
@@ -1383,8 +1351,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 */
 	private async getDescriptionForNote(file: TFile, url: string, videoId: string, progress?: OperationProgress): Promise<{ description: string; source: string }> {
 		const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
-		if (this.settings.getMediaExtendedDescriptionFromFrontmatter() && typeof frontmatterDescription === 'string' && frontmatterDescription.trim()) {
-			return { description: frontmatterDescription, source: ' (from frontmatter)' };
+		const descriptionFromFrontmatter = frontmatterDescriptionToUse(this.settings.getMediaExtendedDescriptionFromFrontmatter(), frontmatterDescription);
+		if (descriptionFromFrontmatter !== null) {
+			return { description: descriptionFromFrontmatter, source: ' (from frontmatter)' };
 		}
 		progress?.setStage('Fetching description');
 		const result = await this.fetchVideoDescription(url, videoId);
@@ -1517,9 +1486,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			? frontmatterCover.trim()
 			: await YouTubeService.getCoverUrl(videoId);
 
-		const embed = buildCoverEmbed(coverUrl);
-		editor.replaceRange(embed, insertAt);
-		editor.setCursor(editor.offsetToPos(editor.posToOffset(insertAt) + embed.length));
+		insertTextAt(editor, insertAt, buildCoverEmbed(coverUrl));
 	}
 
 	/**
