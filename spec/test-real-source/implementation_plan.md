@@ -76,7 +76,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 ### AI providers
 
 #### [MODIFY] `src/utils/vaultTags.ts`, `src/services/providers/anthropic.ts`, `gemini.ts`, `openai.ts`
-- [ ] **TASK-10:** Replace the three identical private `parseTopics()` methods with one exported `parseTopicTags(text)` in `vaultTags.ts`, used by all three providers, and point Test 6 at it.
+- [x] **TASK-10:** Replace the three identical private `parseTopics()` methods with one exported `parseTopicTags(text)` in `vaultTags.ts`, used by all three providers, and point Test 6 at it.
 
 #### [MODIFY] `src/services/providers/openai.ts`
 - [ ] **TASK-11:** Export two pure functions from `openai.ts`, used by `OpenAIProvider`: `buildChatCompletionParams(model, prompt, maxTokens, temperature)` (`max_completion_tokens`, temperature left out for `o1`/`o3`/`o4` reasoning models) and `toLegacyMaxTokensParams(params)` (the `max_tokens` fallback for servers that reject `max_completion_tokens`). Point Test 14 (`buildOpenAIParams`, `simulateFallback`) at them and delete the copies.

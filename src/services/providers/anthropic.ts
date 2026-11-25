@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
-import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildTopicGenerationPrompt, parseTopicTags } from '../../utils/vaultTags';
 import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 export class AnthropicProvider implements AIModelProvider {
@@ -110,7 +110,7 @@ export class AnthropicProvider implements AIModelProvider {
                 messages: [{ role: 'user', content: prompt }]
             });
             if (response.content[0]?.type === 'text') {
-                return this.parseTopics(response.content[0].text);
+                return parseTopicTags(response.content[0].text);
             }
             return [];
         } catch (error) {
@@ -135,14 +135,5 @@ export class AnthropicProvider implements AIModelProvider {
             console.warn('Anthropic video topic inference failed:', error);
             return [];
         }
-    }
-
-    private parseTopics(text: string): string[] {
-        return Array.from(new Set(
-            text
-                .split(/[,\n]/)
-                .map(t => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-\/]/gi, ''))
-                .filter(t => t.length > 0 && !/^\d+$/.test(t))
-        ));
     }
 }

@@ -3,21 +3,13 @@ import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
 const { getLMStudioNativeModelsUrl, normalizeOpenAIBaseUrl, parseLMStudioModels } = await loadSource('src/services/lmStudio.ts');
+const { parseTopicTags } = await loadSource('src/utils/vaultTags.ts');
 
 // Test 6: Topics parsing from LLM response
 
-function parseTopics(text) {
-	return Array.from(new Set(
-		text
-			.split(/[,\n]/)
-			.map(t => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-\/]/gi, ''))
-			.filter(t => t.length > 0 && !/^\d+$/.test(t))
-	));
-}
-
-console.log('Testing parseTopics...');
+console.log('Testing parseTopicTags...');
 const llmResponse = 'artificial-intelligence, #Machine Learning, deep learning\nNeural Networks, 123, , AI Ethics';
-const parsedTopics = parseTopics(llmResponse);
+const parsedTopics = parseTopicTags(llmResponse);
 assert.deepStrictEqual(parsedTopics, [
 	'artificial-intelligence',
 	'machine-learning',
@@ -25,7 +17,7 @@ assert.deepStrictEqual(parsedTopics, [
 	'neural-networks',
 	'ai-ethics'
 ]);
-console.log('✓ parseTopics passed');
+console.log('✓ parseTopicTags passed');
 
 // Test 14: OpenAI parameter construction (max_completion_tokens & reasoning temperature)
 console.log('Testing OpenAI parameter construction...');

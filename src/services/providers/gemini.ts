@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
-import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildTopicGenerationPrompt, parseTopicTags } from '../../utils/vaultTags';
 import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 export class GeminiProvider implements AIModelProvider {
@@ -89,7 +89,7 @@ export class GeminiProvider implements AIModelProvider {
             const prompt = buildTopicGenerationPrompt(summaryText, options);
             const result = await model.generateContent(prompt);
             const response = await result.response;
-            return this.parseTopics(response.text());
+            return parseTopicTags(response.text());
         } catch (error) {
             console.warn('Gemini topic tag generation failed:', error);
             return [];
@@ -112,14 +112,5 @@ export class GeminiProvider implements AIModelProvider {
             console.warn('Gemini video topic inference failed:', error);
             return [];
         }
-    }
-
-    private parseTopics(text: string): string[] {
-        return Array.from(new Set(
-            text
-                .split(/[,\n]/)
-                .map(t => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-\/]/gi, ''))
-                .filter(t => t.length > 0 && !/^\d+$/.test(t))
-        ));
     }
 }

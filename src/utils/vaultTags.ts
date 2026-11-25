@@ -138,3 +138,17 @@ Important rules:
 ${titleStr}Summary:
 ${summaryText.slice(0, 4000)}`;
 }
+
+/**
+ * Parses the AI model's reply to the topic tag prompt (a comma- or line-separated list) into tags:
+ * lowercase, spaces turned into hyphens, `#` and other characters tags can't contain removed, and
+ * duplicates and bare numbers dropped. Shared by every AI provider so they all read replies the same way.
+ */
+export function parseTopicTags(text: string): string[] {
+	return Array.from(new Set(
+		text
+			.split(/[,\n]/)
+			.map((tag) => tag.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-/]/gi, ''))
+			.filter((tag) => tag.length > 0 && !/^\d+$/.test(tag))
+	));
+}

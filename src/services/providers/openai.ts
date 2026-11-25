@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { AIModelProvider, GenerateTopicsOptions } from 'src/types';
-import { buildTopicGenerationPrompt } from '../../utils/vaultTags';
+import { buildTopicGenerationPrompt, parseTopicTags } from '../../utils/vaultTags';
 import { buildVideoTopicsPrompt, parseVideoTopics } from '../../utils/videoTopics';
 
 import { normalizeOpenAIBaseUrl } from '../lmStudio';
@@ -140,7 +140,7 @@ export class OpenAIProvider implements AIModelProvider {
             }
 
             const completion = await this.createChatCompletion(params);
-            return this.parseTopics(completion.choices[0]?.message?.content || '');
+            return parseTopicTags(completion.choices[0]?.message?.content || '');
         } catch (error) {
             console.warn('OpenAI topic tag generation failed:', error);
             return [];
@@ -165,14 +165,5 @@ export class OpenAIProvider implements AIModelProvider {
             console.warn('OpenAI video topic inference failed:', error);
             return [];
         }
-    }
-
-    private parseTopics(text: string): string[] {
-        return Array.from(new Set(
-            text
-                .split(/[,\n]/)
-                .map(t => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').replace(/[^a-z0-9_\-\/]/gi, ''))
-                .filter(t => t.length > 0 && !/^\d+$/.test(t))
-        ));
     }
 }
