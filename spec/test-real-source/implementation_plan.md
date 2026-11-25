@@ -32,7 +32,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 ### Test harness
 
 #### [NEW] `tests/helpers/obsidian-stub.mjs`
-- [ ] **TASK-1:** Write a minimal stand-in for the `obsidian` module, covering what the modules under test import at runtime:
+- [x] **TASK-1:** Write a minimal stand-in for the `obsidian` module, covering what the modules under test import at runtime:
   - `requestUrl(params)`: calls a handler a test sets with `setRequestUrlHandler(fn)`, and throws a clear error when none is set, so no test reaches the network by accident.
   - `Notice`: a class that records each message in an exported `notices` array (with `resetNotices()`), instead of showing UI.
   - Empty classes for names imported only to extend or type-check at runtime (`Plugin`, `Modal`, `Setting`, `TFile`, `TFolder`, `FuzzySuggestModal`, `PluginSettingTab`), plus `normalizePath` matching Obsidian's behavior (forward slashes, no leading/trailing or doubled slashes).
