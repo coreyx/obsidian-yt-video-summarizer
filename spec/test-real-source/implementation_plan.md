@@ -96,7 +96,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 ### Folder picker
 
 #### [MODIFY] `src/ui/modals/FolderSuggestModal.ts`
-- [ ] **TASK-16:** Move the folder ordering in `FolderSuggestModal` into an exported `sortFolders(folders)` that the modal calls, and point Test 11 at it.
+- [x] **TASK-16:** Move the folder ordering in `FolderSuggestModal` into an exported `sortFolders(folders)` that the modal calls, and point Test 11 at it.
 
 ### Finish
 

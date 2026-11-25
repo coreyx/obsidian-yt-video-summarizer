@@ -15,6 +15,7 @@ const {
 } = await loadSource('src/utils/summaryNote.ts');
 const { buildFrontmatter, convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 const { adaptPromptForWikilinks } = await loadSource('src/services/prompt.ts');
+const { sortFolders } = await loadSource('src/ui/modals/FolderSuggestModal.ts');
 
 const defaultsSource = readFileSync(new URL('../src/defaults.ts', import.meta.url), 'utf8');
 const meFrontmatter = '---\nmx-uid: abcdefghijklmnopqrstuvwx\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\ntitle: Test\ndescription: ""\n---';
@@ -22,14 +23,6 @@ const meNoteBare = `${meFrontmatter}\n\n# Related\n\n- [[Summary Note]]\n`;
 
 // Test 11: folder filtering and sorting
 console.log('Testing folder filtering and sorting...');
-
-function sortFolders(folders) {
-	return [...folders].sort((a, b) => {
-		if (a.isRoot) return -1;
-		if (b.isRoot) return 1;
-		return a.path.localeCompare(b.path);
-	});
-}
 
 const mockFiles = [
 	{ path: 'RootNote.md' },
@@ -60,10 +53,10 @@ assert.strictEqual(ytSubFiltered.length, 1);
 assert.strictEqual(ytSubFiltered[0].path, 'YouTube/2026/Video2.md');
 
 const unsortedFolders = [
-	{ path: 'Resources', isRoot: false },
-	{ path: 'Archive', isRoot: false },
-	{ path: '/', isRoot: true },
-	{ path: 'YouTube', isRoot: false },
+	{ path: 'Resources', isRoot: () => false },
+	{ path: 'Archive', isRoot: () => false },
+	{ path: '/', isRoot: () => true },
+	{ path: 'YouTube', isRoot: () => false },
 ];
 const sorted = sortFolders(unsortedFolders);
 assert.strictEqual(sorted[0].path, '/');
