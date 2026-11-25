@@ -38,7 +38,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
   - Empty classes for names imported only to extend or type-check at runtime (`Plugin`, `Modal`, `Setting`, `TFile`, `TFolder`, `FuzzySuggestModal`, `PluginSettingTab`), plus `normalizePath` matching Obsidian's behavior (forward slashes, no leading/trailing or doubled slashes).
 
 #### [NEW] `tests/helpers/loadSource.mjs`
-- [ ] **TASK-2:** Add `loadSource(srcPath)`, which bundles a `src/` entry point with esbuild (ESM, in memory, `src/*` path alias resolved as in `tsconfig.json`) and redirects every `obsidian` import to `obsidian-stub.mjs` through an esbuild plugin, then imports the result. Bundles are cached by path. This replaces the hand-written esbuild blocks in Tests 42 to 46.
+- [x] **TASK-2:** Add `loadSource(srcPath)`, which bundles a `src/` entry point with esbuild (ESM, in memory, `src/*` path alias resolved as in `tsconfig.json`) and redirects every `obsidian` import to `obsidian-stub.mjs` through an esbuild plugin, then imports the result. Bundles are cached by path. This replaces the hand-written esbuild blocks in Tests 42 to 46.
 
 #### [MODIFY] `tests/test-features.mjs`
 - [ ] **TASK-3:** Switch Tests 42, 44, 45, and 46 to `loadSource()` and remove their inline esbuild setup.
