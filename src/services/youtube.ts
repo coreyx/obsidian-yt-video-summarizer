@@ -9,6 +9,12 @@ import {
 	VideoMetadata,
 } from 'src/types';
 import { requestUrl } from 'obsidian';
+import {
+	findPlaylistIdInDescription,
+	tagsFromDataApiItem,
+	tagsFromPlayerDataKeywords,
+	tagsFromWatchPageHtml,
+} from 'src/utils/youtubeMetadata';
 
 /**
  * Service class for interacting with YouTube videos.
@@ -219,9 +225,7 @@ export class YouTubeService {
 			if (response.status === 200) {
 				const data = JSON.parse(response.text);
 				const item = data.items?.[0];
-				const tags = Array.isArray(item?.snippet?.tags)
-					? item.snippet.tags.filter((t: any) => typeof t === 'string' && t.trim().length > 0)
-					: undefined;
+				const tags = tagsFromDataApiItem(item);
 				const rawDate = item?.snippet?.publishedAt;
 				let publishedAt: string | undefined;
 				if (rawDate) {
@@ -499,31 +503,26 @@ export class YouTubeService {
 		}
 
 		// Strategy 2: Check for playlist links in the video description
-		if (options.description) {
-			const descMatch = options.description.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:playlist\?list=|watch\?[^\s"'\)<>]*list=)([a-zA-Z0-9_-]+)/i);
-			if (descMatch) {
-				const descPlaylistId = descMatch[1];
-				if (!descPlaylistId.startsWith('RD') && descPlaylistId !== 'WL' && descPlaylistId !== 'LL') {
-					const details = await YouTubeService.fetchPlaylistDetails(descPlaylistId, apiKey);
-					let position: number | undefined;
+		const descPlaylistId = findPlaylistIdInDescription(options.description);
+		if (descPlaylistId) {
+			const details = await YouTubeService.fetchPlaylistDetails(descPlaylistId, apiKey);
+			let position: number | undefined;
 
-					if (apiKey) {
-						position = await YouTubeService.fetchVideoPositionInPlaylist(descPlaylistId, options.videoId, apiKey);
-					}
-
-					const title = details.title && details.title.trim().toLowerCase() !== 'playlist'
-						? details.title.trim()
-						: undefined;
-
-					return {
-						id: descPlaylistId,
-						title,
-						url: `https://www.youtube.com/playlist?list=${descPlaylistId}`,
-						index: position,
-						count: details.itemCount,
-					};
-				}
+			if (apiKey) {
+				position = await YouTubeService.fetchVideoPositionInPlaylist(descPlaylistId, options.videoId, apiKey);
 			}
+
+			const title = details.title && details.title.trim().toLowerCase() !== 'playlist'
+				? details.title.trim()
+				: undefined;
+
+			return {
+				id: descPlaylistId,
+				title,
+				url: `https://www.youtube.com/playlist?list=${descPlaylistId}`,
+				index: position,
+				count: details.itemCount,
+			};
 		}
 
 		// Strategy 3: Query channel's playlists via YouTube Data API
@@ -617,12 +616,7 @@ export class YouTubeService {
 
 		let likeCount: number | undefined;
 
-		let tags: string[] = [];
-		if (Array.isArray(playerData.videoDetails?.keywords)) {
-			tags = playerData.videoDetails.keywords.filter(
-				(k: any) => typeof k === 'string' && k.trim().length > 0
-			);
-		}
+		let tags: string[] = tagsFromPlayerDataKeywords(playerData);
 
 		if (youtubeApiKey && youtubeApiKey.trim().length > 0) {
 			try {
@@ -665,26 +659,7 @@ export class YouTubeService {
 					}
 
 					if (tags.length === 0) {
-						const jsonMatch = html.match(/"keywords":\s*(\[[^\]]+\])/);
-						if (jsonMatch) {
-							try {
-								const parsed = JSON.parse(jsonMatch[1]);
-								if (Array.isArray(parsed)) {
-									tags = parsed.filter((k: any) => typeof k === 'string' && k.trim().length > 0);
-								}
-							} catch {
-								// ignore json parse error
-							}
-						}
-						if (tags.length === 0) {
-							const metaMatch = html.match(/<meta\s+name="keywords"\s+content="([^"]+)"/i);
-							if (metaMatch) {
-								tags = metaMatch[1]
-									.split(',')
-									.map((t) => t.trim())
-									.filter(Boolean);
-							}
-						}
+						tags = tagsFromWatchPageHtml(html);
 					}
 
 					if (!publishedAt) {

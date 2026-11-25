@@ -23,7 +23,6 @@ import {
 	buildMediaExtendedNote,
 	convertDescriptionTimestampsToMediaExtended,
 	convertTimestampsToLinks,
-	deduplicateTags,
 	ensureSectionOrder,
 	extractFrontmatterTags,
 	extractVideoIdFromUrl,
@@ -50,6 +49,7 @@ import {
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData } from './utils/vaultTags';
+import { collectVideoTags } from './utils/youtubeMetadata';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
 
@@ -859,17 +859,15 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			? rawSummary
 			: stripWikilinksFromTechnicalTerms(rawSummary);
 
-		// Extract tags from title & description, YouTube Data API/metadata, and/or generate topic tags
-		const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-			? [
-					...extractTagsFromText(transcript.title),
-					...extractTagsFromText(transcript.description || ''),
-			  ]
-			: [];
-
-		const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
-			? transcript.tags
-			: [];
+		// Tags from title & description hashtags and YouTube tags; AI topic tags are added below
+		const tagSources = {
+			title: transcript.title,
+			description: transcript.description,
+			youtubeTags: transcript.tags,
+			detectHashtags: this.settings.getDetectTagsInDescriptionAndTitle(),
+			includeYouTubeTags: this.settings.getExtractYouTubeDataApiTags(),
+		};
+		const sourceTags = collectVideoTags(tagSources);
 
 		let topicTags: string[] = [];
 		if (this.settings.getAddTopicsAsTags() && this.provider?.generateTopics) {
@@ -877,7 +875,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				progress?.setStage(`Generating tags with ${this.getActiveModelLabel()}`);
 				const vaultTagData = await this.rebuildVaultTagCache();
 				topicTags = await this.provider.generateTopics(summary, {
-					existingTags: [...detectedTags, ...ytDataApiTags],
+					existingTags: sourceTags,
 					vaultTags: vaultTagData.tags,
 					groupPrefixes: vaultTagData.groupPrefixes,
 					compressedContext: vaultTagData.compressedContext,
@@ -888,7 +886,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			}
 		}
 
-		const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags, ...topicTags]);
+		const allTags = collectVideoTags({ ...tagSources, topicTags });
 		const inlineTags = this.settings.getAddInlineTags() ? allTags : undefined;
 		const frontmatterTags = this.settings.getAddTagsToFrontmatter() ? allTags : undefined;
 
@@ -1910,19 +1908,14 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 			const thumbnailUrl = await YouTubeService.getAvailableThumbnailUrl(transcript.videoId);
 
-			// Extract tags from title & description and/or YouTube Data API metadata if enabled
-			const detectedTags: string[] = this.settings.getDetectTagsInDescriptionAndTitle()
-				? [
-						...extractTagsFromText(transcript.title),
-						...extractTagsFromText(transcript.description || ''),
-				  ]
-				: [];
-
-			const ytDataApiTags: string[] = (this.settings.getExtractYouTubeDataApiTags() && transcript.tags)
-				? transcript.tags
-				: [];
-
-			const allTags = deduplicateTags([...detectedTags, ...ytDataApiTags]);
+			// Tags from title & description hashtags and YouTube tags, if enabled
+			const allTags = collectVideoTags({
+				title: transcript.title,
+				description: transcript.description,
+				youtubeTags: transcript.tags,
+				detectHashtags: this.settings.getDetectTagsInDescriptionAndTitle(),
+				includeYouTubeTags: this.settings.getExtractYouTubeDataApiTags(),
+			});
 
 			// Optionally rename note based on video title
 			if (this.settings.getSetNoteTitleFromVideo() && view?.file) {
