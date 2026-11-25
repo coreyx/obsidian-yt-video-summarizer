@@ -2,16 +2,12 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-// Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
+const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
 const { buildTopicGenerationPrompt, buildVaultTagData, compressVaultTags, extractGroupPrefixes } = await loadSource('src/utils/vaultTags.ts');
 
-const { addTagsToNoteContent, deduplicateTags, extractFrontmatterTags, mergeYamlBlocks, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
+// Test 28: Vault tag cache extraction, compression, group prefix detection, prompt building, and grouped tag deduplication
 
 console.log('Testing vault tag caching, AI topic tagging prompt, and grouped tag deduplication...');
-
-
-
-
 
 // 28.1: extractGroupPrefixesHelper tests
 const mockTagsWithPrefixes = [

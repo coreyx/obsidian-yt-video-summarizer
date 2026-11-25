@@ -2,8 +2,9 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-// Test 17: Transcript formatting and timestamp links
 const { formatTimestampParts, formatTranscript } = await loadSource('src/utils/frontmatter.ts');
+
+// Test 17: Transcript formatting and timestamp links
 
 console.log('Testing transcript formatting and timestamp links...');
 

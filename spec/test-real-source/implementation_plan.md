@@ -65,7 +65,7 @@ None at this time. (Decided: split the suite into one file per area, TASK-4.)
 ### YouTube service (public static methods, run against the `requestUrl` stand-in)
 
 #### [MODIFY] `tests/youtube.test.mjs`
-- [ ] **TASK-7:** Test the real `YouTubeService` static methods instead of copies, and delete the copies: `decodeHTML` (Test 5), `getCoverUrl` and `getAvailableThumbnailUrl` (Test 19, with `requestUrl` answering 200 or 404 per thumbnail URL), `extractPlaylistId` and `extractPlaylistIndex` (Test 21), `formatAspectRatio` and `getAspectRatioFromPlayerData` (Test 33).
+- [x] **TASK-7:** Test the real `YouTubeService` static methods instead of copies, and delete the copies: `decodeHTML` (Test 5), `getCoverUrl` and `getAvailableThumbnailUrl` (Test 19, with `requestUrl` answering 200 or 404 per thumbnail URL), `extractPlaylistId` and `extractPlaylistIndex` (Test 21), `formatAspectRatio` and `getAspectRatioFromPlayerData` (Test 33).
 
 #### [NEW] `src/utils/youtubeMetadata.ts`
 - [ ] **TASK-8:** Move the tag-extraction and playlist-from-description parsing that is written inline in `youtube.ts` into exported pure functions, with TSDoc: tags from a YouTube Data API response body, tags from player-data `keywords`, tags from the HTML `<meta name="keywords">` fallback, merging all tag sources, and finding a playlist link/title in a video description. `YouTubeService` calls them in place of the inline code.

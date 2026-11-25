@@ -2,8 +2,9 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-// Test 6: Topics parsing from LLM response
 const { getLMStudioNativeModelsUrl, normalizeOpenAIBaseUrl, parseLMStudioModels } = await loadSource('src/services/lmStudio.ts');
+
+// Test 6: Topics parsing from LLM response
 
 function parseTopics(text) {
 	return Array.from(new Set(
@@ -78,9 +79,6 @@ console.log('✓ OpenAI parameter construction passed');
 
 // Test 25: OpenAI-compatible URL normalization, LM Studio model parsing & provider sync
 console.log('Testing OpenAI-compatible URL normalization and LM Studio model parsing...');
-
-
-
 
 function testSyncLMStudioProvider(settings, url, models) {
 	const normalizedUrl = normalizeOpenAIBaseUrl(url);

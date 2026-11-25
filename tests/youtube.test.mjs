@@ -2,41 +2,19 @@
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
 
-// Test 5: decodeHTML with preserveNewlines
+const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { buildFrontmatter, deduplicateTags, extractTagsFromText, mergeFrontmatter, sanitizeTag } = await loadSource('src/utils/frontmatter.ts');
 
-function decodeHTML(text, preserveNewlines = false) {
-	const decoded = text
-		.replace(/&#39;/g, "'")
-		.replace(/&amp;/g, '&')
-		.replace(/&quot;/g, '"')
-		.replace(/&apos;/g, "'")
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
-
-	if (preserveNewlines) {
-		return decoded
-			.replace(/\\n/g, '\n')
-			.replace(/\r\n/g, '\n')
-			.replace(/\r/g, '\n')
-			.trim();
-	}
-
-	return decoded
-		.replace(/\\n/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
-}
+// Test 5: decodeHTML with preserveNewlines
 
 console.log('Testing decodeHTML...');
 const descWithNewlines = 'Line 1 &amp; info\\nLine 2 with links: https://example.com\\n\\nLine 3 &#39;end&#39;';
-const decodedPreserved = decodeHTML(descWithNewlines, true);
+const decodedPreserved = YouTubeService.decodeHTML(descWithNewlines, true);
 assert.strictEqual(
 	decodedPreserved,
 	"Line 1 & info\nLine 2 with links: https://example.com\n\nLine 3 'end'"
 );
-const decodedCollapsed = decodeHTML(descWithNewlines, false);
+const decodedCollapsed = YouTubeService.decodeHTML(descWithNewlines, false);
 assert.strictEqual(
 	decodedCollapsed,
 	"Line 1 & info Line 2 with links: https://example.com Line 3 'end'"
@@ -178,31 +156,6 @@ console.log('✓ YouTube Data API and metadata tags extraction passed');
 console.log('Testing creator playlist discovery, frontmatter, and body formatting...');
 
 // Helper functions mirroring YouTubeService and frontmatter methods
-function extractPlaylistIdHelper(url) {
-	if (!url) return null;
-	try {
-		const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
-		if (match) {
-			const id = match[1];
-			if (id.startsWith('RD') || id === 'WL' || id === 'LL') {
-				return null;
-			}
-			return id;
-		}
-	} catch {}
-	return null;
-}
-
-function extractPlaylistIndexHelper(url) {
-	if (!url) return undefined;
-	const match = url.match(/[?&]index=(\d+)/);
-	if (match) {
-		const idx = parseInt(match[1], 10);
-		if (!isNaN(idx) && idx > 0) return idx;
-	}
-	return undefined;
-}
-
 function extractPlaylistFromDescHelper(desc) {
 	if (!desc) return null;
 	const match = desc.match(/https?:\/\/(?:www\.)?youtube\.com\/(?:playlist\?list=|watch\?[^\s"'\)<>]*list=)([a-zA-Z0-9_-]+)/i);
@@ -231,13 +184,13 @@ function formatMetaLine(author, channelUrl, videoUrl, playlist, discoverPlaylist
 
 // Case 1: Extract playlist ID & index from video URL
 const urlWithPlaylist = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s&index=4';
-assert.strictEqual(extractPlaylistIdHelper(urlWithPlaylist), 'PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s');
-assert.strictEqual(extractPlaylistIndexHelper(urlWithPlaylist), 4);
+assert.strictEqual(YouTubeService.extractPlaylistId(urlWithPlaylist), 'PLlaN88a7xkmq7R8d1b1R5U0x9O_tC9_1s');
+assert.strictEqual(YouTubeService.extractPlaylistIndex(urlWithPlaylist), 4);
 
 // Case 2: Ignore YouTube Mixes and system playlists
-assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ'), null);
-assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=WL'), null);
-assert.strictEqual(extractPlaylistIdHelper('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=LL'), null);
+assert.strictEqual(YouTubeService.extractPlaylistId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ'), null);
+assert.strictEqual(YouTubeService.extractPlaylistId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=WL'), null);
+assert.strictEqual(YouTubeService.extractPlaylistId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=LL'), null);
 
 // Case 3: Extract playlist link from description
 const descWithPlaylist = 'Check out the complete series here:\nhttps://www.youtube.com/playlist?list=PLabc1234567890xyz\nSubscribe!';

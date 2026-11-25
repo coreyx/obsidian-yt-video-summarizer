@@ -1,12 +1,14 @@
 // Media Extended companion notes: frontmatter, covers, sections, Related links, detection, and plugin settings.
 import assert from 'node:assert';
-import { loadSource } from './helpers/loadSource.mjs';
 import { readFileSync } from 'node:fs';
+import { loadSource } from './helpers/loadSource.mjs';
+import { setRequestUrlHandler } from './helpers/obsidian-stub.mjs';
 
-// Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
+const { YouTubeService } = await loadSource('src/services/youtube.ts');
+const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 const { resolveMediaExtendedPluginStatus } = await loadSource('src/utils/mediaExtendedPlugin.ts');
 
-const { addRelatedLink, buildCoverEmbed, buildMediaExtendedFrontmatter, buildMediaExtendedNote, convertDescriptionTimestampsToMediaExtended, convertDescriptionTimestampsToYouTube, convertTimestampsToLinks, ensureSectionOrder, extractVideoIdFromUrl, filterFilesByFolderPaths, findMarkdownSection, formatTranscript, frontmatterMatchesVideo, generateMxUid, getMediaExtendedCoverUrl, hasRelatedMediaExtendedLink, isMediaExtendedCompanionNote, keepExtraFrontmatter, mergeFrontmatter, mergeYamlBlocks, parseTimestampToMediaExtendedUrl, parseTimestampToUrl, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
+// Test 19: Media Extended companion notes, frontmatter, and bidirectional linking
 
 console.log('Testing Media Extended companion notes and bidirectional linking...');
 
@@ -49,34 +51,37 @@ const defaultCoverFm = buildMediaExtendedFrontmatter({ videoId: 'z02Y-1OvWSM', t
 assert(defaultCoverFm.includes('cover: "https://i.ytimg.com/vi_webp/z02Y-1OvWSM/maxresdefault.webp"'));
 assert(!defaultCoverFm.includes('[['));
 
-// getCoverUrl: falls back to hqdefault when maxres is missing (404); keeps maxres on success or network error
-async function getCoverUrlHelper(videoId, headStatus) {
-	const maxres = `https://i.ytimg.com/vi_webp/${videoId}/maxresdefault.webp`;
+// Answers the HEAD request YouTubeService makes for a thumbnail with the status `respond()` returns (or
+// its error), checks that one HEAD request went to the max-resolution image, and returns the chosen URL
+async function withHeadStatus(respond, run) {
+	const requests = [];
+	setRequestUrlHandler(async (params) => {
+		requests.push(params);
+		return { status: await respond() };
+	});
+	const originalWarn = console.warn;
+	console.warn = () => {}; // the offline case logs a warning by design
 	try {
-		const status = await headStatus(maxres);
-		if (status === 404) return `https://i.ytimg.com/vi_webp/${videoId}/hqdefault.webp`;
-	} catch {
-		// keep maxres
+		const url = await run();
+		assert.strictEqual(requests.length, 1);
+		assert.strictEqual(requests[0].method, 'HEAD');
+		assert.match(requests[0].url, /maxresdefault\.(webp|jpg)$/);
+		return url;
+	} finally {
+		console.warn = originalWarn;
+		setRequestUrlHandler(null);
 	}
-	return maxres;
 }
-assert.strictEqual(await getCoverUrlHelper('dQw4w9WgXcQ', async () => 200), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
-assert.strictEqual(await getCoverUrlHelper('jNQXAC9IVRw', async () => 404), 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp');
-assert.strictEqual(await getCoverUrlHelper('dQw4w9WgXcQ', async () => { throw new Error('offline'); }), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+
+// getCoverUrl: falls back to hqdefault when maxres is missing (404); keeps maxres on success or network error
+assert.strictEqual(await withHeadStatus(async () => 200, () => YouTubeService.getCoverUrl('dQw4w9WgXcQ')), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
+assert.strictEqual(await withHeadStatus(async () => 404, () => YouTubeService.getCoverUrl('jNQXAC9IVRw')), 'https://i.ytimg.com/vi_webp/jNQXAC9IVRw/hqdefault.webp');
+assert.strictEqual(await withHeadStatus(async () => { throw new Error('offline'); }, () => YouTubeService.getCoverUrl('dQw4w9WgXcQ')), 'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp');
 
 // getAvailableThumbnailUrl (video summary notes): same fallback on the img.youtube.com JPEG thumbnails
-async function getAvailableThumbnailUrlHelper(videoId, headStatus) {
-	const maxres = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-	try {
-		if ((await headStatus(maxres)) === 404) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-	} catch {
-		// keep maxres
-	}
-	return maxres;
-}
-assert.strictEqual(await getAvailableThumbnailUrlHelper('dQw4w9WgXcQ', async () => 200), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
-assert.strictEqual(await getAvailableThumbnailUrlHelper('jNQXAC9IVRw', async () => 404), 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg');
-assert.strictEqual(await getAvailableThumbnailUrlHelper('dQw4w9WgXcQ', async () => { throw new Error('offline'); }), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
+assert.strictEqual(await withHeadStatus(async () => 200, () => YouTubeService.getAvailableThumbnailUrl('dQw4w9WgXcQ')), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
+assert.strictEqual(await withHeadStatus(async () => 404, () => YouTubeService.getAvailableThumbnailUrl('jNQXAC9IVRw')), 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg');
+assert.strictEqual(await withHeadStatus(async () => { throw new Error('offline'); }, () => YouTubeService.getAvailableThumbnailUrl('dQw4w9WgXcQ')), 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg');
 assert(sampleFm.includes('aspect_ratio: 427 / 240'));
 
 // Case 3: Title with special characters is properly quoted

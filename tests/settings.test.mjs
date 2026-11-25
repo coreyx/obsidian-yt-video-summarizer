@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 
+const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await loadSource('src/defaults.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 
 // Test 12: Gemini model retirement and migration
@@ -196,8 +197,6 @@ console.log('✓ Summary prompt Media Extended checkbox override resolution pass
 
 // Test 45: "Actionable insights" section in the default prompt, and upgrading saved default prompts (real defaults.ts)
 console.log('Testing Actionable insights prompt section and saved prompt upgrade...');
-
-const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await loadSource('src/defaults.ts');
 
 // 45.1: The section sits between Technical terms and Conclusion in the output structure
 const outputStructure = DEFAULT_PROMPT.slice(DEFAULT_PROMPT.indexOf('## Output Structure'));

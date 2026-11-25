@@ -3,9 +3,12 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 
-// Test 1: sanitizeFileName
-
+const { YouTubeService } = await loadSource('src/services/youtube.ts');
 const { buildFrontmatter, buildMediaExtendedFrontmatter, deduplicateTags, extractTagsFromText, extractYouTubeUrlFromNote, getVideoNoteKind, isBlankNoteForSummary, mergeFrontmatter, mergeYamlBlocks, refreshMediaExtendedNoteContent, sanitizeFileName, sanitizeTag, videoStatsFrontmatter } = await loadSource('src/utils/frontmatter.ts');
+const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
+const videoTopics = await loadSource('src/utils/videoTopics.ts');
+
+// Test 1: sanitizeFileName
 
 console.log('Testing sanitizeFileName...');
 assert.strictEqual(
@@ -220,32 +223,13 @@ console.log('✓ YouTube description in frontmatter and tag deduplication passed
 // Test 33: Video stats frontmatter (duration, published_at, view_count, like_count, aspect_ratio)
 console.log('Testing video stats frontmatter and aspect ratio detection...');
 
-function formatAspectRatioHelper(width, height) {
-	const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
-	const divisor = gcd(Math.round(width), Math.round(height)) || 1;
-	return `${Math.round(width) / divisor} / ${Math.round(height) / divisor}`;
-}
-
-function getAspectRatioFromPlayerDataHelper(playerData) {
-	const formats = [...(playerData?.streamingData?.formats ?? []), ...(playerData?.streamingData?.adaptiveFormats ?? [])];
-	let best;
-	for (const format of formats) {
-		const width = Number(format?.width);
-		const height = Number(format?.height);
-		if (width > 0 && height > 0 && (!best || width * height > best.width * best.height)) {
-			best = { width, height };
-		}
-	}
-	return best ? formatAspectRatioHelper(best.width, best.height) : undefined;
-}
-
 // 33.1: Aspect ratio reduction and detection (largest format wins; dimensions from real player responses)
-assert.strictEqual(formatAspectRatioHelper(3840, 2160), '16 / 9');
-assert.strictEqual(formatAspectRatioHelper(320, 240), '4 / 3');
-assert.strictEqual(formatAspectRatioHelper(1080, 1920), '9 / 16');
-assert.strictEqual(formatAspectRatioHelper(1280, 534), '640 / 267');
+assert.strictEqual(YouTubeService.formatAspectRatio(3840, 2160), '16 / 9');
+assert.strictEqual(YouTubeService.formatAspectRatio(320, 240), '4 / 3');
+assert.strictEqual(YouTubeService.formatAspectRatio(1080, 1920), '9 / 16');
+assert.strictEqual(YouTubeService.formatAspectRatio(1280, 534), '640 / 267');
 assert.strictEqual(
-	getAspectRatioFromPlayerDataHelper({
+	YouTubeService.getAspectRatioFromPlayerData({
 		streamingData: {
 			formats: [{ width: 640, height: 360 }],
 			adaptiveFormats: [{ width: 3840, height: 2160 }, { mimeType: 'audio/mp4' }, { width: 1280, height: 720 }],
@@ -253,9 +237,9 @@ assert.strictEqual(
 	}),
 	'16 / 9'
 );
-assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { adaptiveFormats: [{ width: 1080, height: 1920 }] } }), '9 / 16');
-assert.strictEqual(getAspectRatioFromPlayerDataHelper({}), undefined);
-assert.strictEqual(getAspectRatioFromPlayerDataHelper({ streamingData: { formats: [{ mimeType: 'audio/webm' }] } }), undefined);
+assert.strictEqual(YouTubeService.getAspectRatioFromPlayerData({ streamingData: { adaptiveFormats: [{ width: 1080, height: 1920 }] } }), '9 / 16');
+assert.strictEqual(YouTubeService.getAspectRatioFromPlayerData({}), undefined);
+assert.strictEqual(YouTubeService.getAspectRatioFromPlayerData({ streamingData: { formats: [{ mimeType: 'audio/webm' }] } }), undefined);
 
 // 33.2: Metadata mapping and frontmatter lines in Media Extended-compatible formats (through buildFrontmatter)
 const statsBase = { title: 'T', channel_name: 'C', channel_username: '', channel_url: 'https://www.youtube.com/@c', video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbnail: 'thumb', thumbnail_text: '' };
@@ -390,7 +374,6 @@ console.log('✓ Blank-note detection for Untitled notes with tags-only frontmat
 console.log('Testing watch_later and favorite frontmatter properties...');
 
 // Runs against the real src/utils/frontmatter.ts
-const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 
 const flagData = {
 	title: 'Flag Test',
@@ -450,8 +433,6 @@ console.log('✓ watch_later and favorite frontmatter properties passed');
 
 // Test 46: video_url follows title, and the AI-inferred `topic` list property (real frontmatter.ts / videoTopics.ts)
 console.log('Testing video_url order and the topic frontmatter property...');
-
-const videoTopics = await loadSource('src/utils/videoTopics.ts');
 
 const topicData = {
 	title: 'Topic Test',

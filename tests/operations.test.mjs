@@ -4,11 +4,12 @@ import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/loadSource.mjs';
 import { notices, resetNotices } from './helpers/obsidian-stub.mjs';
 
-// Test 29: Batch operation progress tracking, item logging, and markdown reporting
 const { formatBatchReportAsMarkdown } = await loadSource('src/utils/BatchProgressTracker.ts');
+const progressModule = await loadSource('src/utils/OperationProgress.ts');
+
+// Test 29: Batch operation progress tracking, item logging, and markdown reporting
 
 console.log('Testing batch operation progress tracking, item logging, and markdown reporting...');
-
 
 class MockBatchProgressTracker {
 	constructor(host, operationName, scope, total) {
@@ -176,7 +177,6 @@ console.log('✓ Batch operation progress tracking, item logging, and markdown r
 console.log('Testing live operation status...');
 
 // The real module, with Notice recorded by the shared obsidian stand-in
-const progressModule = await loadSource('src/utils/OperationProgress.ts');
 const { OperationProgress, LiveStatus, formatElapsed, shortenTitle, formatOperationStatus, describeFailedStage, ERROR_NOTICE_MS } = progressModule;
 
 // 44.1: Elapsed time and title formatting

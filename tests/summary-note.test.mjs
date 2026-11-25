@@ -1,7 +1,7 @@
 // Video summary notes: body rendering, placement and paths, prompt options, folder filtering, and description/link updates.
 import assert from 'node:assert';
-import { loadSource } from './helpers/loadSource.mjs';
 import { readFileSync } from 'node:fs';
+import { loadSource } from './helpers/loadSource.mjs';
 
 const { convertTimestampsToLinks, filterFilesByFolder, filterFilesByFolderPaths, findMarkdownSection, getVideoNoteKind, stripWikilinksFromTechnicalTerms, upsertMarkdownSection } = await loadSource('src/utils/frontmatter.ts');
 
