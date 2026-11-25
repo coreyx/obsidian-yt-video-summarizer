@@ -1,4 +1,6 @@
 import assert from 'node:assert';
+import { loadSource } from './helpers/loadSource.mjs';
+import { notices, resetNotices } from './helpers/obsidian-stub.mjs';
 
 // Test 1: sanitizeFileName
 function sanitizeFileName(name) {
@@ -3956,20 +3958,8 @@ console.log('✓ Summary link update against unsaved editor content passed');
 // Test 42: watch_later / favorite checkbox properties in video summary frontmatter
 console.log('Testing watch_later and favorite frontmatter properties...');
 
-// Runs against the real src/utils/frontmatter.ts (its obsidian import is type-only)
-const { build: esbuildBuild } = await import('esbuild');
-const { fileURLToPath } = await import('node:url');
-const frontmatterBundle = await esbuildBuild({
-	entryPoints: [fileURLToPath(new URL('../src/utils/frontmatter.ts', import.meta.url))],
-	bundle: true,
-	format: 'esm',
-	write: false,
-	external: ['obsidian'],
-	logLevel: 'silent',
-});
-const realFrontmatter = await import(
-	`data:text/javascript;base64,${Buffer.from(frontmatterBundle.outputFiles[0].text).toString('base64')}`
-);
+// Runs against the real src/utils/frontmatter.ts
+const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 
 const flagData = {
 	title: 'Flag Test',
@@ -4030,32 +4020,8 @@ console.log('✓ watch_later and favorite frontmatter properties passed');
 // Test 44: Live operation status — persistent notice, status bar, stages, and outcomes (real OperationProgress.ts)
 console.log('Testing live operation status...');
 
-// Bundle the real module with a recording stand-in for Obsidian's Notice
-globalThis.__notices = [];
-const progressBundle = await esbuildBuild({
-	entryPoints: [fileURLToPath(new URL('../src/utils/OperationProgress.ts', import.meta.url))],
-	bundle: true,
-	format: 'esm',
-	write: false,
-	logLevel: 'silent',
-	plugins: [{
-		name: 'obsidian-stub',
-		setup(build) {
-			build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
-			build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-				loader: 'js',
-				contents: `export class Notice {
-					constructor(message, duration) { this.message = message; this.duration = duration; this.hidden = false; globalThis.__notices.push(this); }
-					setMessage(message) { this.message = message; }
-					hide() { this.hidden = true; }
-				}`,
-			}));
-		},
-	}],
-});
-const progressModule = await import(
-	`data:text/javascript;base64,${Buffer.from(progressBundle.outputFiles[0].text).toString('base64')}`
-);
+// The real module, with Notice recorded by the shared obsidian stand-in
+const progressModule = await loadSource('src/utils/OperationProgress.ts');
 const { OperationProgress, LiveStatus, formatElapsed, shortenTitle, formatOperationStatus, describeFailedStage, ERROR_NOTICE_MS } = progressModule;
 
 // 44.1: Elapsed time and title formatting
@@ -4100,17 +4066,17 @@ const makeStatusHost = () => {
 
 try {
 	// 44.2: Nothing is shown until the first stage, so a failed validation never flashes a status
-	globalThis.__notices.length = 0;
+	resetNotices();
 	const host = makeStatusHost();
 	const progress = new OperationProgress(host, 'Summarizing video');
-	assert.strictEqual(globalThis.__notices.length, 0);
+	assert.strictEqual(notices.length, 0);
 	assert.strictEqual(host.items.length, 0);
 	assert.match(progress.describe(), /^Summarizing video \(\d+:\d\d\)$/);
 
 	// 44.3: The first stage shows one persistent notice and one status bar item
 	progress.setStage('Fetching transcript');
-	assert.strictEqual(globalThis.__notices.length, 1);
-	const liveNotice = globalThis.__notices[0];
+	assert.strictEqual(notices.length, 1);
+	const liveNotice = notices[0];
 	assert.strictEqual(liveNotice.duration, 0, 'the live notice must not time out');
 	assert.match(liveNotice.message, /^Summarizing video · Fetching transcript… 0:0\d$/);
 	assert.strictEqual(host.items.length, 1);
@@ -4120,7 +4086,7 @@ try {
 	// 44.4: Later stages and the label update the same notice in place
 	progress.setLabel('Summarizing "My Video"');
 	progress.setStage('Generating summary with qwen');
-	assert.strictEqual(globalThis.__notices.length, 1);
+	assert.strictEqual(notices.length, 1);
 	assert.strictEqual(host.items.length, 1);
 	assert.match(liveNotice.message, /^Summarizing "My Video" · Generating summary with qwen… 0:0\d$/);
 	intervals[0]();
@@ -4131,9 +4097,9 @@ try {
 	progress.done('Summary saved to "My Video"');
 	assert.strictEqual(liveNotice.hidden, true);
 	assert.deepStrictEqual(clearedIntervals, [1]);
-	assert.strictEqual(globalThis.__notices.length, 2);
-	assert.strictEqual(globalThis.__notices[1].message, 'Summary saved to "My Video"');
-	assert.strictEqual(globalThis.__notices[1].duration, undefined);
+	assert.strictEqual(notices.length, 2);
+	assert.strictEqual(notices[1].message, 'Summary saved to "My Video"');
+	assert.strictEqual(notices[1].duration, undefined);
 	assert.strictEqual(host.items[0].text, 'YT: Done');
 	assert.strictEqual(host.items[0].removed, false);
 	lingerCallbacks.shift()();
@@ -4143,48 +4109,48 @@ try {
 	progress.stop();
 	progress.fail('late');
 	progress.setStage('Too late');
-	assert.strictEqual(globalThis.__notices.length, 3, 'only the explicit fail() adds a notice');
+	assert.strictEqual(notices.length, 3, 'only the explicit fail() adds a notice');
 	assert.strictEqual(host.items.length, 1);
 
 	// 44.7: Failure names the stage and stays on screen longer
-	globalThis.__notices.length = 0;
+	resetNotices();
 	const failHost = makeStatusHost();
 	const failing = new OperationProgress(failHost, 'Summarizing video');
 	failing.setStage('Generating summary with qwen');
 	failing.fail('Error: Connection error.');
-	assert.strictEqual(globalThis.__notices[0].hidden, true);
-	assert.strictEqual(globalThis.__notices[1].message, 'Error: Connection error. (while generating summary with qwen)');
-	assert.strictEqual(globalThis.__notices[1].duration, ERROR_NOTICE_MS);
+	assert.strictEqual(notices[0].hidden, true);
+	assert.strictEqual(notices[1].message, 'Error: Connection error. (while generating summary with qwen)');
+	assert.strictEqual(notices[1].duration, ERROR_NOTICE_MS);
 	assert(ERROR_NOTICE_MS >= 10000);
 	assert.strictEqual(failHost.items[0].text, 'YT: Failed');
 
 	// 44.8: stop() clears everything silently, including the status bar item
-	globalThis.__notices.length = 0;
+	resetNotices();
 	const stopHost = makeStatusHost();
 	const stopped = new OperationProgress(stopHost, 'Tagging "Note"');
 	stopped.setStage('Fetching tags from YouTube');
 	stopped.stop();
-	assert.strictEqual(globalThis.__notices.length, 1);
-	assert.strictEqual(globalThis.__notices[0].hidden, true);
+	assert.strictEqual(notices.length, 1);
+	assert.strictEqual(notices[0].hidden, true);
 	assert.strictEqual(stopHost.items[0].removed, true);
 
 	// 44.9: Works without a status bar (mobile)
-	globalThis.__notices.length = 0;
+	resetNotices();
 	const mobile = new OperationProgress({}, 'Getting transcript');
 	mobile.setStage('Fetching transcript');
 	mobile.done('Transcript retrieved successfully!');
-	assert.strictEqual(globalThis.__notices.length, 2);
+	assert.strictEqual(notices.length, 2);
 
 	// 44.10: LiveStatus (shared with batch operations) updates both displays in place
-	globalThis.__notices.length = 0;
+	resetNotices();
 	const batchHost = makeStatusHost();
 	const live = new LiveStatus(batchHost, '[0/3] Starting...', 'YT: [0/3] Starting...');
 	live.set('[1/3] (33%) Refresh video metadata: A', 'YT: [1/3] 33%');
-	assert.strictEqual(globalThis.__notices.length, 1);
-	assert.strictEqual(globalThis.__notices[0].message, '[1/3] (33%) Refresh video metadata: A');
+	assert.strictEqual(notices.length, 1);
+	assert.strictEqual(notices[0].message, '[1/3] (33%) Refresh video metadata: A');
 	assert.strictEqual(batchHost.items[0].text, 'YT: [1/3] 33%');
 	live.end('YT: Done (3/3)');
-	assert.strictEqual(globalThis.__notices[0].hidden, true);
+	assert.strictEqual(notices[0].hidden, true);
 	assert.strictEqual(batchHost.items[0].text, 'YT: Done (3/3)');
 } finally {
 	globalThis.setTimeout = realSetTimeout;
@@ -4210,16 +4176,7 @@ console.log('✓ Live operation status passed');
 // Test 45: "Actionable insights" section in the default prompt, and upgrading saved default prompts (real defaults.ts)
 console.log('Testing Actionable insights prompt section and saved prompt upgrade...');
 
-const defaultsBundle = await esbuildBuild({
-	entryPoints: [fileURLToPath(new URL('../src/defaults.ts', import.meta.url))],
-	bundle: true,
-	format: 'esm',
-	write: false,
-	logLevel: 'silent',
-});
-const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await import(
-	`data:text/javascript;base64,${Buffer.from(defaultsBundle.outputFiles[0].text).toString('base64')}`
-);
+const { DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPTS, upgradeSavedPrompt } = await loadSource('src/defaults.ts');
 
 // 45.1: The section sits between Technical terms and Conclusion in the output structure
 const outputStructure = DEFAULT_PROMPT.slice(DEFAULT_PROMPT.indexOf('## Output Structure'));
@@ -4277,16 +4234,7 @@ console.log('✓ Actionable insights prompt section and saved prompt upgrade pas
 // Test 46: video_url follows title, and the AI-inferred `topic` list property (real frontmatter.ts / videoTopics.ts)
 console.log('Testing video_url order and the topic frontmatter property...');
 
-const topicsBundle = await esbuildBuild({
-	entryPoints: [fileURLToPath(new URL('../src/utils/videoTopics.ts', import.meta.url))],
-	bundle: true,
-	format: 'esm',
-	write: false,
-	logLevel: 'silent',
-});
-const videoTopics = await import(
-	`data:text/javascript;base64,${Buffer.from(topicsBundle.outputFiles[0].text).toString('base64')}`
-);
+const videoTopics = await loadSource('src/utils/videoTopics.ts');
 
 const topicData = {
 	title: 'Topic Test',
