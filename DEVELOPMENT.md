@@ -258,10 +258,10 @@ Checks that no test file defines a copy of an exported `src/` function, that the
 ### Test files
 | File | Covers (test numbers) |
 |---|---|
-| `frontmatter.test.mjs` | Sanitizing (1, 2), building and merging frontmatter (3, 4, 10), hashtags (7), YouTube URL detection (8), description frontmatter and tag deduplication (20), video stats (33), metadata refresh and YAML block merging (34), blank-note detection (36), `watch_later` / `favorite` (42), `video_url` order and `topic` (46) |
+| `frontmatter.test.mjs` | Sanitizing (1, 2), building and merging frontmatter (3, 4, 10), hashtags (7), YouTube URL detection (8), description frontmatter and tag deduplication (20), video stats (33), metadata refresh and YAML block merging (34), blank-note detection (36), `watch_later` / `favorite` (42), `video_url` order and `topic` (46), `published_at` date and time and `created` (48) |
 | `timestamps.test.mjs` | Timestamp parts, links and transcript formatting, transcript dump in summaries (17) |
 | `media-extended.test.mjs` | Companion notes and covers (19, 35), missing-companion detection (22), descriptions and timestamps (26, 26b), adding Description / Transcript sections (32), companion notes in either direction (39), plugin detection and settings layout (40) |
-| `youtube.test.mjs` | HTML decoding (5), YouTube tags (18), playlist discovery and the note meta line (21) |
+| `youtube.test.mjs` | HTML decoding (5), YouTube tags (18), playlist discovery and the note meta line (21), publish date and time (47) |
 | `tags.test.mjs` | Vault tag cache, AI tag prompt and grouped deduplication (28), Tag with AI / Tag with YouTube (38) |
 | `providers.test.mjs` | Topic tag parsing (6), OpenAI request settings and `max_tokens` fallback (14), LM Studio URLs, model parsing and provider sync (25) |
 | `settings.test.mjs` | Model retirement on start-up (12, 13), per-run Media Extended options (24), default prompt upgrade (45) |

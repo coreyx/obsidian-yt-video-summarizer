@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `created` frontmatter property: the local date and time a video summary note was summarized and saved (e.g. `2026-11-24T18:45:12`), written by summaries and the transcript command. A note that already has `created` keeps its value, and *Refresh video metadata* never adds or changes it.
+
+### Changed
+
+- `published_at` now includes the time the video was published, converted to your local time (e.g. `2009-10-24T23:57:33`), in both video summary notes and Media Extended notes. YouTube provides the time in every source the plugin reads; it was being cut off. Run *Refresh video metadata* to update existing notes. Obsidian keeps one type per property name across the vault, so if `published_at` is already set to **Date**, change it to **Date & time** to see the time.
+
+### Fixed
+
+- `published_at` could be a day off: the date was taken in UTC, so a video published in the evening (in the Americas) got the next day's date.
+
 ---
 
 ## [1.21.0] - 2026-11-24

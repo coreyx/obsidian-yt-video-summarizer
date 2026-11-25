@@ -9,8 +9,12 @@ import {
 	VideoMetadata,
 } from 'src/types';
 import { requestUrl } from 'obsidian';
+import { hasTimeOfDay } from 'src/utils/dateTime';
 import {
 	findPlaylistIdInDescription,
+	publishedAtFromDataApiItem,
+	publishedAtFromPlayerData,
+	publishedAtFromWatchPageHtml,
 	tagsFromDataApiItem,
 	tagsFromPlayerDataKeywords,
 	tagsFromWatchPageHtml,
@@ -226,16 +230,7 @@ export class YouTubeService {
 				const data = JSON.parse(response.text);
 				const item = data.items?.[0];
 				const tags = tagsFromDataApiItem(item);
-				const rawDate = item?.snippet?.publishedAt;
-				let publishedAt: string | undefined;
-				if (rawDate) {
-					try {
-						publishedAt = new Date(rawDate).toISOString().split('T')[0];
-					} catch {
-						const m = String(rawDate).match(/^\d{4}-\d{2}-\d{2}/);
-						if (m) publishedAt = m[0];
-					}
-				}
+				const publishedAt = publishedAtFromDataApiItem(item);
 				const viewCount = item?.statistics?.viewCount ? parseInt(item.statistics.viewCount, 10) : undefined;
 				const likeCount = item?.statistics?.likeCount ? parseInt(item.statistics.likeCount, 10) : undefined;
 				const description = typeof item?.snippet?.description === 'string' ? item.snippet.description : undefined;
@@ -602,17 +597,7 @@ export class YouTubeService {
 			? parseInt(playerData.videoDetails.viewCount, 10)
 			: undefined;
 
-		let publishedAt: string | undefined;
-		const rawDate = playerData.microformat?.playerMicroformatRenderer?.publishDate ||
-		                playerData.microformat?.playerMicroformatRenderer?.uploadDate;
-		if (rawDate) {
-			try {
-				publishedAt = new Date(rawDate).toISOString().split('T')[0];
-			} catch {
-				const m = String(rawDate).match(/^\d{4}-\d{2}-\d{2}/);
-				if (m) publishedAt = m[0];
-			}
-		}
+		let publishedAt = publishedAtFromPlayerData(playerData);
 
 		let likeCount: number | undefined;
 
@@ -624,7 +609,8 @@ export class YouTubeService {
 				if (apiData.tags && apiData.tags.length > 0) {
 					tags = apiData.tags;
 				}
-				if (apiData.publishedAt && !publishedAt) {
+				// The Data API always gives a time, so it beats a player-data date that came without one
+				if (apiData.publishedAt && (!publishedAt || !hasTimeOfDay(publishedAt))) {
 					publishedAt = apiData.publishedAt;
 				}
 				if (typeof apiData.viewCount === 'number' && !viewCount) {
@@ -663,17 +649,7 @@ export class YouTubeService {
 					}
 
 					if (!publishedAt) {
-						const dateMatch = html.match(/"publishDate":"([^"]+)"/) ||
-						                  html.match(/"uploadDate":"([^"]+)"/) ||
-						                  html.match(/itemprop="datePublished" content="([^"]+)"/);
-						if (dateMatch) {
-							try {
-								publishedAt = new Date(dateMatch[1]).toISOString().split('T')[0];
-							} catch {
-								const m = dateMatch[1].match(/^\d{4}-\d{2}-\d{2}/);
-								if (m) publishedAt = m[0];
-							}
-						}
+						publishedAt = publishedAtFromWatchPageHtml(html);
 					}
 
 					if (likeCount === undefined) {

@@ -1,10 +1,21 @@
 // YouTube parsing: HTML decoding, tags from YouTube metadata, and playlist discovery.
 import assert from 'node:assert';
 import { loadSource } from './helpers/loadSource.mjs';
+import { setRequestUrlHandler } from './helpers/obsidian-stub.mjs';
 
 const { buildSummaryBody, buildVideoMetaLine } = await loadSource('src/utils/summaryNote.ts');
 const { YouTubeService } = await loadSource('src/services/youtube.ts');
-const { collectVideoTags, findPlaylistIdInDescription, tagsFromDataApiItem, tagsFromPlayerDataKeywords, tagsFromWatchPageHtml } = await loadSource('src/utils/youtubeMetadata.ts');
+const {
+	collectVideoTags,
+	findPlaylistIdInDescription,
+	normalizePublishedAt,
+	publishedAtFromDataApiItem,
+	publishedAtFromPlayerData,
+	publishedAtFromWatchPageHtml,
+	tagsFromDataApiItem,
+	tagsFromPlayerDataKeywords,
+	tagsFromWatchPageHtml,
+} = await loadSource('src/utils/youtubeMetadata.ts');
 const { buildFrontmatter, mergeFrontmatter } = await loadSource('src/utils/frontmatter.ts');
 
 // Test 5: decodeHTML with preserveNewlines
@@ -184,3 +195,65 @@ assert.strictEqual(
 );
 
 console.log('✓ Creator playlist discovery, frontmatter, and body formatting passed');
+
+// Test 47: Publish date and time from YouTube
+console.log('Testing publish date and time parsing...');
+
+const originalTz = process.env.TZ;
+try {
+	// 47.1: A time with an offset becomes the computer's local date and time, with no offset
+	process.env.TZ = 'America/Los_Angeles';
+	assert.strictEqual(normalizePublishedAt('2009-10-24T23:57:33-07:00'), '2009-10-24T23:57:33');
+	// The Data API's UTC time lands on the same local date (the old code wrote the UTC date, 2009-10-25)
+	assert.strictEqual(normalizePublishedAt('2009-10-25T06:57:33Z'), '2009-10-24T23:57:33');
+	process.env.TZ = 'Asia/Tokyo';
+	assert.strictEqual(normalizePublishedAt('2009-10-24T23:57:33-07:00'), '2009-10-25T15:57:33');
+
+	// 47.2: A bare date has no time to convert, so it is kept as written in every time zone
+	assert.strictEqual(normalizePublishedAt('2009-10-25'), '2009-10-25');
+	process.env.TZ = 'America/Los_Angeles';
+	assert.strictEqual(normalizePublishedAt(' 2009-10-25 '), '2009-10-25');
+	assert.strictEqual(normalizePublishedAt('Oct 25, 2009'), '2009-10-25');
+
+	// 47.3: Anything unreadable is left out
+	for (const bad of [undefined, null, '', '   ', 'not a date', 1256453853000, {}]) {
+		assert.strictEqual(normalizePublishedAt(bad), undefined, `rejects ${JSON.stringify(bad)}`);
+	}
+
+	// 47.4: Each YouTube source (shapes from a real watch page and Data API response)
+	assert.strictEqual(publishedAtFromDataApiItem({ snippet: { publishedAt: '2009-10-25T06:57:33Z' } }), '2009-10-24T23:57:33');
+	assert.strictEqual(publishedAtFromDataApiItem({ snippet: {} }), undefined);
+	assert.strictEqual(publishedAtFromDataApiItem(undefined), undefined);
+	assert.strictEqual(
+		publishedAtFromPlayerData({ microformat: { playerMicroformatRenderer: { publishDate: '2009-10-24T23:57:33-07:00', uploadDate: '2009-10-01' } } }),
+		'2009-10-24T23:57:33'
+	);
+	assert.strictEqual(publishedAtFromPlayerData({ microformat: { playerMicroformatRenderer: { uploadDate: '2009-10-24' } } }), '2009-10-24');
+	assert.strictEqual(publishedAtFromPlayerData({}), undefined);
+	assert.strictEqual(publishedAtFromWatchPageHtml('x,"publishDate":"2009-10-24T23:57:33-07:00",y'), '2009-10-24T23:57:33');
+	assert.strictEqual(publishedAtFromWatchPageHtml('x,"uploadDate":"2009-10-24T23:57:33-07:00",y'), '2009-10-24T23:57:33');
+	assert.strictEqual(publishedAtFromWatchPageHtml('<meta itemprop="datePublished" content="2009-10-24T23:57:33-07:00">'), '2009-10-24T23:57:33');
+	assert.strictEqual(publishedAtFromWatchPageHtml('<html></html>'), undefined);
+
+	// 47.5: The metadata fetch prefers a date with a time, so a player-data date without one gives way to the Data API's
+	const dataApiVideo = { items: [{ snippet: { publishedAt: '2009-10-25T06:57:33Z' }, statistics: { likeCount: '5' } }] };
+	setRequestUrlHandler(async ({ url }) => url.startsWith('https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&')
+		? { status: 200, text: JSON.stringify(dataApiVideo) }
+		: { status: 404, text: '' });
+	const playerDataFor = (publishDate) => ({
+		videoDetails: { title: 'T', author: 'A', keywords: ['k'] },
+		microformat: { playerMicroformatRenderer: { publishDate, ownerProfileUrl: 'http://www.youtube.com/@a' } },
+	});
+	const metadataFor = (publishDate, apiKey) => new YouTubeService()
+		.extractMetadataFromPlayerData(playerDataFor(publishDate), 'dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', apiKey);
+	assert.strictEqual((await metadataFor('2009-10-24', 'KEY')).publishedAt, '2009-10-24T23:57:33');
+	// Player data with a time is used as is; without an API key, a date-only value is kept
+	assert.strictEqual((await metadataFor('2009-10-24T22:00:00-07:00', 'KEY')).publishedAt, '2009-10-24T22:00:00');
+	assert.strictEqual((await metadataFor('2009-10-24', '')).publishedAt, '2009-10-24');
+} finally {
+	setRequestUrlHandler(null);
+	if (originalTz === undefined) delete process.env.TZ;
+	else process.env.TZ = originalTz;
+}
+
+console.log('✓ Publish date and time parsing passed');

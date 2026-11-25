@@ -9,6 +9,7 @@ import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { BatchReportModal } from './ui/modals/BatchReportModal';
 import { BatchProgressTracker } from './utils/BatchProgressTracker';
 import { OperationProgress, shortenTitle } from './utils/OperationProgress';
+import { formatLocalDateTime } from './utils/dateTime';
 import { adaptPromptForWikilinks, PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
@@ -925,6 +926,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			playlist_id: playlist?.id,
 			playlist_index: playlist?.index,
 			playlist_count: playlist?.count,
+			// Taken once the summary is ready, just before the note is written
+			created: formatLocalDateTime(new Date()),
 		};
 
 		return { bodyContent, fmData };
@@ -1889,6 +1892,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				playlist_id: playlist?.id,
 				playlist_index: playlist?.index,
 				playlist_count: playlist?.count,
+				created: formatLocalDateTime(new Date()),
 			};
 
 			const isEditorEmpty = editor.getValue().trim() === '';

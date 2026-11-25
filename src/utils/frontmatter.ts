@@ -1,5 +1,6 @@
 import { Editor } from 'obsidian';
 import { TranscriptLine } from '../types';
+import { isFrontmatterDateValue } from './dateTime';
 
 export interface FrontmatterData {
 	title: string;
@@ -23,6 +24,11 @@ export interface FrontmatterData {
 	playlist_id?: string;
 	playlist_index?: number;
 	playlist_count?: number;
+	/**
+	 * Local date and time the note was summarized and saved (`YYYY-MM-DDTHH:mm:ss`). Written once: a note that
+	 * already has `created` keeps its value. Left out by commands that only refresh metadata.
+	 */
+	created?: string;
 }
 
 export interface FrontmatterOptions {
@@ -57,14 +63,15 @@ export function videoStatsFrontmatter(metadata: {
 /**
  * Builds the video stats frontmatter lines (duration, published_at, view_count, like_count, aspect_ratio)
  * for the values that are available, keyed by property name. Uses the same formats as Media Extended notes
- * (duration in seconds, unquoted YYYY-MM-DD date, aspect ratio like "16 / 9").
+ * (duration in seconds, unquoted local date and time like 2009-10-24T23:57:33 or a bare YYYY-MM-DD date when
+ * YouTube gave no time, aspect ratio like "16 / 9").
  */
 function buildVideoStatsLines(data: FrontmatterData): Record<string, string> {
 	const lines: Record<string, string> = {};
 	if (typeof data.duration === 'number' && data.duration > 0) {
 		lines['duration'] = `duration: ${Math.round(data.duration)}`;
 	}
-	if (data.published_at && /^\d{4}-\d{2}-\d{2}$/.test(data.published_at)) {
+	if (data.published_at && isFrontmatterDateValue(data.published_at)) {
 		lines['published_at'] = `published_at: ${data.published_at}`;
 	}
 	if (typeof data.view_count === 'number' && !isNaN(data.view_count)) {
@@ -136,6 +143,10 @@ export function buildFrontmatter(data: FrontmatterData): string {
 		lines.push(`playlist_count: ${data.playlist_count}`);
 	}
 
+	if (data.created && isFrontmatterDateValue(data.created)) {
+		lines.push(`created: ${data.created}`);
+	}
+
 	for (const key of USER_FLAG_KEYS) {
 		lines.push(`${key}: false`);
 	}
@@ -169,6 +180,7 @@ export function buildFrontmatter(data: FrontmatterData): string {
  * Merges new frontmatter metadata into an existing raw YAML string.
  * Preserves other frontmatter properties and merges tags (unless excludeTags is true).
  * New topics replace the note's `topic` list; when no topics are given, the existing list is kept.
+ * `created` is added only when the note doesn't have it yet.
  */
 export function mergeFrontmatter(
 	rawYaml: string,
@@ -316,6 +328,11 @@ export function mergeFrontmatter(
 		if (!updatedKeys.has(key)) {
 			newLines.push(line);
 		}
+	}
+
+	// `created` records when the note was first summarized, so a value the note already has is never replaced
+	if (data.created && isFrontmatterDateValue(data.created) && !existingKeys.has('created')) {
+		newLines.push(`created: ${data.created}`);
 	}
 
 	// Add the user's checkbox properties if the note doesn't have them yet; existing values are kept

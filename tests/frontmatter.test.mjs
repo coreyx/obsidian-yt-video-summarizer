@@ -20,6 +20,8 @@ const {
 } = await loadSource('src/utils/frontmatter.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 const videoTopics = await loadSource('src/utils/videoTopics.ts');
+const { formatLocalDate, formatLocalDateTime, hasTimeOfDay, isFrontmatterDateValue } = await loadSource('src/utils/dateTime.ts');
+const { buildMediaExtendedFrontmatter } = realFrontmatter;
 
 // Test 1: sanitizeFileName
 
@@ -527,5 +529,54 @@ assert(mainSourceForTopics.includes('this.settings.getInferTopics() && this.prov
 assert(mainSourceForTopics.includes('topic: topics.length > 0 ? topics : undefined'));
 
 console.log('✓ video_url order and topic frontmatter property passed');
+
+// Test 48: published_at as a date and time, and the created property
+console.log('Testing published_at date and time and the created property...');
+
+// 48.1: Local date and time formatting (zero-padded, no UTC offset), and the forms frontmatter accepts
+assert.strictEqual(formatLocalDateTime(new Date(2026, 0, 5, 7, 8, 9)), '2026-01-05T07:08:09');
+assert.strictEqual(formatLocalDateTime(new Date(2026, 10, 24, 23, 59, 0)), '2026-11-24T23:59:00');
+assert.strictEqual(formatLocalDate(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+assert(hasTimeOfDay('2009-10-24T23:57:33') && hasTimeOfDay('2009-10-24T23:57'));
+assert(!hasTimeOfDay('2009-10-24'));
+for (const ok of ['2009-10-24', '2009-10-24T23:57', '2009-10-24T23:57:33']) {
+	assert(isFrontmatterDateValue(ok), ok);
+}
+for (const bad of ['Oct 25, 2009', '2009-10-24T23:57:33-07:00', '2009-10-24T23:57:33Z', '2009-10-24 23:57', '']) {
+	assert(!isFrontmatterDateValue(bad), bad);
+}
+
+// 48.2: published_at keeps its time in summary notes and Media Extended notes; a value with an offset is left out
+assert.deepStrictEqual(statsLinesOf({ published_at: '2009-10-24T23:57:33' }), ['published_at: 2009-10-24T23:57:33']);
+assert.deepStrictEqual(statsLinesOf({ published_at: '2009-10-24T23:57:33-07:00' }), []);
+assert.deepStrictEqual(
+	mergeFrontmatter('title: "T"\npublished_at: 2009-10-25', { ...statsBase, published_at: '2009-10-24T23:57:33' }).split('\n').slice(0, 2),
+	['title: "T"', 'published_at: 2009-10-24T23:57:33']
+);
+assert(buildMediaExtendedFrontmatter({ videoId: 'dQw4w9WgXcQ', title: 'T', creator: 'C', publishedAt: '2009-10-24T23:57:33' })
+	.includes('\npublished_at: 2009-10-24T23:57:33\n'));
+
+// 48.3: created is written into new notes, after the playlist properties and before the checkboxes
+const createdNote = buildFrontmatter({ ...statsBase, playlist_count: 3, created: '2026-11-24T18:45:12' }).split('\n');
+const createdAt = createdNote.indexOf('created: 2026-11-24T18:45:12');
+assert(createdAt > createdNote.indexOf('playlist_count: 3') && createdAt < createdNote.indexOf('watch_later: false'));
+assert(!buildFrontmatter(statsBase).includes('created:'));
+assert(!buildFrontmatter({ ...statsBase, created: 'yesterday' }).includes('created:'));
+
+// 48.4: Merging adds created only when the note has none; a note's own value is never replaced
+const mergedCreated = mergeFrontmatter('title: "Old"\nwatch_later: true', { ...statsBase, created: '2026-11-24T18:45:12' }).split('\n');
+assert.strictEqual(mergedCreated.filter((line) => line.startsWith('created:')).length, 1);
+assert(mergedCreated.indexOf('created: 2026-11-24T18:45:12') < mergedCreated.indexOf('favorite: false'));
+const keptCreated = mergeFrontmatter('created: 2020-01-02T03:04:05\ntitle: "Old"', { ...statsBase, created: '2026-11-24T18:45:12' });
+assert(keptCreated.startsWith('created: 2020-01-02T03:04:05\n'));
+assert(!keptCreated.includes('2026-11-24T18:45:12'));
+// A metadata refresh passes no created, so a note without one doesn't gain one
+assert(!mergeFrontmatter('title: "Old"', statsBase).includes('created:'));
+
+// 48.5: Summaries and the transcript command stamp created; the metadata refresh does not
+const mainSourceForCreated = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+assert.strictEqual(mainSourceForCreated.split('created: formatLocalDateTime(new Date())').length - 1, 2);
+
+console.log('✓ published_at date and time and the created property passed');
 
 console.log('\nAll tests passed successfully!');

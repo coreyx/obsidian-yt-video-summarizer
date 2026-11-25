@@ -1,3 +1,4 @@
+import { formatLocalDate, formatLocalDateTime } from './dateTime';
 import { deduplicateTags, extractTagsFromText } from './frontmatter';
 
 /**
@@ -65,6 +66,56 @@ export function findPlaylistIdInDescription(description: string | undefined | nu
 	if (!match) return null;
 	const id = match[1];
 	return id.startsWith('RD') || id === 'WL' || id === 'LL' ? null : id;
+}
+
+/**
+ * Turns a publish date YouTube returned into the `published_at` value: a local date and time
+ * (`YYYY-MM-DDTHH:mm:ss`) when YouTube gave a time, or a date (`YYYY-MM-DD`) when it gave only a date.
+ * YouTube gives times with a UTC offset (`2009-10-24T23:57:33-07:00` in player data and the watch page,
+ * `2009-10-25T06:57:33Z` from the Data API); converting to the computer's time zone means the date matches
+ * the one YouTube shows the viewer, rather than the date in UTC. Returns `undefined` for anything unreadable.
+ */
+export function normalizePublishedAt(raw: unknown): string | undefined {
+	if (typeof raw !== 'string' || !raw.trim()) return undefined;
+	const value = raw.trim();
+	// A bare date has no time zone to convert from, so it's kept as written
+	const dateOnly = value.match(/^\d{4}-\d{2}-\d{2}$/);
+	if (dateOnly) return dateOnly[0];
+	const parsed = new Date(value);
+	if (isNaN(parsed.getTime())) {
+		return value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+	}
+	return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) ? formatLocalDateTime(parsed) : formatLocalDate(parsed);
+}
+
+/**
+ * Returns the publish date from a YouTube Data API v3 `videos` item (`item.snippet.publishedAt`), normalized
+ * by {@link normalizePublishedAt}.
+ */
+export function publishedAtFromDataApiItem(item: { snippet?: { publishedAt?: unknown } } | undefined | null): string | undefined {
+	return normalizePublishedAt(item?.snippet?.publishedAt);
+}
+
+/**
+ * Returns the publish date from InnerTube player data (`microformat.playerMicroformatRenderer.publishDate`,
+ * or `uploadDate` when there is none), normalized by {@link normalizePublishedAt}.
+ */
+export function publishedAtFromPlayerData(
+	playerData: { microformat?: { playerMicroformatRenderer?: { publishDate?: unknown; uploadDate?: unknown } } } | undefined | null
+): string | undefined {
+	const microformat = playerData?.microformat?.playerMicroformatRenderer;
+	return normalizePublishedAt(microformat?.publishDate || microformat?.uploadDate);
+}
+
+/**
+ * Returns the publish date from a video's watch page HTML (the player JSON's `publishDate` or `uploadDate`,
+ * or the `datePublished` meta tag), normalized by {@link normalizePublishedAt}.
+ */
+export function publishedAtFromWatchPageHtml(html: string): string | undefined {
+	const match = html.match(/"publishDate":"([^"]+)"/) ||
+		html.match(/"uploadDate":"([^"]+)"/) ||
+		html.match(/itemprop="datePublished" content="([^"]+)"/);
+	return match ? normalizePublishedAt(match[1]) : undefined;
 }
 
 /** Inputs to {@link collectVideoTags}. */
