@@ -1,5 +1,28 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.22.0
+
+### Highlights
+
+YouTube Video Summarizer v1.22.0 keeps better time:
+
+* 🕒 **Publish Time**: `published_at` now includes the time the video went up, in your local time.
+* 📅 **Created**: A new `created` property records when the note was created.
+
+### What's Changed in v1.22.0
+
+#### 🕒 Publish Time
+* `published_at` now holds the date and time the video was published, converted to your local time, such as `2009-10-24T23:57:33`. Video summary notes and Media Extended notes both get it.
+* Dates are no longer off by a day. The date used to be taken in UTC, so a video published in the evening in the Americas got the next day's date.
+* Run *Refresh video metadata* to update the notes you already have.
+* Obsidian keeps one type per property name across your vault. If `published_at` is set to **Date**, change it to **Date & time** to see the time.
+
+#### 📅 Created
+* New summaries and the transcript command add a `created` property: the date and time the note's file was created, the same time Obsidian and your file system show.
+* A note that already has `created` keeps its value, and *Refresh video metadata* never adds or changes it.
+
+---
+
 ## v1.21.0
 
 ### Highlights

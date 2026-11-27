@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.22.0] - 2026-11-27
+
 ### Added
 
 - `created` frontmatter property: the local date and time the note's file was created (e.g. `2026-11-24T18:45:12`), the same time Obsidian and your file system show for it, written by summaries and the transcript command. A note that already has `created` keeps its value, and *Refresh video metadata* never adds or changes it.
