@@ -9,7 +9,7 @@ import { FolderSuggestModal } from './ui/modals/FolderSuggestModal';
 import { BatchReportModal } from './ui/modals/BatchReportModal';
 import { BatchProgressTracker } from './utils/BatchProgressTracker';
 import { OperationProgress, shortenTitle } from './utils/OperationProgress';
-import { formatLocalDateTime } from './utils/dateTime';
+import { noteCreatedDateTime } from './utils/dateTime';
 import { adaptPromptForWikilinks, PromptService } from './services/prompt';
 import { SettingsManager } from './services/settingsManager';
 import { ProvidersFactory } from './services/providers/providersFactory';
@@ -567,6 +567,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			// If the blank note has tags-only frontmatter (or the user typed into it meanwhile), append and
 			// merge frontmatter instead, so existing tags are kept alongside any new ones.
 			progress.setStage('Writing note');
+			// The note already exists (the blank note, or the placeholder made at the start), so created is its file's creation time
+			fmData.created = noteCreatedDateTime(targetFile.stat.ctime);
 			await this.app.vault.process(targetFile, (current) =>
 				composeSummaryNoteContent(current, pendingNote !== null, fmData, bodyContent)
 			);
@@ -787,7 +789,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			progress.setStage('Writing note');
 			let summaryFile: TFile;
 			if (existing) {
-				// Replace the body, merging the new frontmatter into the existing one (keeps added keys, merges tags)
+				// Replace the body, merging the new frontmatter into the existing one (keeps added keys, merges tags).
+				// created is only added when the note has none.
+				fmData.created = noteCreatedDateTime(existing.stat.ctime);
 				await this.app.vault.process(existing, (current) => {
 					const existingFrontmatter = current.replace(/\r\n/g, '\n').match(/^---\n[\s\S]*?\n---/)?.[0];
 					return existingFrontmatter
@@ -798,7 +802,10 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			} else {
 				await this.ensureFolderExists(summaryFolder);
 				const path = this.getAvailableNotePath(summaryFolder, sanitizeFileName(transcript.title));
-				summaryFile = await this.app.vault.create(path, `${buildFrontmatter(fmData)}\n\n${body}`);
+				// Created empty first so created can be read from the new file's own creation time
+				summaryFile = await this.app.vault.create(path, '');
+				fmData.created = noteCreatedDateTime(summaryFile.stat.ctime);
+				await this.app.vault.process(summaryFile, () => `${buildFrontmatter(fmData)}\n\n${body}`);
 			}
 
 			await this.app.vault.process(file, (current) => addRelatedLink(current, summaryFile.path.replace(/\.md$/, '')));
@@ -926,8 +933,6 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			playlist_id: playlist?.id,
 			playlist_index: playlist?.index,
 			playlist_count: playlist?.count,
-			// Taken once the summary is ready, just before the note is written
-			created: formatLocalDateTime(new Date()),
 		};
 
 		return { bodyContent, fmData };
@@ -1892,7 +1897,8 @@ export class YouTubeSummarizerPlugin extends Plugin {
 				playlist_id: playlist?.id,
 				playlist_index: playlist?.index,
 				playlist_count: playlist?.count,
-				created: formatLocalDateTime(new Date()),
+				// The transcript goes into the open note, so created is that file's creation time
+				created: noteCreatedDateTime(view?.file?.stat.ctime),
 			};
 
 			const isEditorEmpty = editor.getValue().trim() === '';

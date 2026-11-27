@@ -20,7 +20,7 @@ const {
 } = await loadSource('src/utils/frontmatter.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 const videoTopics = await loadSource('src/utils/videoTopics.ts');
-const { formatLocalDate, formatLocalDateTime, hasTimeOfDay, isFrontmatterDateValue } = await loadSource('src/utils/dateTime.ts');
+const { formatLocalDate, formatLocalDateTime, hasTimeOfDay, isFrontmatterDateValue, noteCreatedDateTime } = await loadSource('src/utils/dateTime.ts');
 const { buildMediaExtendedFrontmatter } = realFrontmatter;
 
 // Test 1: sanitizeFileName
@@ -573,9 +573,20 @@ assert(!keptCreated.includes('2026-11-24T18:45:12'));
 // A metadata refresh passes no created, so a note without one doesn't gain one
 assert(!mergeFrontmatter('title: "Old"', statsBase).includes('created:'));
 
-// 48.5: Summaries and the transcript command stamp created; the metadata refresh does not
+// 48.5: created is the note file's creation time, in local time; with no creation time it falls back to now
+const fileBorn = new Date(2026, 10, 25, 19, 29, 47, 900);
+assert.strictEqual(noteCreatedDateTime(fileBorn.getTime(), new Date(2026, 10, 26, 8, 0, 0)), '2026-11-25T19:29:47');
+assert.strictEqual(noteCreatedDateTime(0, new Date(2026, 10, 26, 8, 0, 0)), '2026-11-26T08:00:00');
+assert.strictEqual(noteCreatedDateTime(undefined, new Date(2026, 10, 26, 8, 0, 0)), '2026-11-26T08:00:00');
+
+// 48.6: Every summary path and the transcript command take created from the note's file; nothing stamps "now".
+// The metadata refresh passes no created at all.
 const mainSourceForCreated = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
-assert.strictEqual(mainSourceForCreated.split('created: formatLocalDateTime(new Date())').length - 1, 2);
+assert(!mainSourceForCreated.includes('formatLocalDateTime(new Date())'));
+assert.deepStrictEqual(
+	[...mainSourceForCreated.matchAll(/noteCreatedDateTime\(([^)]*)\)/g)].map((match) => match[1]),
+	['targetFile.stat.ctime', 'existing.stat.ctime', 'summaryFile.stat.ctime', 'view?.file?.stat.ctime']
+);
 
 console.log('✓ published_at date and time and the created property passed');
 

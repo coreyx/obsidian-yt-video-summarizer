@@ -24,6 +24,18 @@ export function formatLocalDateTime(date: Date): string {
 }
 
 /**
+ * The `created` value for a note: when its file was created, as a local date and time, so the property agrees
+ * with the file's creation time that Obsidian and the file system show. Falls back to `now` when the file system
+ * reports no creation time (some file systems report 0).
+ *
+ * @param creationTimeMs - The file's creation time in milliseconds since the epoch (Obsidian's `TFile.stat.ctime`)
+ * @param now - The moment to use instead when there is no creation time
+ */
+export function noteCreatedDateTime(creationTimeMs: number | undefined, now: Date = new Date()): string {
+	return formatLocalDateTime(creationTimeMs && creationTimeMs > 0 ? new Date(creationTimeMs) : now);
+}
+
+/**
  * Whether a frontmatter date value carries a time of day (`YYYY-MM-DDTHH:mm...`) rather than a bare date.
  */
 export function hasTimeOfDay(value: string): boolean {
