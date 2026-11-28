@@ -1,7 +1,7 @@
 import { Editor } from 'obsidian';
 import { TranscriptLine } from '../types';
 import { isFrontmatterDateValue } from './dateTime';
-import { videoHost, videoPlatform } from './videoPlatform';
+import { isYouTubeVideoUrl, videoHost, videoPlatform } from './videoPlatform';
 
 export interface FrontmatterData {
 	title: string;
@@ -480,18 +480,41 @@ export function updateNoteContentWithFrontmatter(
 }
 
 /**
- * Extracts a YouTube URL from note content or frontmatter.
+ * Reads a URL-valued property from a note's frontmatter (quotes removed), or `null` when it's missing.
+ */
+function frontmatterUrlValue(content: string, key: string): string | null {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+	const valueMatch = fmMatch?.[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
+	return valueMatch?.[1].trim() || null;
+}
+
+/**
+ * Returns the host of a note's `video_url` when the video isn't on YouTube (e.g. `vimeo.com`), or `null` when
+ * the note has no `video_url` or it's a YouTube URL. Other tools' summary notes can share the summary folder,
+ * and commands use this to say why they skipped one.
+ */
+export function otherPlatformVideoHost(content: string): string | null {
+	const videoUrl = frontmatterUrlValue(content, 'video_url');
+	if (!videoUrl || isYouTubeVideoUrl(videoUrl)) {
+		return null;
+	}
+	return videoHost(videoUrl);
+}
+
+/**
+ * Extracts a YouTube URL from note content or frontmatter. A note whose `video_url` is on another site has
+ * no YouTube video, even when its body links to one: the note is about the other site's video.
  */
 export function extractYouTubeUrlFromNote(content: string): string | null {
 	// 1. Check YAML frontmatter video_url (summary notes), then video / media (Media Extended notes)
-	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-	if (fmMatch) {
-		for (const key of ['video_url', 'video', 'media']) {
-			const videoUrlMatch = fmMatch[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
-			const value = videoUrlMatch?.[1].trim();
-			if (value && (key === 'video_url' || /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(value))) {
-				return value;
-			}
+	const videoUrl = frontmatterUrlValue(content, 'video_url');
+	if (videoUrl) {
+		return isYouTubeVideoUrl(videoUrl) ? videoUrl : null;
+	}
+	for (const key of ['video', 'media']) {
+		const value = frontmatterUrlValue(content, key);
+		if (value && /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(value)) {
+			return value;
 		}
 	}
 
@@ -1338,7 +1361,7 @@ export function frontmatterMatchesVideo(
 	if (!frontmatter) return false;
 	return keys.some((key) => {
 		const value = frontmatter[key];
-		return typeof value === 'string' && extractVideoIdFromUrl(value) === videoId;
+		return typeof value === 'string' && isYouTubeVideoUrl(value) && extractVideoIdFromUrl(value) === videoId;
 	});
 }
 

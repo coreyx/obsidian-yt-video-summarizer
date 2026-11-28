@@ -72,7 +72,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 ### Leaving other sites' notes alone
 
 #### [MODIFY] `src/utils/frontmatter.ts`
-- [ ] **TASK-5:** Make the note readers platform-aware:
+- [x] **TASK-5:** Make the note readers platform-aware:
   - `extractYouTubeUrlFromNote()` returns a frontmatter `video_url` only when `isYouTubeVideoUrl()` is true. When the note has a `video_url` from another site, it returns `null` without falling back to links in the body.
   - `frontmatterMatchesVideo()` only matches values that pass `isYouTubeVideoUrl()`.
   - Add `otherPlatformVideoHost(content): string | null`, which returns the host when the note's `video_url` isn't YouTube.
