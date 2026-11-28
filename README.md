@@ -14,7 +14,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
 -   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, LM Studio, etc.).
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
--   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `video_url`, `host` (the video's site, e.g. `youtube.com` or `youtu.be`), `platform` (`youtube`), `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at` (the video's publish date and time, in your local time), `view_count`, `like_count`, `aspect_ratio`, `description`, `topic` (up to 3 AI-inferred topics, e.g. `Machine Learning`), `created` (the local date and time the note was summarized and saved), and `tags`. Video stats are included when YouTube provides them. Every summary note also gets `watch_later` and `favorite` checkbox properties (unticked) for you to use.
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `video_url`, `host` (the video's site, e.g. `youtube.com` or `youtu.be`), `platform` (`youtube`), `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at` (the video's publish date and time, in your local time), `view_count`, `like_count`, `aspect_ratio`, `video_description` (the video's description), `topic` (up to 3 AI-inferred topics, e.g. `Machine Learning`), `created` (the local date and time the note was summarized and saved), and `tags`. Video stats are included when YouTube provides them. Every summary note also gets `watch_later` and `favorite` checkbox properties (unticked) for you to use.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Stores the creator's complete video description in frontmatter, and on demand adds it to the note body with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
@@ -201,7 +201,7 @@ Everything about the optional [Media Extended](https://github.com/aidenlx/media-
 
 **Infer Topics**: Uses your configured AI model to infer up to 3 topics from the video transcript (Title Case subject areas such as `Machine Learning` or `Personal Finance`) and writes them to the `topic` frontmatter list. Unlike tags, topics are readable labels and don't draw on your vault's tag list. Long transcripts are sampled from their start, middle, and end to keep the request small. Regenerating a summary replaces the `topic` list; if inference is off or fails, an existing list is kept. Enabled by default.
 
-**Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `description: |-`. Enabled by default.
+**Add Description to Frontmatter**: Includes the full YouTube video description in the YAML frontmatter under `video_description: |-`. Enabled by default. Notes summarized before version 1.23.0 have it under `description`; *Refresh video metadata* renames it.
 
 **Use Frontmatter Description When Adding Description to Body**: When running `Add description to video summary note` or `Add description to Media Extended note`, copy the note's frontmatter description into the body instead of fetching it from YouTube; falls back to fetching when it's missing or empty. Enabled by default.
 
@@ -307,7 +307,7 @@ Re-fetches a video's metadata from YouTube and refreshes the frontmatter of vide
 - **A folder** (including subfolders): run `Refresh video metadata in folder...`, or right-click a folder → **Refresh video metadata in this folder**. Progress and per-note results appear in the batch report (`View last batch operation report & logs`)
 
 What gets refreshed:
-- **Video summary notes** (notes with `video_url` frontmatter): `title`, `host` and `platform` (from the note's `video_url`), channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `description` (when *Add description to frontmatter* is on).
+- **Video summary notes** (notes with `video_url` frontmatter): `title`, `host` and `platform` (from the note's `video_url`), channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `video_description` (when *Add description to frontmatter* is on; an older note's `description` property is renamed to `video_description` where it sits).
 - **Media Extended notes**: all Media Extended frontmatter fields, including `cover` and `aspect_ratio`, keeping the existing `mx-uid`.
 
 What's never changed: the note body, `tags`, AI-extracted `thumbnail_text` and `topic`, `video_url`, `created`, your `watch_later` / `favorite` checkboxes (added unticked if the note doesn't have them yet), and any frontmatter properties the plugin doesn't manage. No AI model is used.
@@ -329,7 +329,7 @@ Inserts `![Cover](url)` at the cursor, using the note's `cover` frontmatter when
 3. If the note already has a `## Description` section, you're asked whether to continue; continuing replaces it
 4. A `## Description` section is added before `# Related` (or at the end), with every timestamp converted into a clickable YouTube link (`[01:23](https://www.youtube.com/watch?v=...&t=83s)`)
 
-The description is always stored in frontmatter, where its timestamps aren't clickable; use this command when you want clickable chapter links. The description source follows *Use frontmatter description when adding description to body* (frontmatter first, then YouTube).
+The description is always stored in frontmatter, where its timestamps aren't clickable; use this command when you want clickable chapter links. The description source follows *Use frontmatter description when adding description to body*: the frontmatter `video_description` (or `description` in older notes) first, then YouTube.
 
 ### Method 12: Tag a Note With AI or YouTube
 
@@ -375,7 +375,7 @@ playlist_count: 12
 created: 2026-11-24T18:45:12
 watch_later: false
 favorite: false
-description: |-
+video_description: |-
   Full video description and timestamps...
 topic:
   - Machine Learning

@@ -60,7 +60,7 @@ None at this time. (Decided with the user: a normal `Changed` entry, not a break
 ### Docs
 
 #### [MODIFY] `README.md`, `CHANGELOG.md`, `DEVELOPMENT.md`
-- [ ] **TASK-4:** Document the new property name.
+- [x] **TASK-4:** Document the new property name.
   - **README:**
     - the frontmatter property list,
     - the *Add Description to Frontmatter* setting (`video_description: |-`),

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `host` and `platform` frontmatter properties, right after `video_url`. `host` is the video URL's site without `www.` or a port (`youtube.com`, `youtu.be`, `m.youtube.com`); `platform` is `youtube` for all of YouTube's hosts, so a base can filter summary notes by platform. Summaries and the transcript command write them, and *Refresh video metadata* adds them to existing notes.
 - A batched topic prompt (`buildBatchVideoTopicsPrompt()` and `parseBatchVideoTopics()` in `src/utils/videoTopics.ts`) that works out several videos' topics in one request, from their titles and summaries, and reuses the topic names already in use. It was used for a one-time update of existing notes; no command uses it yet.
 
+### Changed
+
+- Video summary notes store the video's description in `video_description` instead of `description`. New summaries and the transcript command write `video_description`. *Refresh video metadata* (with *Add description to frontmatter* on) renames an older note's `description` to `video_description` where it sits, so a note never has both. *Add description* and *Tag with AI* read `video_description` first and fall back to `description`. Media Extended notes keep `description`. If a base or query filters summary notes on `description`, change it to `video_description`.
+
 ### Fixed
 
 - A summary note from another site in the summary folder could be mistaken for a YouTube video: the plugin treated any `video_url` as YouTube, and a URL such as a TikTok video link could pass its video ID check, so *Refresh video metadata* could write an unrelated YouTube video's details into the note. Notes whose `video_url` isn't on YouTube are now skipped by every command, with a message naming the site, and counted as skipped in folder runs.
