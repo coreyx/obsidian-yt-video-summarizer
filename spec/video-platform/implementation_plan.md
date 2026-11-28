@@ -103,7 +103,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 ### Your vault
 
 #### [NEW] `scratch/add_host_platform.py` (scratchpad, not committed)
-- [ ] **TASK-8:** Back up the 810 notes, then add `host` and `platform` after `video_url` in each, using the same rules as TASK-1.
+- [x] **TASK-8:** Back up the 810 notes, then add `host` and `platform` after `video_url` in each, using the same rules as TASK-1.
   - Notes are written in place, so the file's creation time is kept, and the modified time is put back afterward.
   - It works oldest-modified first, and skips notes without a `video_url` or that already have the two properties.
   - It's tested first on a copy of the folder.
