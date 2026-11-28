@@ -194,18 +194,18 @@ const dataWithDesc = {
 	video_url: 'https://youtube.com/watch?v=123',
 	thumbnail: 'https://img.youtube.com/thumb.jpg',
 	thumbnail_text: 'OCR text',
-	description: 'Line 1 of description\nLine 2 of description with https://link.com\n\nEnjoy the video!',
+	video_description: 'Line 1 of description\nLine 2 of description with https://link.com\n\nEnjoy the video!',
 	tags: ['#AI', 'ai', 'Obsidian', '#Obsidian']
 };
 
 const builtWithDesc = buildFrontmatter(dataWithDesc);
-assert(builtWithDesc.includes('description: |-\n  Line 1 of description\n  Line 2 of description with https://link.com\n\n  Enjoy the video!'));
+assert(builtWithDesc.includes('video_description: |-\n  Line 1 of description\n  Line 2 of description with https://link.com\n\n  Enjoy the video!'));
 // Tags should be deduplicated inside frontmatter
 assert(builtWithDesc.includes('tags:\n  - ai\n  - obsidian'));
 assert(!builtWithDesc.includes('- ai\n  - ai'));
 
 // Case 4: buildFrontmatter without description (undefined)
-const dataWithoutDesc = { ...dataWithDesc, description: undefined };
+const dataWithoutDesc = { ...dataWithDesc, video_description: undefined };
 const builtWithoutDesc = buildFrontmatter(dataWithoutDesc);
 assert(!builtWithoutDesc.includes('description:'));
 
@@ -217,12 +217,12 @@ tags:
 title: "Old Title"`;
 
 const mergedWithDescAndTags = mergeFrontmatter(oldNoteYaml, dataWithDesc);
-assert(mergedWithDescAndTags.includes('description: |-\n  Line 1 of description'));
+assert(mergedWithDescAndTags.includes('video_description: |-\n  Line 1 of description'));
 assert(mergedWithDescAndTags.includes('tags:\n  - personal-notes\n  - ai\n  - obsidian'));
 
 // Case 6: mergeFrontmatter replacing existing multi-line description
 const noteWithOldDesc = `title: "Old"
-description: |-
+video_description: |-
   Old line 1
   Old line 2
 tags:
@@ -399,7 +399,7 @@ const flagData = {
 	video_url: 'https://www.youtube.com/watch?v=MdxaU0l3FzI',
 	thumbnail: 'https://img.youtube.com/vi/MdxaU0l3FzI/maxresdefault.jpg',
 	thumbnail_text: '',
-	description: 'Line one\nwatch_later: true',
+	video_description: 'Line one\nwatch_later: true',
 	tags: ['topic'],
 };
 
@@ -408,7 +408,7 @@ const flagLines = realFrontmatter.buildFrontmatter(flagData).split('\n');
 assert(flagLines.includes('watch_later: false'));
 assert(flagLines.includes('favorite: false'));
 assert.strictEqual(flagLines.indexOf('favorite: false'), flagLines.indexOf('watch_later: false') + 1);
-assert(flagLines.indexOf('favorite: false') < flagLines.indexOf('description: |-'));
+assert(flagLines.indexOf('favorite: false') < flagLines.indexOf('video_description: |-'));
 assert(flagLines.indexOf('favorite: false') < flagLines.indexOf('tags:'));
 assert.strictEqual(flagLines[0], '---');
 assert.strictEqual(flagLines[flagLines.length - 1], '---');
@@ -458,7 +458,7 @@ const topicData = {
 	video_url: 'https://www.youtube.com/watch?v=MdxaU0l3FzI',
 	thumbnail: 'https://img.youtube.com/vi/MdxaU0l3FzI/maxresdefault.jpg',
 	thumbnail_text: '',
-	description: 'A description',
+	video_description: 'A description',
 	topic: ['Machine Learning', 'Personal Finance', 'machine learning'],
 	tags: ['ai'],
 };

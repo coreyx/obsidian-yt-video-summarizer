@@ -15,7 +15,8 @@ export interface FrontmatterData {
 	channel_url: string;
 	thumbnail: string;
 	thumbnail_text: string;
-	description?: string;
+	/** The YouTube video description, written as `video_description` (older notes have it as `description`) */
+	video_description?: string;
 	/** Up to three AI-inferred subject areas (Title Case). Left out when none were inferred. */
 	topic?: string[];
 	tags?: string[];
@@ -183,16 +184,8 @@ export function buildFrontmatter(data: FrontmatterData): string {
 		lines.push(`${key}: false`);
 	}
 
-	if (data.description !== undefined && data.description !== null) {
-		if (data.description.trim()) {
-			lines.push('description: |-');
-			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-			for (const dLine of descLines) {
-				lines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-			}
-		} else {
-			lines.push('description: ""');
-		}
+	if (data.video_description !== undefined && data.video_description !== null) {
+		lines.push(...buildVideoDescriptionLines(data.video_description));
 	}
 
 	lines.push(...buildTopicLines(data.topic));
@@ -209,11 +202,23 @@ export function buildFrontmatter(data: FrontmatterData): string {
 }
 
 /**
+ * Builds the `video_description` lines: a `|-` block with the description's lines indented, or `""` when it's blank.
+ */
+function buildVideoDescriptionLines(description: string): string[] {
+	if (!description.trim()) {
+		return ['video_description: ""'];
+	}
+	const descLines = description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+	return ['video_description: |-', ...descLines.map((dLine) => (dLine.trim().length > 0 ? `  ${dLine}` : ''))];
+}
+
+/**
  * Merges new frontmatter metadata into an existing raw YAML string.
  * Preserves other frontmatter properties and merges tags (unless excludeTags is true).
  * New topics replace the note's `topic` list; when no topics are given, the existing list is kept.
  * `created` is added only when the note doesn't have it yet. `host` and `platform` replace the note's values, or
- * are inserted right after `video_url` when the note doesn't have them.
+ * are inserted right after `video_url` when the note doesn't have them. A new `video_description` replaces the note's
+ * `video_description`, or its older `description` property in place, so the note never keeps both.
  */
 export function mergeFrontmatter(
 	rawYaml: string,
@@ -278,7 +283,7 @@ export function mergeFrontmatter(
 
 		if (inDescBlock) {
 			if (/^\s+/.test(line) || line.trim() === '') {
-				if (data.description !== undefined) {
+				if (data.video_description !== undefined) {
 					continue;
 				}
 			} else {
@@ -332,24 +337,19 @@ export function mergeFrontmatter(
 				continue;
 			}
 
-			if (key === 'description') {
-				updatedKeys.add('description');
-				if (data.description !== undefined) {
-					inDescBlock = true;
-					if (data.description.trim()) {
-						newLines.push('description: |-');
-						const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-						for (const dLine of descLines) {
-							newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-						}
-					} else {
-						newLines.push('description: ""');
-					}
-					continue;
-				} else {
+			// Notes summarized before the rename have `description`; a fresh description takes over its place
+			if (key === 'video_description' || key === 'description') {
+				if (data.video_description === undefined) {
 					newLines.push(line);
 					continue;
 				}
+				inDescBlock = true;
+				const isLegacyBesideNew = key === 'description' && existingKeyNames.has('video_description');
+				if (!isLegacyBesideNew && !updatedKeys.has('video_description')) {
+					newLines.push(...buildVideoDescriptionLines(data.video_description));
+					updatedKeys.add('video_description');
+				}
+				continue;
 			}
 
 			if (key in targetKeys) {
@@ -389,17 +389,9 @@ export function mergeFrontmatter(
 		}
 	}
 
-	// Add description if it was provided and not in original frontmatter
-	if (data.description !== undefined && !updatedKeys.has('description')) {
-		if (data.description.trim()) {
-			newLines.push('description: |-');
-			const descLines = data.description.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-			for (const dLine of descLines) {
-				newLines.push(dLine.trim().length > 0 ? `  ${dLine}` : '');
-			}
-		} else {
-			newLines.push('description: ""');
-		}
+	// Add the description if it was provided and the note had neither property
+	if (data.video_description !== undefined && !updatedKeys.has('video_description')) {
+		newLines.push(...buildVideoDescriptionLines(data.video_description));
 	}
 
 	if (!updatedKeys.has('topic') && !existingKeys.has('topic')) {
