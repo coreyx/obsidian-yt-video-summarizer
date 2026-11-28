@@ -49,7 +49,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 ### Host and platform
 
 #### [NEW] `src/utils/videoPlatform.ts`
-- [ ] **TASK-1:** Add these functions, with TSDoc:
+- [x] **TASK-1:** Add these functions, with TSDoc:
   - `videoHost(url: string): string | null`: parses the URL with `URL`, then lowercases the hostname and removes a leading `www.`. The port is dropped by using `hostname` rather than `host`. Returns `null` for anything that isn't an `http(s)` URL.
   - `videoPlatform(host: string | null): string | null`: returns `'youtube'` when the host is `youtube.com`, `youtu.be`, `youtube-nocookie.com`, or a subdomain of any of them (e.g. `m.`, `music.`). Returns `null` otherwise.
   - `isYouTubeVideoUrl(url: string): boolean`: shorthand for `videoPlatform(videoHost(url)) === 'youtube'`.
