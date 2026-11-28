@@ -67,7 +67,7 @@ None at this time. (Decided with the user: OpenAI `gpt-5.4-nano`, shared topic n
   3. Apply any renames, merges or per-note changes the user asks for, directly in `topic_proposals.json`, and show the counts again.
 
   Nothing goes on to TASK-5 without the user's go-ahead on the final list.
-- [ ] **TASK-5:** Write the approved topics.
+- [x] **TASK-5:** Write the approved topics.
   - Back up the 789 notes.
   - In each note, insert the `topic` list just before `tags`, matching what the plugin writes (`topic:` then `  - <Topic>` lines). A note without `tags` gets it at the end of its frontmatter.
   - Notes are written in place, oldest-modified first, and both file times are put back afterward.
