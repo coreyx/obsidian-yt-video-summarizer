@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.23.0] - 2026-11-28
+
 ### Added
 
 - `host` and `platform` frontmatter properties, right after `video_url`. `host` is the video URL's site without `www.` or a port (`youtube.com`, `youtu.be`, `m.youtube.com`); `platform` is `youtube` for all of YouTube's hosts, so a base can filter summary notes by platform. Summaries and the transcript command write them, and *Refresh video metadata* adds them to existing notes.

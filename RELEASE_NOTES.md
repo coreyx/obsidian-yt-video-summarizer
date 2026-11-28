@@ -1,5 +1,38 @@
 # Release Notes - YouTube Video Summarizer
 
+## v1.23.0
+
+### Highlights
+
+YouTube Video Summarizer v1.23.0 makes room for other sites in your summary folder:
+
+* 🌐 **Host and Platform**: New `host` and `platform` properties say where each video comes from, so a base can filter by platform.
+* 🛡️ **Other Sites Left Alone**: Summary notes from other sites are no longer mistaken for YouTube videos.
+* 📝 **`video_description`**: The video description now goes in `video_description` instead of `description`.
+
+### What's Changed in v1.23.0
+
+#### 🌐 Host and Platform
+* Summary notes get `host`, the video's site without `www.` or a port, such as `youtube.com` or `youtu.be`.
+* They also get `platform`, which is `youtube` for every YouTube host.
+* Both sit right after `video_url`.
+* New summaries and the transcript command write them, and *Refresh video metadata* adds them to the notes you already have.
+* To list only YouTube summaries in a base, filter on `platform == "youtube"`.
+
+#### 🛡️ Other Sites Left Alone
+* Before, a note whose `video_url` pointed to another site, such as a TikTok video, could pass the YouTube check. *Refresh video metadata* could then write an unrelated YouTube video's details into it.
+* Now every command skips such a note, with a message naming the site, for example `"Clip" is a video from vimeo.com, not YouTube.`
+* Folder runs count these notes as skipped, not failed.
+
+#### 📝 `video_description`
+* New summaries and the transcript command write the description to `video_description`.
+* For a note that still has `description`, *Refresh video metadata* renames it to `video_description` in place when *Add description to frontmatter* is on. A note never ends up with both.
+* *Add description* and *Tag with AI* read `video_description` first, then `description`, so older notes keep working.
+* Media Extended notes keep `description`.
+* If a base or query filters your summary notes on `description`, change it to `video_description`.
+
+---
+
 ## v1.22.0
 
 ### Highlights
