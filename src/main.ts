@@ -29,6 +29,8 @@ import {
 	extractVideoIdFromUrl,
 	extractTagsFromText,
 	extractYouTubeUrlFromNote,
+	missingYouTubeVideoMessage,
+	otherPlatformVideoHost,
 	filterFilesByFolder,
 	formatTranscript,
 	FrontmatterData,
@@ -64,6 +66,7 @@ import {
 import { defaultMediaExtendedRunOptions, resolveCompanionNoteOptions } from './utils/mediaExtendedOptions';
 import { VaultTagData } from './types';
 import { VIDEO_ID_REGEX } from './constants';
+import { isYouTubeVideoUrl } from './utils/videoPlatform';
 
 /** A new summary note created when summarizing from a non-blank note, and the link inserted for it */
 interface PendingSummaryNote {
@@ -137,7 +140,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 						const mediaFolder = this.settings.getMediaExtendedFolder().trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || 'Media Library';
 						const isMediaExtended = frontmatter?.['mx-uid'] != null || isMediaExtendedCompanionNote('', file.path, mediaFolder);
-						if (!isMediaExtended && typeof frontmatter?.video_url === 'string') {
+						if (!isMediaExtended && typeof frontmatter?.video_url === 'string' && isYouTubeVideoUrl(frontmatter.video_url)) {
 							menu.addItem((item) => {
 								item
 									.setTitle('Create Media Extended note')
@@ -305,6 +308,9 @@ export class YouTubeSummarizerPlugin extends Plugin {
 						const noteUrl = extractYouTubeUrlFromNote(editor.getValue());
 						if (noteUrl) {
 							await this.retrieveTranscript(noteUrl, editor, view);
+						} else if (otherPlatformVideoHost(editor.getValue())) {
+							// Fetching a YouTube transcript into another site's summary note would mix two videos
+							new Notice(missingYouTubeVideoMessage(editor.getValue(), 'this note'));
 						} else {
 							new YouTubeURLModal(
 								this.app,
@@ -684,7 +690,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const url = extractYouTubeUrlFromNote(content);
 		const videoId = url ? extractVideoIdFromUrl(url) : null;
 		if (!url || !videoId) {
-			new Notice(`No YouTube video found in "${file.basename}".`);
+			new Notice(missingYouTubeVideoMessage(content, `"${file.basename}"`));
 			return;
 		}
 
@@ -1204,7 +1210,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const url = extractYouTubeUrlFromNote(content);
 		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
 		if (!url || !videoId) {
-			new Notice(`No YouTube video found in "${file.basename}".`);
+			new Notice(missingYouTubeVideoMessage(content, `"${file.basename}"`));
 			return;
 		}
 
@@ -1278,7 +1284,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const url = extractYouTubeUrlFromNote(content);
 		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
 		if (!url || !videoId) {
-			new Notice(`No YouTube video found in "${file.basename}".`);
+			new Notice(missingYouTubeVideoMessage(content, `"${file.basename}"`));
 			return;
 		}
 
@@ -1354,7 +1360,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const content = await this.app.vault.read(file);
 		const url = extractYouTubeUrlFromNote(content);
 		if (!url || !VIDEO_ID_REGEX.test(url)) {
-			new Notice(`No YouTube video found in "${file.basename}".`);
+			new Notice(missingYouTubeVideoMessage(content, `"${file.basename}"`));
 			return;
 		}
 
@@ -1450,7 +1456,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const url = extractYouTubeUrlFromNote(editor.getValue());
 		const videoId = url?.match(VIDEO_ID_REGEX)?.[1];
 		if (!videoId) {
-			new Notice('No YouTube video found in this note.');
+			new Notice(missingYouTubeVideoMessage(editor.getValue(), 'this note'));
 			return;
 		}
 
@@ -1642,7 +1648,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		const url = extractYouTubeUrlFromNote(content);
 		if (!url || !VIDEO_ID_REGEX.test(url)) {
-			return { status: 'skipped', message: 'No YouTube video found in the note' };
+			return { status: 'skipped', message: missingYouTubeVideoMessage(content, 'the note') };
 		}
 
 		const metadata = await this.youtubeService.fetchVideoMetadata(url, this.settings.getYoutubeApiKey());

@@ -502,6 +502,18 @@ export function otherPlatformVideoHost(content: string): string | null {
 }
 
 /**
+ * The message a command shows when a note has no YouTube video to work on. It names the other site when the
+ * note's `video_url` is on one, since the note is then another tool's summary rather than a broken one.
+ * @param noteName - How the note is named in the message, e.g. `"My note"` (with quotes) or `this note`.
+ */
+export function missingYouTubeVideoMessage(content: string, noteName: string): string {
+	const otherHost = otherPlatformVideoHost(content);
+	return otherHost
+		? `${noteName.charAt(0).toUpperCase()}${noteName.slice(1)} is a video from ${otherHost}, not YouTube.`
+		: `No YouTube video found in ${noteName}.`;
+}
+
+/**
  * Extracts a YouTube URL from note content or frontmatter. A note whose `video_url` is on another site has
  * no YouTube video, even when its body links to one: the note is about the other site's video.
  */

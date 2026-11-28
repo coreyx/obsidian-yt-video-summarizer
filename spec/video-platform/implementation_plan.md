@@ -79,7 +79,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
   - `getVideoNoteKind()` keeps classifying such a note as `'summary'`; the callers decide to skip it.
 
 #### [MODIFY] `src/main.ts`
-- [ ] **TASK-6:** Where a command now finds no YouTube video, use `otherPlatformVideoHost()` to give the other-site message instead of "No YouTube video found". The places:
+- [x] **TASK-6:** Where a command now finds no YouTube video, use `otherPlatformVideoHost()` to give the other-site message instead of "No YouTube video found". The places:
   - `refreshNoteVideoMetadata`, which also returns `status: 'skipped'` with that message so folder runs count it as skipped
   - `addDescriptionToVideoSummaryNote` and `tagNote`
   - `insertVideoCoverAtCursor`
