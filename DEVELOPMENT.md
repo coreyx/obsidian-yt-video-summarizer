@@ -263,7 +263,7 @@ Checks that no test file defines a copy of an exported `src/` function, that the
 | `media-extended.test.mjs` | Companion notes and covers (19, 35), missing-companion detection (22), descriptions and timestamps (26, 26b), adding Description / Transcript sections (32), companion notes in either direction (39), plugin detection and settings layout (40) |
 | `youtube.test.mjs` | HTML decoding (5), YouTube tags (18), playlist discovery and the note meta line (21), publish date and time (47) |
 | `tags.test.mjs` | Vault tag cache, AI tag prompt and grouped deduplication (28), Tag with AI / Tag with YouTube (38) |
-| `providers.test.mjs` | Topic tag parsing (6), OpenAI request settings and `max_tokens` fallback (14), LM Studio URLs, model parsing and provider sync (25) |
+| `providers.test.mjs` | Topic tag parsing (6), OpenAI request settings and `max_tokens` fallback (14), LM Studio URLs, model parsing and provider sync (25), the batched topic prompt and its replies (50) |
 | `settings.test.mjs` | Model retirement on start-up (12, 13), per-run Media Extended options (24), default prompt upgrade (45) |
 | `summary-note.test.mjs` | Folder filtering and sorting (11, 23), body title (15), technical-term wikilinks (16), note placement, paths and link handling (31), Add description to video summary note (37), link updates in unsaved notes (41) |
 | `operations.test.mjs` | Batch progress and reports (29), live operation status (44) |

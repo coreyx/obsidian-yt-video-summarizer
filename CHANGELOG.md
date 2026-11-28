@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `host` and `platform` frontmatter properties, right after `video_url`. `host` is the video URL's site without `www.` or a port (`youtube.com`, `youtu.be`, `m.youtube.com`); `platform` is `youtube` for all of YouTube's hosts, so a base can filter summary notes by platform. Summaries and the transcript command write them, and *Refresh video metadata* adds them to existing notes.
+- A batched topic prompt (`buildBatchVideoTopicsPrompt()` and `parseBatchVideoTopics()` in `src/utils/videoTopics.ts`) that works out several videos' topics in one request, from their titles and summaries, and reuses the topic names already in use. It was used for a one-time update of existing notes; no command uses it yet.
 
 ### Fixed
 
