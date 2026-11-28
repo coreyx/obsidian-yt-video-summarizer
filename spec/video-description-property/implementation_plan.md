@@ -39,7 +39,7 @@ None at this time. (Decided with the user: a normal `Changed` entry, not a break
   - `MediaExtendedMetadata`, `buildMediaExtendedFrontmatter()`, the Media Extended refresh and `mergeYamlBlocks()` are unchanged.
 
 #### [MODIFY] `src/main.ts`
-- [ ] **TASK-2:** Use the new field and read both property names.
+- [x] **TASK-2:** Use the new field and read both property names.
   - The three `FrontmatterData` builders (summary, transcript command, *Refresh video metadata*) set `video_description:` instead of `description:`. The tag sources and `MediaExtendedMetadata` objects keep `description`.
   - `getDescriptionForNote()` (*Add description* for summary and Media Extended notes) and `generateAITagsForNote()` (*Tag with AI*) read the frontmatter description through a new exported helper, `frontmatterVideoDescription(frontmatter)` in `src/utils/summaryNote.ts`. It returns `video_description` when that's a string, otherwise `description`.
 

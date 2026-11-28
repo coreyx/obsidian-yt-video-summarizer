@@ -163,6 +163,19 @@ export function insertLinkAtCursor(editor: InsertionEditor & Pick<Editor, 'somet
 }
 
 /**
+ * Returns a note's video description from its frontmatter: `video_description`, or `description` for notes
+ * summarized before the property was renamed (and for Media Extended notes, which use `description`).
+ * Returns `undefined` when neither is a string.
+ * @param frontmatter - The note's parsed frontmatter, as Obsidian's metadata cache gives it.
+ */
+export function frontmatterVideoDescription(frontmatter: Record<string, unknown> | undefined | null): string | undefined {
+	if (typeof frontmatter?.video_description === 'string') {
+		return frontmatter.video_description;
+	}
+	return typeof frontmatter?.description === 'string' ? frontmatter.description : undefined;
+}
+
+/**
  * Returns the frontmatter description to copy into a note body, or `null` when the description should be
  * fetched from YouTube instead: the setting is off, or the frontmatter has no non-empty description.
  * @param useFrontmatter - The *Use frontmatter description when adding description to body* setting.

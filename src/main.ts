@@ -58,6 +58,7 @@ import {
 	composeSummaryNoteContent,
 	findAvailableNotePath,
 	frontmatterDescriptionToUse,
+	frontmatterVideoDescription,
 	insertLinkAtCursor,
 	insertTextAt,
 	normalizeFolderSetting,
@@ -1329,7 +1330,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 	 * `source` is a short suffix for the confirmation notice.
 	 */
 	private async getDescriptionForNote(file: TFile, url: string, videoId: string, progress?: OperationProgress): Promise<{ description: string; source: string }> {
-		const frontmatterDescription = this.app.metadataCache.getFileCache(file)?.frontmatter?.description;
+		const frontmatterDescription = frontmatterVideoDescription(this.app.metadataCache.getFileCache(file)?.frontmatter);
 		const descriptionFromFrontmatter = frontmatterDescriptionToUse(this.settings.getMediaExtendedDescriptionFromFrontmatter(), frontmatterDescription);
 		if (descriptionFromFrontmatter !== null) {
 			return { description: descriptionFromFrontmatter, source: ' (from frontmatter)' };
@@ -1414,7 +1415,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').trim();
-		const description = typeof frontmatter?.description === 'string' ? frontmatter.description.trim() : '';
+		const description = frontmatterVideoDescription(frontmatter)?.trim() ?? '';
 		const noteText = body || description;
 		if (!noteText) {
 			new Notice(`"${file.basename}" has no summary or description to tag from.`);
