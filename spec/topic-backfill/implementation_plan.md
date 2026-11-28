@@ -61,7 +61,7 @@ None at this time. (Decided with the user: OpenAI `gpt-5.4-nano`, shared topic n
   - **Logging:** each request's `usage` is logged, and the run stops at a total of 0.5M tokens.
   - **Pilot:** the first batch runs alone and the script stops, for the pilot review.
   - **Output:** proposals are written to `topic_proposals.json` (note path → topics) and a readable `topic_proposals.md`. The `.md` lists every note with its topics, then every distinct topic name with its note count.
-- [ ] **TASK-4:** Review with the user:
+- [x] **TASK-4:** Review with the user:
   1. Show the pilot results and token count, then run the remaining batches.
   2. Show the full proposal, especially the topic-name counts.
   3. Apply any renames, merges or per-note changes the user asks for, directly in `topic_proposals.json`, and show the counts again.
