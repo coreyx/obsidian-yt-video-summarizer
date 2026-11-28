@@ -20,6 +20,7 @@ const {
 } = await loadSource('src/utils/frontmatter.ts');
 const realFrontmatter = await loadSource('src/utils/frontmatter.ts');
 const videoTopics = await loadSource('src/utils/videoTopics.ts');
+const videoPlatformModule = await loadSource('src/utils/videoPlatform.ts');
 const { formatLocalDate, formatLocalDateTime, hasTimeOfDay, isFrontmatterDateValue, noteCreatedDateTime } = await loadSource('src/utils/dateTime.ts');
 const { buildMediaExtendedFrontmatter } = realFrontmatter;
 
@@ -589,5 +590,93 @@ assert.deepStrictEqual(
 );
 
 console.log('✓ published_at date and time and the created property passed');
+
+// Test 49: host and platform, and leaving other sites' summary notes alone
+console.log('Testing host and platform...');
+
+// 49.1: host is the lowercased hostname without the port or a leading www.; every YouTube host is platform youtube
+const hostCases = [
+	['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'youtube.com', 'youtube'],
+	['https://youtube.com/watch?v=dQw4w9WgXcQ', 'youtube.com', 'youtube'],
+	['https://youtu.be/dQw4w9WgXcQ?t=42', 'youtu.be', 'youtube'],
+	['https://M.YouTube.com/watch?v=dQw4w9WgXcQ', 'm.youtube.com', 'youtube'],
+	['https://music.youtube.com/watch?v=dQw4w9WgXcQ', 'music.youtube.com', 'youtube'],
+	['https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', 'youtube-nocookie.com', 'youtube'],
+	['https://www.youtube.com:443/watch?v=dQw4w9WgXcQ', 'youtube.com', 'youtube'],
+	['http://localhost:8080/videos/1', 'localhost', null],
+	['http://192.0.2.10:8080/v/1', '192.0.2.10', null],
+	['https://vimeo.com/76979871', 'vimeo.com', null],
+	['https://www.tiktok.com/@creator/video/7234567890123456789', 'tiktok.com', null],
+	['https://notyoutube.com/watch?v=dQw4w9WgXcQ', 'notyoutube.com', null],
+	['  https://youtu.be/dQw4w9WgXcQ  ', 'youtu.be', 'youtube'],
+	['ftp://youtube.com/video', null, null],
+	['not a url', null, null],
+];
+for (const [url, host, platform] of hostCases) {
+	assert.strictEqual(videoPlatformModule.videoHost(url), host, url);
+	assert.strictEqual(videoPlatformModule.videoPlatform(videoPlatformModule.videoHost(url)), platform, url);
+	assert.strictEqual(videoPlatformModule.isYouTubeVideoUrl(url), platform === 'youtube', url);
+}
+assert.strictEqual(videoPlatformModule.videoPlatform(null), null);
+assert.deepStrictEqual(realFrontmatter.videoSourceFrontmatter('https://youtu.be/dQw4w9WgXcQ'), { host: 'youtu.be', platform: 'youtube' });
+assert.deepStrictEqual(realFrontmatter.videoSourceFrontmatter('https://vimeo.com/76979871'), { host: 'vimeo.com' });
+assert.deepStrictEqual(realFrontmatter.videoSourceFrontmatter('not a url'), {});
+
+// 49.2: New notes have host and platform right after video_url; they're left out when unset
+const sourceData = { ...statsBase, video_url: 'https://youtu.be/dQw4w9WgXcQ', host: 'youtu.be', platform: 'youtube' };
+const sourceNote = buildFrontmatter(sourceData).split('\n');
+const videoUrlAt = sourceNote.indexOf('video_url: "https://youtu.be/dQw4w9WgXcQ"');
+assert.deepStrictEqual(sourceNote.slice(videoUrlAt, videoUrlAt + 3), [
+	'video_url: "https://youtu.be/dQw4w9WgXcQ"',
+	'host: "youtu.be"',
+	'platform: "youtube"',
+]);
+assert(!/^(host|platform):/m.test(buildFrontmatter(statsBase)));
+
+// 49.3: A note without them gets them right after its video_url; wrong values are corrected in place
+const mergedSource = mergeFrontmatter('title: "T"\nvideo_url: "https://youtu.be/dQw4w9WgXcQ"\nchannel_name: "C"\nfavorite: true', sourceData).split('\n');
+assert.deepStrictEqual(mergedSource.slice(0, 5), [
+	`title: ${JSON.stringify(statsBase.title)}`,
+	'video_url: "https://youtu.be/dQw4w9WgXcQ"',
+	'host: "youtu.be"',
+	'platform: "youtube"',
+	`channel_name: ${JSON.stringify(statsBase.channel_name)}`,
+]);
+assert.strictEqual(mergedSource.filter((line) => /^(host|platform):/.test(line)).length, 2);
+const correctedSource = mergeFrontmatter('title: "T"\nvideo_url: "https://youtu.be/dQw4w9WgXcQ"\nplatform: "other"\nhost: "example.com"', sourceData).split('\n');
+assert(correctedSource.includes('host: "youtu.be"') && correctedSource.includes('platform: "youtube"'));
+assert.strictEqual(correctedSource.filter((line) => /^(host|platform):/.test(line)).length, 2);
+
+// 49.4: A note whose video_url is on another site has no YouTube video, even with a YouTube link in its body
+const tiktokNote = '---\nvideo_url: "https://www.tiktok.com/@creator/video/7234567890123456789"\n---\nMentioned: https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+assert.strictEqual(extractYouTubeUrlFromNote(tiktokNote), null);
+assert.strictEqual(realFrontmatter.otherPlatformVideoHost(tiktokNote), 'tiktok.com');
+const youtubeNote = '---\nvideo_url: "https://youtu.be/dQw4w9WgXcQ"\n---\n';
+assert.strictEqual(extractYouTubeUrlFromNote(youtubeNote), 'https://youtu.be/dQw4w9WgXcQ');
+assert.strictEqual(realFrontmatter.otherPlatformVideoHost(youtubeNote), null);
+assert.strictEqual(realFrontmatter.otherPlatformVideoHost('No frontmatter'), null);
+// Media Extended notes and notes with only a body link still work as before
+assert.strictEqual(extractYouTubeUrlFromNote('---\nvideo: https://www.youtube.com/watch?v=dQw4w9WgXcQ\n---\n'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+assert.strictEqual(extractYouTubeUrlFromNote('See https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+
+// 49.5: Finding a video's note only matches YouTube URLs, not another site's URL that looks like it holds a video ID
+assert(!realFrontmatter.frontmatterMatchesVideo({ video_url: 'https://notyoutube.com/watch?v=dQw4w9WgXcQ' }, ['video_url'], 'dQw4w9WgXcQ'));
+assert(realFrontmatter.frontmatterMatchesVideo({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }, ['video_url'], 'dQw4w9WgXcQ'));
+
+// 49.6: The skip message names the other site
+const vimeoNote = '---\nvideo_url: "https://vimeo.com/76979871"\n---\n';
+assert.strictEqual(realFrontmatter.missingYouTubeVideoMessage(vimeoNote, '"Clip"'), '"Clip" is a video from vimeo.com, not YouTube.');
+assert.strictEqual(realFrontmatter.missingYouTubeVideoMessage(vimeoNote, 'this note'), 'This note is a video from vimeo.com, not YouTube.');
+assert.strictEqual(realFrontmatter.missingYouTubeVideoMessage('No video here', 'the note'), 'No YouTube video found in the note.');
+
+// 49.7: Every summary path, the refresh and the transcript command set host and platform from the note's URL,
+// commands report other sites' notes with the message above, and the file menu only offers a companion note for YouTube
+const mainSourceForPlatform = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+assert.strictEqual([...mainSourceForPlatform.matchAll(/video_url: url,\s*\.\.\.videoSourceFrontmatter\(url\),/g)].length, 3);
+assert(!mainSourceForPlatform.includes('No YouTube video found'));
+assert.strictEqual([...mainSourceForPlatform.matchAll(/missingYouTubeVideoMessage\(/g)].length, 7);
+assert(/typeof frontmatter\?\.video_url === 'string' && isYouTubeVideoUrl\(frontmatter\.video_url\)/.test(mainSourceForPlatform));
+
+console.log('✓ host and platform passed');
 
 console.log('\nAll tests passed successfully!');

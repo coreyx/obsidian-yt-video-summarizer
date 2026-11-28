@@ -91,7 +91,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 ### Tests and docs
 
 #### [MODIFY] `tests/frontmatter.test.mjs`, `tests/media-extended.test.mjs`
-- [ ] **TASK-7:** Add Test 49, using `loadSource()` against the real `src/`:
+- [x] **TASK-7:** Add Test 49, using `loadSource()` against the real `src/`:
   - `videoHost`/`videoPlatform`/`isYouTubeVideoUrl` on each YouTube host form, a port, uppercase, an IP, a non-URL, and a Vimeo and a TikTok URL.
   - `buildFrontmatter` order: `video_url`, then `host`, then `platform`.
   - `mergeFrontmatter` inserting the properties after `video_url` in a note without them, and correcting a wrong value.
