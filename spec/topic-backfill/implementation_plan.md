@@ -52,7 +52,7 @@ None at this time. (Decided with the user: OpenAI `gpt-5.4-nano`, shared topic n
 ### The backfill
 
 #### [NEW] `topic_backfill.mjs` (scratchpad, not committed)
-- [ ] **TASK-3:** Work out the topics and write them to a proposal file. The vault isn't changed.
+- [x] **TASK-3:** Work out the topics and write them to a proposal file. The vault isn't changed.
   - **Input:** each note's title and its `## Summary` section. A note with no Summary section uses its first body section instead.
   - **Notes covered:** notes with a `video_url` and no `topic`, sorted oldest-modified first and grouped 25 per request.
   - **Request:** sent to `https://api.openai.com/v1/chat/completions` with `gpt-5.4-nano` and the plugin's request settings (`buildChatCompletionParams`, loaded from `src/` with esbuild). `max_completion_tokens` is raised to 4000 so the hidden reasoning tokens can't use up the whole answer.
