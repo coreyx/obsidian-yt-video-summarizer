@@ -111,7 +111,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
   - Results are logged per note.
 
 #### [MODIFY] `README.md`, `CHANGELOG.md`, `DEVELOPMENT.md`
-- [ ] **TASK-9:** Update the docs:
+- [x] **TASK-9:** Update the docs:
   - `README.md`: add `host` and `platform` to the frontmatter property list and the example notes.
   - `CHANGELOG.md`: under Unreleased, add `host`/`platform` and the other-site skipping (as a fix for the mistaken video match).
   - `DEVELOPMENT.md`: add Test 49 to the test table.

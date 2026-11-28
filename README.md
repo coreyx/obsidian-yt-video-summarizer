@@ -14,7 +14,7 @@ Generate AI-powered summaries of YouTube videos directly in Obsidian using Gemin
 -   🎥 **Transcript Extraction**: Extract accurate transcripts from YouTube videos using lightweight InnerTube support.
 -   🤖 **Multi-Provider AI Summaries**: Generate rich summaries using Gemini, OpenAI, Anthropic (Claude), and OpenAI/Anthropic-compatible providers (OpenRouter, Grok, Ollama, LM Studio, etc.).
 -   🏠 **LM Studio & Local OpenAI-Compatible Server Support**: One-click auto-detection for local [LM Studio](https://lmstudio.ai/) instances and full compatibility with local or self-hosted OpenAI-compatible servers (Ollama, LocalAI, vLLM, OpenRouter) with zero cloud token cost.
--   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `video_url`, `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at` (the video's publish date and time, in your local time), `view_count`, `like_count`, `aspect_ratio`, `description`, `topic` (up to 3 AI-inferred topics, e.g. `Machine Learning`), `created` (the local date and time the note was summarized and saved), and `tags`. Video stats are included when YouTube provides them. Every summary note also gets `watch_later` and `favorite` checkbox properties (unticked) for you to use.
+-   📄 **Rich YAML Frontmatter**: Automatically stores `title`, `video_url`, `host` (the video's site, e.g. `youtube.com` or `youtu.be`), `platform` (`youtube`), `channel_name`, `channel_username` (e.g. `@creator`), `channel_url`, `thumbnail`, `thumbnail_text`, `duration` (seconds), `published_at` (the video's publish date and time, in your local time), `view_count`, `like_count`, `aspect_ratio`, `description`, `topic` (up to 3 AI-inferred topics, e.g. `Machine Learning`), `created` (the local date and time the note was summarized and saved), and `tags`. Video stats are included when YouTube provides them. Every summary note also gets `watch_later` and `favorite` checkbox properties (unticked) for you to use.
 -   👁️ **Thumbnail Vision & Text Recognition (OCR)**: Uses multimodal vision models to transcribe visible text, titles, and overlays from the video thumbnail.
 -   📝 **Video Description Preservation**: Stores the creator's complete video description in frontmatter, and on demand adds it to the note body with every timestamp converted into a clickable link to that moment in the video.
 -   🏷️ **Semantic Topic & YouTube Metadata Tagging**: Combines creator video tags from YouTube Data API / metadata, hashtags from the title and description, and AI topic analysis to tag notes in YAML frontmatter or inline.
@@ -307,10 +307,12 @@ Re-fetches a video's metadata from YouTube and refreshes the frontmatter of vide
 - **A folder** (including subfolders): run `Refresh video metadata in folder...`, or right-click a folder → **Refresh video metadata in this folder**. Progress and per-note results appear in the batch report (`View last batch operation report & logs`)
 
 What gets refreshed:
-- **Video summary notes** (notes with `video_url` frontmatter): `title`, channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `description` (when *Add description to frontmatter* is on).
+- **Video summary notes** (notes with `video_url` frontmatter): `title`, `host` and `platform` (from the note's `video_url`), channel fields, `thumbnail` (with low-resolution fallback), `duration`, `published_at`, `view_count`, `like_count`, `aspect_ratio`, playlist fields (when *Discover playlist from creator* is on), and `description` (when *Add description to frontmatter* is on).
 - **Media Extended notes**: all Media Extended frontmatter fields, including `cover` and `aspect_ratio`, keeping the existing `mx-uid`.
 
 What's never changed: the note body, `tags`, AI-extracted `thumbnail_text` and `topic`, `video_url`, `created`, your `watch_later` / `favorite` checkboxes (added unticked if the note doesn't have them yet), and any frontmatter properties the plugin doesn't manage. No AI model is used.
+
+Summary notes from other sites can share your summary folder: a note whose `video_url` isn't a YouTube URL is skipped, by this and every other command, with a message naming its site (e.g. *"…" is a video from vimeo.com, not YouTube*). Filter a base on `platform` to list only YouTube notes.
 
 ### Method 10: Insert Video Cover at Cursor
 
@@ -353,6 +355,8 @@ The plugin generates structured notes with comprehensive YAML frontmatter and ma
 ---
 title: "Video Title"
 video_url: "https://www.youtube.com/watch?v=VIDEO_ID"
+host: "youtube.com"
+platform: "youtube"
 channel_name: "Channel Name"
 channel_username: "@channel"
 channel_url: "https://www.youtube.com/@channel"
