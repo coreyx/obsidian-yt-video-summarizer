@@ -298,7 +298,7 @@ console.log('✓ Video summary note placement, fallback folder paths, and source
 // Test 37: "Add description to video summary note" (## Description with YouTube timestamp links)
 console.log('Testing add description to video summary note...');
 
-const summaryNoteFm = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\ndescription: |-\n  Chapters\n  0:00 Intro\n  01:23 Setup\n---';
+const summaryNoteFm = '---\ntitle: "Video"\nvideo_url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"\nvideo_description: |-\n  Chapters\n  0:00 Intro\n  01:23 Setup\n---';
 const summaryNoteBody = '![Thumbnail](https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg)\n\n## Summary\n\nText\n\n## Key points\n\n- Point\n\n# Related\n\n- [[Media Library/Video]]';
 const summaryNoteFull = `${summaryNoteFm}\n\n${summaryNoteBody}\n`;
 const ytDescriptionBody = convertTimestampsToLinks('Chapters\n0:00 Intro\n01:23 Setup', 'dQw4w9WgXcQ', 'youtube');

@@ -679,4 +679,83 @@ assert(/typeof frontmatter\?\.video_url === 'string' && isYouTubeVideoUrl\(front
 
 console.log('✓ host and platform passed');
 
+// Test 51: video_description in summary notes (renamed from description)
+console.log('Testing the video_description property...');
+const { frontmatterVideoDescription } = await loadSource('src/utils/summaryNote.ts');
+const descData = {
+	title: 'Desc Test',
+	video_url: 'https://www.youtube.com/watch?v=MdxaU0l3FzI',
+	channel_name: 'Channel',
+	channel_username: '@channel',
+	channel_url: 'https://www.youtube.com/@channel',
+	thumbnail: '',
+	thumbnail_text: '',
+	video_description: 'Fresh line 1\n\nFresh line 2',
+};
+const { video_description: _unused, ...descDataWithout } = descData;
+const descKeys = (yaml) => yaml.split('\n').map((line) => line.match(/^([A-Za-z0-9_-]+):/)?.[1]).filter(Boolean);
+const freshBlock = 'video_description: |-\n  Fresh line 1\n\n  Fresh line 2';
+
+// 51.1: New notes write video_description, never description; a blank one is ""
+const builtDesc = realFrontmatter.buildFrontmatter(descData);
+assert(builtDesc.includes(freshBlock));
+assert(!descKeys(builtDesc).includes('description'));
+assert(realFrontmatter.buildFrontmatter({ ...descData, video_description: '  ' }).includes('video_description: ""'));
+assert(!descKeys(realFrontmatter.buildFrontmatter(descDataWithout)).includes('video_description'));
+
+// 51.2: An existing video_description is replaced where it sits
+const withNew = 'title: "Old"\nvideo_description: |-\n  Old 1\n  Old 2\ncustom: kept\ntags:\n  - a';
+const mergedNew = realFrontmatter.mergeFrontmatter(withNew, descData, { excludeTags: true });
+assert(mergedNew.includes(`${freshBlock}\ncustom: kept`));
+assert(!mergedNew.includes('Old 1'));
+
+// 51.3: An older description is renamed in place when there's a new value, and left alone without one
+const withLegacy = 'title: "Old"\ndescription: |-\n  Legacy 1\n\n  Legacy 2\ncustom: kept';
+const migrated = realFrontmatter.mergeFrontmatter(withLegacy, descData, { excludeTags: true });
+assert(migrated.includes(`${freshBlock}\ncustom: kept`));
+assert(!descKeys(migrated).includes('description'));
+assert(!migrated.includes('Legacy'));
+const untouched = realFrontmatter.mergeFrontmatter(withLegacy, descDataWithout, { excludeTags: true });
+assert(untouched.includes('description: |-\n  Legacy 1\n\n  Legacy 2\ncustom: kept'));
+assert(!descKeys(untouched).includes('video_description'));
+
+// 51.4: A note with both properties ends up with only the new one, wherever the old one sat
+for (const both of [
+	'description: |-\n  Legacy\nvideo_description: |-\n  Old\ncustom: kept',
+	'video_description: |-\n  Old\ndescription: |-\n  Legacy\ncustom: kept',
+]) {
+	const merged = realFrontmatter.mergeFrontmatter(both, descData, { excludeTags: true });
+	const keys = descKeys(merged);
+	assert.strictEqual(keys.filter((key) => key === 'video_description').length, 1);
+	assert(!keys.includes('description'));
+	assert(!merged.includes('Legacy') && !merged.includes('Old'));
+}
+
+// 51.5: A note with neither gets video_description added
+const added = realFrontmatter.mergeFrontmatter('title: "Old"\ncustom: kept', descData, { excludeTags: true });
+assert(added.includes(freshBlock));
+assert(!descKeys(added).includes('description'));
+
+// 51.6: Reading prefers video_description, falls back to description, and ignores non-strings
+assert.strictEqual(frontmatterVideoDescription({ video_description: 'new', description: 'old' }), 'new');
+assert.strictEqual(frontmatterVideoDescription({ video_description: '', description: 'old' }), '');
+assert.strictEqual(frontmatterVideoDescription({ description: 'old' }), 'old');
+assert.strictEqual(frontmatterVideoDescription({ video_description: 5, description: 'old' }), 'old');
+assert.strictEqual(frontmatterVideoDescription({ description: ['x'] }), undefined);
+assert.strictEqual(frontmatterVideoDescription(undefined), undefined);
+
+// 51.7: Media Extended notes keep description
+const meDescFm = realFrontmatter.buildMediaExtendedFrontmatter({ videoId: 'dQw4w9WgXcQ', title: 'T', creator: 'C', description: 'Me desc' });
+assert(meDescFm.includes('description: |-\n  Me desc'));
+assert(!meDescFm.includes('video_description'));
+
+// 51.8: Wiring: summary builders set video_description, and both readers go through the helper
+const mainSourceForDesc = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+assert.strictEqual((mainSourceForDesc.match(/video_description: this\.settings\.getAddDescriptionToFrontmatter\(\)/g) || []).length, 3);
+assert(!/^\s*description: this\.settings\.getAddDescriptionToFrontmatter\(\)/m.test(mainSourceForDesc));
+assert.strictEqual((mainSourceForDesc.match(/frontmatterVideoDescription\(/g) || []).length, 2);
+assert(!/frontmatter\?\.description\b/.test(mainSourceForDesc));
+
+console.log('✓ video_description passed');
+
 console.log('\nAll tests passed successfully!');

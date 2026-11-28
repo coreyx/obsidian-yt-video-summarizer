@@ -162,6 +162,7 @@ try {
 		['src/utils/summaryNote.ts', 'insertTextAt'],
 		['src/utils/summaryNote.ts', 'insertLinkAtCursor'],
 		['src/utils/summaryNote.ts', 'frontmatterDescriptionToUse'],
+		['src/utils/summaryNote.ts', 'frontmatterVideoDescription'],
 		['src/utils/summaryNote.ts', 'replaceInNote'],
 		['src/services/prompt.ts', 'adaptPromptForWikilinks'],
 		['src/ui/modals/FolderSuggestModal.ts', 'sortFolders'],

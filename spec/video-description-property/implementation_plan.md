@@ -46,7 +46,7 @@ None at this time. (Decided with the user: a normal `Changed` entry, not a break
 ### Tests
 
 #### [MODIFY] `tests/frontmatter.test.mjs`, `tests/summary-note.test.mjs`
-- [ ] **TASK-3:** Update the tests to the new key and add Test 51.
+- [x] **TASK-3:** Update the tests to the new key and add Test 51.
   - **Existing tests:** Tests 20 and 42 and the other summary-note cases that build or merge `description` switch to `video_description`. The Media Extended cases keep `description`.
   - **Test 51:**
     - new frontmatter writes `video_description` and no `description`;
