@@ -182,3 +182,47 @@ await lmSettings.syncLMStudioProvider('http://127.0.0.1:1234/v1', otherLoaded);
 assert.strictEqual(lmSaved().selectedModelId, 'LM Studio:aaa-model');
 
 console.log('✓ OpenAI-compatible URL normalization and LM Studio model parsing passed');
+
+// Test 50: Batched topic prompt and reply parsing (adding topics to many existing notes at once)
+console.log('Testing batched topic prompt and parsing...');
+const { buildBatchVideoTopicsPrompt, parseBatchVideoTopics, parseVideoTopics } = await loadSource('src/utils/videoTopics.ts');
+
+// 50.1: The prompt lists every video by number with its title and summary, and the topics to reuse, once each
+const batchPrompt = buildBatchVideoTopicsPrompt(
+	[
+		{ id: 1, title: 'Building  a Home Lab', summary: 'Racks, servers\nand networking.' },
+		{ id: 2, title: 'Index Funds Explained', summary: 'Why low fees matter.' },
+	],
+	['Home Automation', ' Personal Finance ', 'Home Automation', '']
+);
+assert(batchPrompt.includes('[1] Building a Home Lab\nRacks, servers and networking.'));
+assert(batchPrompt.includes('[2] Index Funds Explained\nWhy low fees matter.'));
+assert(batchPrompt.includes('Home Automation; Personal Finance\n'));
+assert.strictEqual(batchPrompt.split('Home Automation').length - 1, 1 + 1); // the example in the rules, and the list
+assert(batchPrompt.includes('<number>: Topic; Topic'));
+assert(!buildBatchVideoTopicsPrompt([{ id: 1, title: 'T', summary: 'S' }], []).includes('Topics already in use'));
+
+// 50.2: Replies are read per number, in the forms models tend to answer with; only numbers asked for are kept
+const batchReply = [
+	'1: home automation; Networking, Self-Hosting; Fourth Topic',
+	'- [2] Personal Finance',
+	'3. Unasked Topic',
+	'2: Second Answer Ignored',
+	'[4]: Investing',
+	'5) The Video Explains How To Set Up A Complete Network Rack From Scratch In Detail',
+	'Here are the topics:',
+	'',
+].join('\n');
+const parsedBatch = parseBatchVideoTopics(batchReply, [1, 2, 4, 5], ['Home Automation', 'Personal Finance']);
+assert.deepStrictEqual([...parsedBatch.keys()], [1, 2, 4]);
+assert.deepStrictEqual(parsedBatch.get(1), ['Home Automation', 'Networking', 'Self-Hosting']);
+assert.deepStrictEqual(parsedBatch.get(2), ['Personal Finance']);
+assert.deepStrictEqual(parsedBatch.get(4), ['Investing']);
+assert.strictEqual(parsedBatch.has(5), false); // a sentence isn't a topic, so 5 is left to ask again
+assert.strictEqual(parseBatchVideoTopics('', [1]).size, 0);
+assert.deepStrictEqual(parseBatchVideoTopics('1: ai video; AI VIDEO', [1], ['AI Video']).get(1), ['AI Video']);
+
+// 50.3: Single-video parsing is unchanged by the shared clean-up
+assert.deepStrictEqual(parseVideoTopics('1. machine learning\n- "AI"\n#AI\n[[Data Science]]'), ['Machine Learning', 'AI', 'Data Science']);
+
+console.log('✓ batched topic prompt and parsing passed');

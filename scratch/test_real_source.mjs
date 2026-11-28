@@ -116,6 +116,8 @@ try {
 		['src/utils/videoPlatform.ts', 'isYouTubeVideoUrl'],
 		['src/utils/videoTopics.ts', 'parseVideoTopics'],
 		['src/utils/videoTopics.ts', 'buildVideoTopicsPrompt'],
+		['src/utils/videoTopics.ts', 'buildBatchVideoTopicsPrompt'],
+		['src/utils/videoTopics.ts', 'parseBatchVideoTopics'],
 		['src/utils/vaultTags.ts', 'extractGroupPrefixes'],
 		['src/utils/vaultTags.ts', 'buildVaultTagData'],
 		['src/utils/vaultTags.ts', 'buildTopicGenerationPrompt'],
