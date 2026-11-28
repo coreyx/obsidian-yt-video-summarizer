@@ -58,7 +58,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 ### Writing the properties
 
 #### [MODIFY] `src/utils/frontmatter.ts`
-- [ ] **TASK-2:** Add `host?: string` and `platform?: string` to `FrontmatterData`, documented.
+- [x] **TASK-2:** Add `host?: string` and `platform?: string` to `FrontmatterData`, documented.
   - `buildFrontmatter()` writes them right after `video_url`, when present, as quoted strings like the other text properties.
   - `mergeFrontmatter()` adds both to `targetKeys`, so an existing value is replaced. A note that doesn't have them gets them inserted directly after its `video_url` line, not appended at the end.
 - [ ] **TASK-3:** Add `videoSourceFrontmatter(url)`, which returns `{ host, platform }` from `videoHost`/`videoPlatform` and leaves out whichever is `null`.

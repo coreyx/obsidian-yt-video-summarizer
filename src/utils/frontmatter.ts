@@ -5,6 +5,10 @@ import { isFrontmatterDateValue } from './dateTime';
 export interface FrontmatterData {
 	title: string;
 	video_url: string;
+	/** The `video_url` hostname without the port or a leading `www.` (see `videoHost()`) */
+	host?: string;
+	/** The video's platform, grouping its hosts: `youtube` for every YouTube host (see `videoPlatform()`) */
+	platform?: string;
 	channel_name: string;
 	channel_username: string;
 	channel_url: string;
@@ -114,12 +118,27 @@ function buildTopicLines(topics: string[] | undefined): string[] {
 }
 
 /**
+ * Builds the `host` and `platform` frontmatter lines, keyed by property, leaving out whichever is unset.
+ */
+function buildVideoSourceLines(data: Pick<FrontmatterData, 'host' | 'platform'>): Record<string, string> {
+	const lines: Record<string, string> = {};
+	if (data.host) {
+		lines['host'] = `host: ${JSON.stringify(data.host)}`;
+	}
+	if (data.platform) {
+		lines['platform'] = `platform: ${JSON.stringify(data.platform)}`;
+	}
+	return lines;
+}
+
+/**
  * Builds a YAML frontmatter string from structured metadata.
  */
 export function buildFrontmatter(data: FrontmatterData): string {
 	const lines: string[] = ['---'];
 	lines.push(`title: ${JSON.stringify(data.title)}`);
 	lines.push(`video_url: ${JSON.stringify(data.video_url)}`);
+	lines.push(...Object.values(buildVideoSourceLines(data)));
 	lines.push(`channel_name: ${JSON.stringify(data.channel_name)}`);
 	lines.push(`channel_username: ${JSON.stringify(data.channel_username || '')}`);
 	lines.push(`channel_url: ${JSON.stringify(data.channel_url)}`);
@@ -180,7 +199,8 @@ export function buildFrontmatter(data: FrontmatterData): string {
  * Merges new frontmatter metadata into an existing raw YAML string.
  * Preserves other frontmatter properties and merges tags (unless excludeTags is true).
  * New topics replace the note's `topic` list; when no topics are given, the existing list is kept.
- * `created` is added only when the note doesn't have it yet.
+ * `created` is added only when the note doesn't have it yet. `host` and `platform` replace the note's values, or
+ * are inserted right after `video_url` when the note doesn't have them.
  */
 export function mergeFrontmatter(
 	rawYaml: string,
@@ -193,9 +213,15 @@ export function mergeFrontmatter(
 	const existingKeys = new Set<string>();
 	const newLines: string[] = [];
 
+	const videoSourceLines = buildVideoSourceLines(data);
+	// A note without `host` / `platform` gets them right after its `video_url`, where new notes have them
+	const existingKeyNames = new Set(
+		lines.map((line) => line.match(/^([a-zA-Z0-9_-]+):/)?.[1]).filter((key): key is string => Boolean(key))
+	);
 	const targetKeys: Record<string, string> = {
 		title: `title: ${JSON.stringify(data.title)}`,
 		video_url: `video_url: ${JSON.stringify(data.video_url)}`,
+		...videoSourceLines,
 		channel_name: `channel_name: ${JSON.stringify(data.channel_name)}`,
 		channel_username: `channel_username: ${JSON.stringify(data.channel_username || '')}`,
 		channel_url: `channel_url: ${JSON.stringify(data.channel_url)}`,
@@ -316,6 +342,14 @@ export function mergeFrontmatter(
 			if (key in targetKeys) {
 				newLines.push(targetKeys[key]);
 				updatedKeys.add(key);
+				if (key === 'video_url') {
+					for (const [sourceKey, sourceLine] of Object.entries(videoSourceLines)) {
+						if (!existingKeyNames.has(sourceKey)) {
+							newLines.push(sourceLine);
+							updatedKeys.add(sourceKey);
+						}
+					}
+				}
 				continue;
 			}
 		}
