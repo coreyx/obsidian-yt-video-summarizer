@@ -72,15 +72,13 @@ export function toTitleCase(phrase: string): string {
 }
 
 /**
- * Parses the model's reply into at most `max` Title Case topics. Accepts one topic per line or a
- * comma-separated list, strips list markers, quotes, hashtags and wikilink brackets, and drops
- * duplicates (case-insensitive) and anything too long to be a topic.
+ * Cleans the pieces of a model's reply into at most `max` Title Case topics: strips list markers, quotes,
+ * hashtags and wikilink brackets, and drops duplicates (case-insensitive) and anything too long to be a topic.
  */
-export function parseVideoTopics(text: string, max = MAX_VIDEO_TOPICS): string[] {
-	if (!text) return [];
+function cleanTopics(pieces: string[], max: number): string[] {
 	const topics: string[] = [];
 	const seen = new Set<string>();
-	for (const raw of text.split(/[,\n]/)) {
+	for (const raw of pieces) {
 		const topic = raw
 			.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
 			.replace(/\[\[|\]\]/g, '')
@@ -104,4 +102,86 @@ export function parseVideoTopics(text: string, max = MAX_VIDEO_TOPICS): string[]
 		}
 	}
 	return topics;
+}
+
+/**
+ * Parses the model's reply into at most `max` Title Case topics. Accepts one topic per line or a
+ * comma-separated list, strips list markers, quotes, hashtags and wikilink brackets, and drops
+ * duplicates (case-insensitive) and anything too long to be a topic.
+ */
+export function parseVideoTopics(text: string, max = MAX_VIDEO_TOPICS): string[] {
+	if (!text) return [];
+	return cleanTopics(text.split(/[,\n]/), max);
+}
+
+/** One note in a batched topic request: a number to answer by, and what the model reads */
+export interface BatchTopicNote {
+	id: number;
+	title: string;
+	summary: string;
+}
+
+/**
+ * Builds one prompt that asks for the topics of several videos at once, from each note's title and
+ * summary instead of its transcript, so adding topics to many existing notes takes a few small requests.
+ * `knownTopics` are names already in use; the model is asked to reuse them so the vault keeps one
+ * consistent set of topics instead of near-duplicates.
+ */
+export function buildBatchVideoTopicsPrompt(notes: BatchTopicNote[], knownTopics: string[]): string {
+	const known = [...new Set(knownTopics.map((topic) => topic.trim()).filter(Boolean))];
+	const knownSection = known.length > 0
+		? `Topics already in use (reuse one whenever it fits; add a new topic only when none does):
+${known.join('; ')}
+
+`
+		: '';
+	const videos = notes
+		.map((note) => `[${note.id}] ${note.title.replace(/\s+/g, ' ').trim()}
+${note.summary.replace(/\s+/g, ' ').trim()}`)
+		.join('\n\n');
+	return `You are categorizing YouTube videos for notes in Obsidian.
+
+For each video below, read its title and summary and name the broad subject areas it is about, most central first. Give between 1 and ${MAX_VIDEO_TOPICS} topics per video.
+
+Rules:
+- Each topic is a short noun phrase of 1 to 3 words in Title Case (e.g. Machine Learning, Personal Finance, Home Automation).
+- Prefer subject areas over the names of specific people, channels, or products.
+- Prefer fewer, broader topics over many narrow ones, and don't list two topics that mean the same thing.
+- Answer with exactly one line per video, in the same order, in the form: <number>: Topic; Topic
+- Return ONLY those lines, with no other text.
+
+${knownSection}Videos:
+
+${videos}`;
+}
+
+/**
+ * Parses the reply to a batched topic prompt into each video's topics, keyed by its number. Only the
+ * numbers that were asked for are kept, each with at most `max` cleaned Title Case topics; a video
+ * with no usable answer is left out, so the caller can tell which videos to ask about again. A topic
+ * that matches one of `knownTopics` apart from letter case takes the known spelling (`AI Video`, not
+ * `Ai Video`), so reused topics stay identical.
+ */
+export function parseBatchVideoTopics(
+	text: string,
+	ids: number[],
+	knownTopics: string[] = [],
+	max = MAX_VIDEO_TOPICS
+): Map<number, string[]> {
+	const wanted = new Set(ids);
+	const knownSpelling = new Map(knownTopics.map((topic) => [topic.trim().toLowerCase(), topic.trim()]));
+	const result = new Map<number, string[]>();
+	for (const line of (text || '').split(/\r?\n/)) {
+		// "12: Topic; Topic", also tolerating "[12] Topic", "12. Topic" and a leading list marker
+		const match = line.match(/^\s*(?:[-*•]\s*)?(?:\[(\d+)\]\s*[:.)\-–]?|(\d+)\s*[:.)\-–])\s*(.+)$/);
+		if (!match) continue;
+		const id = Number(match[1] ?? match[2]);
+		if (!wanted.has(id) || result.has(id)) continue;
+		const topics = [...new Set(cleanTopics(match[3].split(/[;,]/), max)
+			.map((topic) => knownSpelling.get(topic.toLowerCase()) ?? topic))];
+		if (topics.length > 0) {
+			result.set(id, topics);
+		}
+	}
+	return result;
 }

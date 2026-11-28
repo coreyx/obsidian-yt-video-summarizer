@@ -39,7 +39,7 @@ None at this time. (Decided with the user: OpenAI `gpt-5.4-nano`, shared topic n
 ### Batched topic prompt
 
 #### [MODIFY] `src/utils/videoTopics.ts`
-- [ ] **TASK-1:** Add two exported functions, with TSDoc, so the batch format is tested against the real source:
+- [x] **TASK-1:** Add two exported functions, with TSDoc, so the batch format is tested against the real source:
   - `buildBatchVideoTopicsPrompt(notes: { id: number; title: string; summary: string }[], knownTopics: string[]): string`. It reuses the rules of `buildVideoTopicsPrompt()` (1 to 3 Title Case subject areas, most central first) and adds the list of topic names to reuse. It asks for exactly one line per note: `<id>: Topic A; Topic B`.
   - `parseBatchVideoTopics(text: string, ids: number[]): Map<number, string[]>`. It parses each line with the same clean-up as `parseVideoTopics()` (Title Case, no duplicates, at most 3, nothing over 50 characters), ignores ids that weren't asked for, and leaves out notes with no usable answer.
 
