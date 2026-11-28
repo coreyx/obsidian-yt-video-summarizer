@@ -1,6 +1,7 @@
 import { Editor } from 'obsidian';
 import { TranscriptLine } from '../types';
 import { isFrontmatterDateValue } from './dateTime';
+import { videoHost, videoPlatform } from './videoPlatform';
 
 export interface FrontmatterData {
 	title: string;
@@ -61,6 +62,18 @@ export function videoStatsFrontmatter(metadata: {
 		view_count: metadata.viewCount,
 		like_count: metadata.likeCount,
 		aspect_ratio: metadata.aspectRatio,
+	};
+}
+
+/**
+ * Maps a note's video URL to its `host` and `platform` properties, leaving out whichever can't be worked out.
+ */
+export function videoSourceFrontmatter(url: string): Pick<FrontmatterData, 'host' | 'platform'> {
+	const host = videoHost(url);
+	const platform = videoPlatform(host);
+	return {
+		...(host ? { host } : {}),
+		...(platform ? { platform } : {}),
 	};
 }
 
