@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `published_at` now includes the time the video was published, converted to your local time (e.g. `2009-10-24T23:57:33`), in both video summary notes and Media Extended notes. YouTube provides the time in every source the plugin reads; it was being cut off. Run *Refresh video metadata* to update existing notes. Obsidian keeps one type per property name across the vault, so if `published_at` is already set to **Date**, change it to **Date & time** to see the time.
+- Tests now run the plugin's real source instead of copies of its functions. The suite is split into one file per area (`tests/<area>.test.mjs`, run with `npm test`). Logic that no test could reach was moved into exported functions the plugin calls; behavior is unchanged. See [DEVELOPMENT.md](DEVELOPMENT.md#testing-strategy).
 
 ### Fixed
 
