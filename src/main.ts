@@ -45,6 +45,7 @@ import {
 	upsertMarkdownSection,
 	upsertMediaExtendedSection,
 	videoStatsFrontmatter,
+	videoSourceFrontmatter,
 } from './utils/frontmatter';
 import { ConfirmModal } from './ui/modals/ConfirmModal';
 import { buildVaultTagData, collectVaultTagCounts } from './utils/vaultTags';
@@ -919,6 +920,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 		const fmData: FrontmatterData = {
 			title: transcript.title,
 			video_url: url,
+			...videoSourceFrontmatter(url),
 			channel_name: transcript.author,
 			channel_username: transcript.channelUsername || '',
 			channel_url: transcript.channelUrl,
@@ -1674,6 +1676,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			title: metadata.title,
 			// Keep the note's own URL (it may carry playlist parameters)
 			video_url: url,
+			...videoSourceFrontmatter(url),
 			channel_name: metadata.author,
 			channel_username: metadata.channelUsername || '',
 			channel_url: metadata.channelUrl,
@@ -1884,6 +1887,7 @@ export class YouTubeSummarizerPlugin extends Plugin {
 			const fmData: FrontmatterData = {
 				title: transcript.title,
 				video_url: url,
+				...videoSourceFrontmatter(url),
 				channel_name: transcript.author,
 				channel_username: transcript.channelUsername || '',
 				channel_url: transcript.channelUrl,

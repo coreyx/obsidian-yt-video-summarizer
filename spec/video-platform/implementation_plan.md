@@ -64,7 +64,7 @@ None at this time. (Decided with the user: only `www.` is removed from `host`; s
 - [x] **TASK-3:** Add `videoSourceFrontmatter(url)`, which returns `{ host, platform }` from `videoHost`/`videoPlatform` and leaves out whichever is `null`.
 
 #### [MODIFY] `src/main.ts`
-- [ ] **TASK-4:** Spread `videoSourceFrontmatter(url)` into the three `FrontmatterData` objects that set `video_url`:
+- [x] **TASK-4:** Spread `videoSourceFrontmatter(url)` into the three `FrontmatterData` objects that set `video_url`:
   - the summary in `summarizeVideo`
   - *Refresh video metadata*, in `refreshNoteVideoMetadata`
   - the transcript command, in `retrieveTranscript`
